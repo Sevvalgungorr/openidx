@@ -17,25 +17,33 @@ Status snapshot after the 2026-07-23 push. This tracks the §7.2 roadmap from
 | Usage metering (A4) | #553 | Daily rollup of Ziti fabric usage (overlay logins, service dials) per org/service/identity from unified_audit_events; GET /api/v1/audit/usage |
 | MCP / AI-agent gateway (D1) | #555 | Agent token → per-tool allowlist → forward to MCP server over dark Ziti service → audited. Network-enforced agent containment. |
 
-Migrations v95–v103 applied live. Every feature has DB-backed tests + a live
+Migrations v95–v104 applied live. Every feature has DB-backed tests + a live
 end-to-end proof against `openidx.tdv.org`.
 
-## Remaining §7.2 waves (follow-up PRs)
+## §7.2 waves — now CLOSED
 
-Each is a large, multi-file, often cross-service build. Recommended order:
+### A2 — Per-org overlay scoping (MSP unlock) ✅ (#563, migration v104)
+Per-org isolation on the overlay, behind the `ZITI_PER_ORG_ATTRIBUTES` flag
+(default off → single-tenant installs unchanged):
+- `groups` composite `UNIQUE(org_id, name)` (v104) so two tenants can own
+  identically named groups.
+- Group role attributes namespaced `org-<id>-<group>`; each identity tagged with a
+  bare `org-<id>` marker.
+- Reconciler emits a per-org Dial policy `openidx-orgdial-<svc>` granting only
+  `#org-<id>`, so a tenant's users can dial only their own org's services.
+- Live-proven: two orgs both hold a `Platform` group → distinct attributes +
+  markers; SQL transform matches the Go code; flag-off deploy left the overlay
+  healthy (router online, no orgdial policies emitted).
 
-### A2 — Per-org overlay scoping (MSP unlock)
-Remove the hardcoded fallback org from the Ziti path; namespace Ziti
-attributes/service names per org; org-RBAC on Ziti passthrough. Prerequisite for
-the MSP channel + any multi-tenant SaaS offer.
-- Touch: `internal/access/ziti*.go` (service/identity naming), `ziti_user_sync.go`
-  (attribute namespacing), the reconciler, and every place a default org is
-  assumed on the overlay path. Large; do behind a feature flag.
-
-
-
-### D3 — K8s fabric subchart + HA controller (Raft) + Terraform provider
-Production posture for platform buyers. Infra/packaging work.
+### D3 — K8s fabric subchart + HA controller (Raft) + Terraform ✅ (#564)
+Production packaging for the overlay, disabled by default:
+- Helm `templates/ziti-fabric.yaml`: controller StatefulSet (HA/Raft when
+  `controller.replicas>=3`, per-replica PVC), edge router Deployment, Services
+  (client 1280 / edge 3022 / optional BrowZer 3023).
+- Terraform `modules/openziti`: helm_release wrapper toggling `zitiFabric.*`,
+  `ha_enabled` output, wired into `main.tf` (prod → 3 controllers / 2 routers).
+- Validated: `helm lint` clean, `helm template` renders (Raft env at replicas=3),
+  `terraform fmt`/`validate` clean. Ships as validated manifests (no live cluster).
 
 ## Notes for the next session
 
