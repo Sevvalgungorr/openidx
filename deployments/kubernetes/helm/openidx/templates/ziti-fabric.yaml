@@ -1,0 +1,186 @@
+{{- if .Values.zitiFabric.enabled }}
+{{- /*
+OpenZiti fabric — the zero-trust overlay OpenIDX rides (Wave D3).
+
+Renders the control + data plane so a platform buyer can run the whole fabric in
+Kubernetes instead of the docker/podman quickstart:
+
+  controller  StatefulSet (HA/Raft-ready: set controller.replicas=3 for a quorum;
+              each replica gets its own PVC for bbolt + Raft data)
+  router      Deployment of edge routers (data plane; scale with router.replicas)
+  Services    controller client/mgmt (1280) + router edge (3022) + optional
+              BrowZer WSS (3023)
+
+Disabled by default (zitiFabric.enabled=false) so existing installs are
+unchanged. Enabling it does NOT auto-wire the app services to the overlay — that
+is an operator step (point ZITI_CTRL_URL at the controller Service and enroll the
+identities). See docs/OPENIDX_ZITI_ARCHITECTURE.md.
+*/}}
+---
+# ---- Controller (HA StatefulSet; Raft quorum when replicas >= 3) ----
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "openidx.fullname" . }}-ziti-controller
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-controller
+spec:
+  serviceName: {{ include "openidx.fullname" . }}-ziti-controller
+  replicas: {{ .Values.zitiFabric.controller.replicas | default 1 }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "openidx.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ziti-controller
+  template:
+    metadata:
+      labels:
+        {{- include "openidx.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ziti-controller
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ziti-controller
+          image: {{ .Values.zitiFabric.controller.image | quote }}
+          args: ["run", "config.yml"]
+          env:
+            - name: ZITI_CTRL_ADVERTISED_ADDRESS
+              value: {{ .Values.zitiFabric.controller.advertisedAddress | quote }}
+            - name: ZITI_CTRL_ADVERTISED_PORT
+              value: {{ .Values.zitiFabric.controller.port | default 1280 | quote }}
+            - name: ZITI_BOOTSTRAP
+              value: "true"
+            - name: ZITI_BOOTSTRAP_PKI
+              value: "true"
+            - name: ZITI_BOOTSTRAP_CONFIG
+              value: "true"
+            - name: ZITI_BOOTSTRAP_DATABASE
+              value: "true"
+            # Keep the operator-provisioned server cert (e.g. an alt_server_certs
+            # FQDN) from being regenerated on every restart. See the Z1 runbook.
+            - name: ZITI_AUTO_RENEW_CERTS
+              value: {{ .Values.zitiFabric.controller.autoRenewCerts | default false | quote }}
+            {{- if gt (int (.Values.zitiFabric.controller.replicas | default 1)) 1 }}
+            # Raft HA: a >1 replica set forms a quorum. Each pod advertises its
+            # stable StatefulSet DNS name for peer discovery.
+            - name: ZITI_CTRL_RAFT_ENABLED
+              value: "true"
+            {{- end }}
+          ports:
+            - name: client
+              containerPort: {{ .Values.zitiFabric.controller.port | default 1280 }}
+          volumeMounts:
+            - name: ctrl-data
+              mountPath: /persistent
+          resources:
+            {{- toYaml .Values.zitiFabric.controller.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: ctrl-data
+        labels:
+          {{- include "openidx.labels" . | nindent 10 }}
+          app.kubernetes.io/component: ziti-controller
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.zitiFabric.controller.persistence.storageClass }}
+        storageClassName: {{ .Values.zitiFabric.controller.persistence.storageClass | quote }}
+        {{- else if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.zitiFabric.controller.persistence.size | default "5Gi" }}
+---
+# ---- Controller Service (client + management API on 1280) ----
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openidx.fullname" . }}-ziti-controller
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-controller
+spec:
+  type: {{ .Values.zitiFabric.controller.service.type | default "ClusterIP" }}
+  selector:
+    {{- include "openidx.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-controller
+  ports:
+    - name: client
+      port: {{ .Values.zitiFabric.controller.port | default 1280 }}
+      targetPort: client
+---
+# ---- Edge router(s) (data plane) ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openidx.fullname" . }}-ziti-router
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-router
+spec:
+  replicas: {{ .Values.zitiFabric.router.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "openidx.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ziti-router
+  template:
+    metadata:
+      labels:
+        {{- include "openidx.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ziti-router
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ziti-router
+          image: {{ .Values.zitiFabric.router.image | quote }}
+          env:
+            - name: ZITI_CTRL_ADVERTISED_ADDRESS
+              value: {{ .Values.zitiFabric.controller.advertisedAddress | quote }}
+            - name: ZITI_CTRL_ADVERTISED_PORT
+              value: {{ .Values.zitiFabric.controller.port | default 1280 | quote }}
+            - name: ZITI_ROUTER_ADVERTISED_ADDRESS
+              value: {{ .Values.zitiFabric.router.advertisedAddress | quote }}
+            - name: ZITI_ROUTER_PORT
+              value: {{ .Values.zitiFabric.router.port | default 3022 | quote }}
+            - name: ZITI_ROUTER_MODE
+              value: {{ .Values.zitiFabric.router.mode | default "host" | quote }}
+          ports:
+            - name: edge
+              containerPort: {{ .Values.zitiFabric.router.port | default 3022 }}
+            {{- if .Values.zitiFabric.router.browzer.enabled }}
+            - name: browzer
+              containerPort: {{ .Values.zitiFabric.router.browzer.port | default 3023 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.zitiFabric.router.resources | nindent 12 }}
+---
+# ---- Router Service (edge data plane + optional BrowZer WSS) ----
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openidx.fullname" . }}-ziti-router
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-router
+spec:
+  type: {{ .Values.zitiFabric.router.service.type | default "ClusterIP" }}
+  selector:
+    {{- include "openidx.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-router
+  ports:
+    - name: edge
+      port: {{ .Values.zitiFabric.router.port | default 3022 }}
+      targetPort: edge
+    {{- if .Values.zitiFabric.router.browzer.enabled }}
+    - name: browzer
+      port: {{ .Values.zitiFabric.router.browzer.port | default 3023 }}
+      targetPort: browzer
+    {{- end }}
+{{- end }}

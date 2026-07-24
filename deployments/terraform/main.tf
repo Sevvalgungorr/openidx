@@ -58,6 +58,12 @@ variable "cluster_name" {
   default     = "openidx-cluster"
 }
 
+variable "openziti_enabled" {
+  description = "Deploy the OpenZiti fabric (controller + router) via the openidx Helm chart (Wave D3)."
+  type        = bool
+  default     = false
+}
+
 # VPC
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
@@ -145,6 +151,18 @@ module "redis" {
   security_groups = [module.eks.cluster_security_group_id]
 }
 
+# OpenZiti fabric (Wave D3). Disabled by default; set openziti_enabled=true and
+# controller_replicas=3 for a Raft HA quorum. Renders through the openidx Helm
+# chart's zitiFabric.* values.
+module "openziti" {
+  source = "./modules/openziti"
+
+  enabled             = var.openziti_enabled
+  namespace           = "openidx"
+  controller_replicas = var.environment == "prod" ? 3 : 1
+  router_replicas     = var.environment == "prod" ? 2 : 1
+}
+
 # Outputs
 output "cluster_endpoint" {
   description = "EKS cluster endpoint"
@@ -169,4 +187,9 @@ output "rds_reader_endpoints" {
 output "redis_endpoint" {
   description = "Redis endpoint"
   value       = module.redis.endpoint
+}
+
+output "openziti_ha_enabled" {
+  description = "True when the OpenZiti controller runs a Raft HA quorum (replicas >= 3)."
+  value       = module.openziti.ha_enabled
 }

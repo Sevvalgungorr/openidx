@@ -346,6 +346,52 @@ pamBroker:
     accessMode: ReadWriteMany
     storageClass: ""
 
+# OpenZiti fabric (Wave D3) — run the zero-trust overlay's control + data plane
+# in-cluster. Disabled by default; enabling renders the controller StatefulSet
+# (HA/Raft-ready), edge router Deployment, and their Services. Wiring the app
+# services to the overlay (ZITI_CTRL_URL, identity enrollment) remains an operator
+# step. See templates/ziti-fabric.yaml and docs/OPENIDX_ZITI_ARCHITECTURE.md.
+zitiFabric:
+  enabled: false
+  controller:
+    image: openziti/ziti-controller:latest
+    # Set to 3 (or any odd number) for a Raft HA quorum. 1 = single controller.
+    replicas: 1
+    advertisedAddress: ziti-controller
+    port: 1280
+    # Keep an operator-provisioned server cert from being regenerated on restart.
+    autoRenewCerts: false
+    service:
+      type: ClusterIP
+    persistence:
+      size: 5Gi
+      storageClass: ""
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  router:
+    image: openziti/ziti-router:latest
+    replicas: 1
+    advertisedAddress: ziti-router
+    port: 3022
+    mode: host
+    browzer:
+      enabled: false
+      port: 3023
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
 # Admin Console
 adminConsole:
   enabled: true
