@@ -727,6 +727,35 @@ Fourteen of the July 10 register's P0 rows are verified closed in code —
 see §2.1. Update `MARKET_GAP_ANALYSIS_2026.md` statuses accordingly (or mark
 it superseded-in-part by this document) so the registers never contradict.
 
+### 7.4 Closed 2026-07-24 (this cycle)
+
+Verified against current `main`:
+
+- **§7.2 Tier-1 landmines — all closed.** Push MFA is on FCM HTTP v1 (`oauth2/google`,
+  `fcm.googleapis.com/v1/.../messages:send`); SAML uses `goxmldsig` (canonicalization +
+  inbound signature verification); the OAuth consent screen is enforced
+  (`internal/oauth/consent.go`); the `user-123` mock session helper is gone; voice-call
+  MFA is a real Twilio provider. The two that were still open are now fixed:
+  - **Magic-link token leak** (#566) — the routed `/identity/passwordless/magic-link`
+    handler returned the one-time token in its JSON body and never emailed it; now it
+    sends via `SendMagicLinkEmail` and never echoes the token (non-enumerating response).
+  - **OIDC pairwise subjects advertised-but-not-implemented** (#567) — `generateSubject`
+    returned the raw user id for every client despite discovery advertising `pairwise`;
+    now a real per-client pairwise `sub` (HMAC) behind `OIDC_PAIRWISE_SUBJECTS`, plus a
+    fix to `validateAccessToken` (it read the token as a Redis hash while the endpoint
+    stores JSON, so UserInfo failed on real tokens).
+- **§7.2 Tier-2 — the big builds are shipped:** Outbound SCIM (#543), HR-driven JML
+  (#544), Token Exchange + DCR (#545), EDR/MDM posture (#546), SSF/CAEP (#547), A3/B2
+  network termination (#549), B1 JIT grants (#551), A4 usage metering (#553), D1 MCP
+  gateway (#555), **A2 per-org overlay scoping** (#563), **D3 K8s fabric + Terraform**
+  (#564). SIEM forwarder (CEF/syslog/HEC) and complete SAML SLO already exist in-tree.
+
+**Still genuinely open (dedicated feature builds, not quick fixes):** break-glass +
+dual-control/exclusivity on PAM checkout (S–M each), detective SoD sweep + violation
+dashboard (M), privileged-account discovery (L), entitlement warehouse + orphan
+detection (XL), DB/K8s session brokering + SSH CA (`openidx connect`, L–XL). These
+need design and their own PRs; do not rush them.
+
 ---
 
 ## 8. Go-to-market: the way to sell
