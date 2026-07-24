@@ -750,11 +750,27 @@ Verified against current `main`:
   gateway (#555), **A2 per-org overlay scoping** (#563), **D3 K8s fabric + Terraform**
   (#564). SIEM forwarder (CEF/syslog/HEC) and complete SAML SLO already exist in-tree.
 
-**Still genuinely open (dedicated feature builds, not quick fixes):** break-glass +
-dual-control/exclusivity on PAM checkout (S–M each), detective SoD sweep + violation
-dashboard (M), privileged-account discovery (L), entitlement warehouse + orphan
-detection (XL), DB/K8s session brokering + SSH CA (`openidx connect`, L–XL). These
-need design and their own PRs; do not rush them.
+**Wave 2 — the §7.4 open list is now closed (2026-07-24), each a dedicated PR with tests:**
+- **Break-glass + dual-control/exclusivity on PAM checkout** (#570) — opt-in per-entry
+  flags: a two-person rule (a second admin authorizes the specific checkout,
+  authorizer ≠ requester), one-holder-at-a-time exclusivity, and a loudly-audited
+  emergency bypass. Migration v105.
+- **Detective SoD sweep + violation register** (#571) — scans existing role/group
+  assignments against `separation_of_duty` policies for toxic combinations that the
+  preventive control never catches; self-reconciling, `waived` is sticky. Migration v106.
+- **Privileged-account discovery** (#572) — sweeps the identity store for standing
+  admin grants, privileged group membership, service-account patterns, and dormant
+  privileged accounts; tracks each to onboarding. Migration v107.
+- **Entitlement warehouse + orphan detection** (#573) — one "who has access to what"
+  surface unioning every entitlement source, each row stamped time-bound and orphaned
+  (owner disabled/missing). Migration v108.
+- **DB/K8s session brokering + SSH CA (`openidx connect`)** (#574) — OpenIDX as an SSH
+  certificate authority (per-org CA private key in the vault), minting short-lived,
+  principal-scoped user certs; plus the brokered-session ledger for ssh/db/k8s.
+  Migration v109.
+
+Nothing from the §7.4 open list remains. Remaining roadmap items live in §7's forward
+tables, not here.
 
 ---
 
