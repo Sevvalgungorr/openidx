@@ -3,9 +3,11 @@ package oauth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -125,7 +127,7 @@ func (p *OIDCProvider) GenerateIDToken(ctx context.Context, req *IDTokenRequest)
 	// Build standard OIDC claims
 	claims := jwt.MapClaims{
 		"iss": p.issuer,                                                   // Issuer
-		"sub": p.generateSubject(user.ID),                                 // Subject - pairwise or public identifier
+		"sub": p.generateSubject(user.ID, req.ClientID),                   // Subject - pairwise or public identifier
 		"aud": req.ClientID,                                               // Audience - client_id
 		"exp": now.Add(time.Duration(req.ExpiresIn) * time.Second).Unix(), // Expiration
 		"iat": now.Unix(),                                                 // Issued At
@@ -260,13 +262,25 @@ func (p *OIDCProvider) GenerateIDToken(ctx context.Context, req *IDTokenRequest)
 	return idToken, nil
 }
 
-// generateSubject generates a subject identifier for the user
-// Supports both public and pairwise subject types per OIDC §8
-// Exported for testing purposes
-func (p *OIDCProvider) generateSubject(userID string) string {
-	// For now, use public subject type (same user ID for all clients)
-	// In production, you'd want to support pairwise subject type for privacy
-	return userID
+// generateSubject returns the OIDC `sub` for a user, per client. With pairwise
+// subjects enabled (OIDCPairwiseSubjects) it returns a per-client pseudonymous
+// identifier so a user's subject differs across relying parties (OIDC Core §8.1);
+// the value is stable for a given (client, user) and identical between the ID
+// token and UserInfo. Otherwise (default) it returns the public subject — the raw
+// user id, same for all clients. An empty clientID always yields the public
+// subject so callers without client context never emit an unstable value.
+func (p *OIDCProvider) generateSubject(userID, clientID string) string {
+	if clientID == "" || p.service == nil || p.service.config == nil || !p.service.config.OIDCPairwiseSubjects {
+		return userID
+	}
+	// Pairwise = base64url(HMAC-SHA256(salt, clientID + "|" + userID)). The salt is
+	// the install's EncryptionKey so the mapping is stable across restarts and not
+	// guessable by a relying party. Sector = clientID (we don't support
+	// sector_identifier_uri grouping yet; per-client is the privacy-preserving
+	// default and still spec-valid).
+	mac := hmac.New(sha256.New, []byte(p.service.config.EncryptionKey))
+	mac.Write([]byte(clientID + "|" + userID))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 // hashHalf computes the first half of a SHA-256 hash (used for at_hash and c_hash)
@@ -342,7 +356,7 @@ type UserInfoResponse struct {
 // Implements OpenID Connect Core 1.0 §5.3.1
 func (p *OIDCProvider) GetUserInfo(ctx context.Context, req *UserInfoRequest) (*UserInfoResponse, error) {
 	// Validate access token and extract user ID
-	userID, scope, err := p.validateAccessToken(ctx, req.AccessToken)
+	userID, scope, clientID, err := p.validateAccessToken(ctx, req.AccessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +377,7 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, req *UserInfoRequest) (*
 
 	// Build UserInfo response
 	response := &UserInfoResponse{
-		Sub: p.generateSubject(user.ID), // Required
+		Sub: p.generateSubject(user.ID, clientID), // Required
 	}
 
 	// Add profile claims based on scope
@@ -441,26 +455,33 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, req *UserInfoRequest) (*
 }
 
 // validateAccessToken validates the access token and returns the user ID and scope
-func (p *OIDCProvider) validateAccessToken(ctx context.Context, accessToken string) (string, string, error) {
+func (p *OIDCProvider) validateAccessToken(ctx context.Context, accessToken string) (string, string, string, error) {
 	if accessToken == "" {
-		return "", "", ErrMissingBearerToken
+		return "", "", "", ErrMissingBearerToken
 	}
 
-	// Try to get the access token from Redis
+	// Try to get the access token from Redis. Stored as a JSON AccessTokenData
+	// blob by the token endpoint (service.go), so parse it — HMGet on a string key
+	// would fail. Returns user id, scope, and client id (the last for pairwise
+	// subject derivation).
 	cacheKey := "access_token:" + accessToken
-	data, err := p.service.redis.Client.HMGet(ctx, cacheKey, "user_id", "scope").Result()
-	if err != nil || data[0] == nil {
+	raw, err := p.service.redis.Client.Get(ctx, cacheKey).Result()
+	if err != nil || raw == "" {
 		p.logger.Warn("Invalid access token in UserInfo request", zap.Error(err))
-		return "", "", ErrInvalidAccessToken
+		return "", "", "", ErrInvalidAccessToken
 	}
 
-	userID := data[0].(string)
-	scope := ""
-	if data[1] != nil {
-		scope = data[1].(string)
+	var td struct {
+		ClientID string `json:"client_id"`
+		UserID   string `json:"user_id"`
+		Scope    string `json:"scope"`
+	}
+	if jerr := json.Unmarshal([]byte(raw), &td); jerr != nil || td.UserID == "" {
+		p.logger.Warn("Malformed access token record in UserInfo request", zap.Error(jerr))
+		return "", "", "", ErrInvalidAccessToken
 	}
 
-	return userID, scope, nil
+	return td.UserID, td.Scope, td.ClientID, nil
 }
 
 // ExtractBearerToken extracts the Bearer token from the Authorization header
@@ -561,7 +582,7 @@ const (
 
 // GetTestSubject is a test helper that returns the subject for a user ID
 func (p *OIDCProvider) GetTestSubject(userID string) string {
-	return p.generateSubject(userID)
+	return p.generateSubject(userID, "")
 }
 
 // ValidateAuthCode is a test helper that validates an auth code

@@ -119,6 +119,15 @@ type Config struct {
 	// names and their existing service policies unchanged.
 	ZitiPerOrgAttributes bool `mapstructure:"ziti_per_org_attributes"`
 
+	// OIDCPairwiseSubjects, when true, makes the OIDC provider issue a pairwise
+	// `sub` (a per-client pseudonymous identifier) instead of the user's raw id,
+	// so a user's subject differs across relying parties (OIDC Core §8.1, privacy).
+	// The subject is stable per (client, user) and consistent between the ID token
+	// and UserInfo. Default false = public subjects (today's behavior); discovery
+	// only advertises "pairwise" as supported, and clients that don't request it
+	// keep public subjects regardless.
+	OIDCPairwiseSubjects bool `mapstructure:"oidc_pairwise_subjects"`
+
 	// DefaultOrgFallback, when true, makes the TenantResolver attach the
 	// install's default org to any request that resolves no tenant signal
 	// (single-tenant compatibility). v1.7.0 ships with this OFF: a request
@@ -599,6 +608,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("ssf_receiver_issuer", "")
 	v.SetDefault("ssf_receiver_jwks_url", "")
 	v.SetDefault("ziti_per_org_attributes", false)
+	v.SetDefault("oidc_pairwise_subjects", false)
 	// v1.7.0: tenant isolation is enforced by default — no silent default-org
 	// fallback. Single-tenant installs opt back in with DEFAULT_ORG_FALLBACK=true.
 	v.SetDefault("default_org_fallback", false)

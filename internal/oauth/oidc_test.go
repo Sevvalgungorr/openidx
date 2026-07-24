@@ -304,10 +304,17 @@ func TestGetUserInfo(t *testing.T) {
 	testUserID := "test-user-123"
 	testScope := "openid profile email"
 
-	// Store the access token in the format expected by validateAccessToken
-	// The OIDC provider expects a hash key with user_id and scope fields
+	// Store the access token in the format the real token endpoint writes: a JSON
+	// AccessTokenData blob under access_token:<token> (see service.go). This is what
+	// validateAccessToken now parses, and it carries client_id for pairwise subjects.
 	key := "access_token:" + testAccessToken
-	err := ctx.RedisClient.HSet(context.Background(), key, "user_id", testUserID, "scope", testScope).Err()
+	tokenBlob, merr := json.Marshal(map[string]interface{}{
+		"user_id":   testUserID,
+		"scope":     testScope,
+		"client_id": "test-client",
+	})
+	require.NoError(t, merr)
+	err := ctx.RedisClient.Set(context.Background(), key, tokenBlob, 24*time.Hour).Err()
 	require.NoError(t, err, "Failed to store test access token")
 
 	// Set store on the provider (needed for UserInfo validation)
@@ -858,13 +865,16 @@ func TestOIDCUserInfoWithDifferentScopes(t *testing.T) {
 	}
 	ctx.IdentityService.users[fullUser.ID] = fullUser
 
-	// Store access token for this user
+	// Store access token for this user (JSON blob, matching the real endpoint).
 	testToken := "full-user-token"
 	key := "access_token:" + testToken
-	err := ctx.RedisClient.HSet(context.Background(), key,
-		"user_id", fullUser.ID,
-		"scope", "openid profile email phone address",
-	).Err()
+	blob, merr := json.Marshal(map[string]interface{}{
+		"user_id":   fullUser.ID,
+		"scope":     "openid profile email phone address",
+		"client_id": "test-client",
+	})
+	require.NoError(t, merr)
+	err := ctx.RedisClient.Set(context.Background(), key, blob, 24*time.Hour).Err()
 	require.NoError(t, err)
 
 	tests := []struct {
