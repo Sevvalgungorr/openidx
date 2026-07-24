@@ -49,6 +49,9 @@ type DesiredRoute struct {
 	ToURL          string
 	HostingMode    string
 	BrowZerEnabled bool
+	// OrgID is the owning org of the route, used for per-org Dial policies when
+	// ZitiPerOrgAttributes is on (Wave A2). Empty for install-wide/default-org routes.
+	OrgID string
 	// HopPort is the per-app hop listen port (base + sorted-index, via
 	// assignHopPorts). For hop routes the host.v1 target is hopHost:HopPort so the
 	// hop demuxes by PORT (the runtime sends no SNI). Stamped in reconcileOnce.
@@ -158,6 +161,15 @@ type ZitiReconciler struct {
 	// Ziti services (dark-platform spec). Empty by default → no behavior change;
 	// access-service main populates it only when a DARK_MODE tier is enabled.
 	darkServices []darkService
+
+	// perOrgAttributes mirrors config.ZitiPerOrgAttributes. When true the
+	// reconciler additionally emits an org-scoped Dial policy per route so a
+	// tenant's users (who carry org-<id>-<group> role attributes, see
+	// ziti_user_sync.orgScopedAttr) can only dial their OWN org's services — the
+	// overlay half of per-org scoping (Wave A2). Off by default: the install-wide
+	// tier dial policies are unchanged, so single-tenant installs behave exactly
+	// as before.
+	perOrgAttributes bool
 }
 
 // darkService is one OpenIDX surface to make overlay-only: a Ziti service named
@@ -261,6 +273,16 @@ func NewZitiReconciler(db *database.PostgresDB, logger *zap.Logger, provider *Zi
 	return rec
 }
 
+// SetPerOrgAttributes toggles the per-org overlay-scoping behavior (Wave A2).
+// When enabled, reconcileRoute also emits an org-scoped Dial policy so a tenant's
+// users can only dial their own org's services. Off by default; access-service
+// main enables it from config.ZitiPerOrgAttributes. Returns the receiver for
+// chaining.
+func (rec *ZitiReconciler) SetPerOrgAttributes(on bool) *ZitiReconciler {
+	rec.perOrgAttributes = on
+	return rec
+}
+
 // Enqueue requests a reconcile; coalesces (non-blocking send to a size-1 chan).
 func (rec *ZitiReconciler) Enqueue() {
 	select {
@@ -299,7 +321,7 @@ func (rec *ZitiReconciler) loadDesiredRoutes(ctx context.Context) ([]DesiredRout
 	ctx = orgctx.WithBypassRLS(ctx)
 	rows, err := rec.db.Pool.Query(ctx,
 		//orgscope:ignore install-wide Ziti reconcile; keyed by globally-unique ziti_service_name across all orgs
-		`SELECT ziti_service_name, to_url, COALESCE(hosting_mode,'identity'), COALESCE(browzer_enabled,false)
+		`SELECT ziti_service_name, to_url, COALESCE(hosting_mode,'identity'), COALESCE(browzer_enabled,false), COALESCE(org_id::text,'')
 		 FROM proxy_routes
 		 WHERE ziti_enabled = true AND enabled = true
 		   AND ziti_service_name IS NOT NULL AND ziti_service_name != ''`)
@@ -310,7 +332,7 @@ func (rec *ZitiReconciler) loadDesiredRoutes(ctx context.Context) ([]DesiredRout
 	var out []DesiredRoute
 	for rows.Next() {
 		var d DesiredRoute
-		if err := rows.Scan(&d.ServiceName, &d.ToURL, &d.HostingMode, &d.BrowZerEnabled); err != nil {
+		if err := rows.Scan(&d.ServiceName, &d.ToURL, &d.HostingMode, &d.BrowZerEnabled, &d.OrgID); err != nil {
 			rec.logger.Warn("reconciler: scan route failed", zap.Error(err))
 			continue
 		}
@@ -462,7 +484,31 @@ func (rec *ZitiReconciler) ensurePolicies(ctx context.Context, zm *ZitiManager, 
 		[]string{svcRole}, []string{"#all"}); err != nil {
 		rec.logger.Debug("serp (may already exist)", zap.String("svc", d.ServiceName), zap.Error(err))
 	}
+
+	// Per-org overlay scoping (Wave A2): when ZitiPerOrgAttributes is on and the
+	// route belongs to a specific org, additionally emit a Dial policy that only
+	// grants identities carrying this org's role attribute (#org-<id>). Users are
+	// tagged with org-<id>-<group> attributes by ziti_user_sync.orgScopedAttr, and
+	// the reconciler tags every synced identity of an org with the bare #org-<id>
+	// marker, so a tenant can dial only its OWN org's services. Inert when the flag
+	// is off — the install-wide Dial policy above is untouched.
+	if rec.perOrgAttributes && d.OrgID != "" {
+		orgAttr := "#" + orgMarkerAttr(d.OrgID)
+		if _, err := zm.EnsureServicePolicy(ctx, "openidx-orgdial-"+d.ServiceName, "Dial",
+			[]string{svcRole}, []string{orgAttr}); err != nil {
+			rec.logger.Warn("per-org dial policy converge failed",
+				zap.String("svc", d.ServiceName), zap.String("org", d.OrgID), zap.Error(err))
+		}
+	}
 	return nil
+}
+
+// orgMarkerAttr is the bare per-org role attribute (org-<sanitized-id>) that
+// marks every identity belonging to an org, so per-org Dial policies can grant
+// "this org's members" without enumerating groups. Mirrors the org- prefix used
+// by orgScopedAttr in ziti_user_sync.go.
+func orgMarkerAttr(orgID string) string {
+	return "org-" + sanitizeAttr(orgID)
 }
 
 // ensureTierDialPolicy upserts a Dial policy granting the tier identity role the

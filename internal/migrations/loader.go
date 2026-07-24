@@ -733,5 +733,12 @@ func allMigrations() []*Migration {
 			UpSQL:       mcpGatewayUp,
 			DownSQL:     mcpGatewayDown,
 		},
+		{
+			Version:     104,
+			Name:        "groups_per_org_name",
+			Description: "Replace the GLOBAL unique constraint on groups.name with a composite UNIQUE (org_id, name) (Wave A2): two tenants may now both own an 'Engineering'/'Admins' group, the prerequisite for per-org overlay attribute scoping (ZitiPerOrgAttributes). Idempotent; down is best-effort and only restores the global constraint when names are still globally unique.",
+			UpSQL:       groupsPerOrgNameUp,
+			DownSQL:     groupsPerOrgNameDown,
+		},
 	}
 }

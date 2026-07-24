@@ -112,6 +112,13 @@ type Config struct {
 	SSFReceiverIssuer  string `mapstructure:"ssf_receiver_issuer"`
 	SSFReceiverJWKSURL string `mapstructure:"ssf_receiver_jwks_url"`
 
+	// ZitiPerOrgAttributes, when true, namespaces a user's Ziti group role
+	// attributes by their org (org-<org_id>-<group>) so two tenants' identically
+	// named groups don't collide on the overlay (Wave A2, the MSP-channel
+	// prerequisite). Off by default: single-tenant installs keep bare group
+	// names and their existing service policies unchanged.
+	ZitiPerOrgAttributes bool `mapstructure:"ziti_per_org_attributes"`
+
 	// DefaultOrgFallback, when true, makes the TenantResolver attach the
 	// install's default org to any request that resolves no tenant signal
 	// (single-tenant compatibility). v1.7.0 ships with this OFF: a request
@@ -591,6 +598,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("dcr_initial_access_token", "")
 	v.SetDefault("ssf_receiver_issuer", "")
 	v.SetDefault("ssf_receiver_jwks_url", "")
+	v.SetDefault("ziti_per_org_attributes", false)
 	// v1.7.0: tenant isolation is enforced by default — no silent default-org
 	// fallback. Single-tenant installs opt back in with DEFAULT_ORG_FALLBACK=true.
 	v.SetDefault("default_org_fallback", false)
@@ -758,6 +766,7 @@ func bindEnvVars(v *viper.Viper) {
 		"dcr_initial_access_token":                        "DCR_INITIAL_ACCESS_TOKEN",
 		"ssf_receiver_issuer":                             "SSF_RECEIVER_ISSUER",
 		"ssf_receiver_jwks_url":                           "SSF_RECEIVER_JWKS_URL",
+		"ziti_per_org_attributes":                         "ZITI_PER_ORG_ATTRIBUTES",
 		"default_org_fallback":                            "DEFAULT_ORG_FALLBACK",
 		"default_org_id":                                  "DEFAULT_ORG_ID",
 		"oauth_jwks_url":                                  "OAUTH_JWKS_URL",

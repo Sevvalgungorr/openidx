@@ -46,7 +46,7 @@ type SyncStatus struct {
 func (zm *ZitiManager) getUserGroupNames(ctx context.Context, userID string) ([]string, error) {
 	rows, err := zm.db.Pool.Query(ctx,
 		//orgscope:ignore Ziti user-sync engine; keyed by globally-unique user_id (a user belongs to exactly one org), so the membership set is org-bounded
-		`SELECT g.name FROM groups g
+		`SELECT g.name, g.org_id FROM groups g
 		 JOIN group_memberships gm ON gm.group_id = g.id
 		 WHERE gm.user_id = $1
 		 ORDER BY g.name`, userID)
@@ -55,15 +55,50 @@ func (zm *ZitiManager) getUserGroupNames(ctx context.Context, userID string) ([]
 	}
 	defer rows.Close()
 
+	perOrg := zm.cfg != nil && zm.cfg.ZitiPerOrgAttributes
 	var names []string
 	for rows.Next() {
 		var name string
-		if err := rows.Scan(&name); err != nil {
+		var orgID *string
+		if err := rows.Scan(&name, &orgID); err != nil {
 			continue
+		}
+		if perOrg {
+			name = orgScopedAttr(orgID, name)
 		}
 		names = append(names, name)
 	}
 	return names, nil
+}
+
+// orgScopedAttr namespaces a Ziti role attribute by its owning org so that two
+// tenants' identically named groups (e.g. "engineers") map to distinct overlay
+// attributes and cannot dial each other's services. The result is sanitized to
+// the Ziti-legal attribute charset (alphanumerics, '-', '.', '_'). A nil/empty
+// org falls back to the bare name so global groups keep their existing policies.
+func orgScopedAttr(orgID *string, name string) string {
+	if orgID == nil || *orgID == "" {
+		return sanitizeAttr(name)
+	}
+	return "org-" + sanitizeAttr(*orgID) + "-" + sanitizeAttr(name)
+}
+
+// sanitizeAttr coerces an arbitrary string into the Ziti role-attribute charset.
+// Any character outside [A-Za-z0-9._-] becomes '-'; runs are not collapsed so the
+// mapping is deterministic and reversible enough for auditing.
+func sanitizeAttr(s string) string {
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '.', c == '_', c == '-':
+			b = append(b, c)
+		default:
+			b = append(b, '-')
+		}
+	}
+	return string(b)
 }
 
 // SyncUserToZiti creates a Ziti identity for a user if one doesn't exist,
@@ -243,7 +278,32 @@ func (zm *ZitiManager) buildUserAttributes(ctx context.Context, userID string) (
 	// #browzer-users when BrowZer is enabled.
 	_, browzer := zm.browzerAuthPolicy(ctx)
 
-	return assembleAttributes(groups, hasTrusted, browzer), nil
+	attrs := assembleAttributes(groups, hasTrusted, browzer)
+
+	// Per-org overlay scoping (Wave A2): when the flag is on, tag the identity
+	// with a bare org marker (org-<id>) so the reconciler's per-org Dial policy
+	// (openidx-orgdial-*) grants this identity only its OWN org's services. Off
+	// by default → no extra attribute, install-wide behavior unchanged.
+	if zm.cfg != nil && zm.cfg.ZitiPerOrgAttributes {
+		if orgID := zm.userOrgID(ctx, userID); orgID != "" {
+			attrs = append(attrs, orgMarkerAttr(orgID))
+		}
+	}
+	return attrs, nil
+}
+
+// userOrgID returns the user's org_id (or "" on miss). Small helper so
+// buildUserAttributes can stamp the per-org marker without widening
+// getUserGroupNames' contract.
+func (zm *ZitiManager) userOrgID(ctx context.Context, userID string) string {
+	var orgID *string
+	err := zm.db.Pool.QueryRow(ctx,
+		//orgscope:ignore Ziti user-sync engine; keyed by globally-unique user_id, selects that user's own org_id
+		`SELECT org_id FROM users WHERE id = $1`, userID).Scan(&orgID)
+	if err != nil || orgID == nil {
+		return ""
+	}
+	return *orgID
 }
 
 // assembleAttributes is the pure attribute-assembly for a synced Ziti identity,
