@@ -202,6 +202,9 @@ type PamEntry struct {
 	CredentialEntryName string                 `json:"credential_entry_name,omitempty"`
 	AllowReveal         bool                   `json:"allow_reveal"`
 	RequireApproval     bool                   `json:"require_approval"`
+	DualControlRequired bool                   `json:"dual_control_required"`
+	ExclusiveCheckout   bool                   `json:"exclusive_checkout"`
+	BreakGlassEnabled   bool                   `json:"break_glass_enabled"`
 	RecordSession       bool                   `json:"record_session"`
 	ReachMode           string                 `json:"reach_mode"`
 	Renderer            string                 `json:"renderer"`
@@ -231,8 +234,13 @@ type pamEntryUpsertReq struct {
 	CredentialEntryID string                 `json:"credential_entry_id"`
 	AllowReveal       bool                   `json:"allow_reveal"`
 	RequireApproval   bool                   `json:"require_approval"`
-	RecordSession     bool                   `json:"record_session"`
-	Renderer          string                 `json:"renderer"`
+	// DualControlRequired, ExclusiveCheckout, BreakGlassEnabled are the v105
+	// checkout controls; all default false so existing entries are unaffected.
+	DualControlRequired bool   `json:"dual_control_required"`
+	ExclusiveCheckout   bool   `json:"exclusive_checkout"`
+	BreakGlassEnabled   bool   `json:"break_glass_enabled"`
+	RecordSession       bool   `json:"record_session"`
+	Renderer            string `json:"renderer"`
 }
 
 // pamNormalizeRenderer clamps a requested renderer to a safe, valid value.
@@ -447,6 +455,7 @@ const pamEntrySelectColumns = `
 	(e.vault_secret_id IS NOT NULL), COALESCE(e.credential_entry_id::text,''), COALESCE(ce.name,''),
 	e.allow_reveal, e.require_approval, e.record_session, e.reach_mode,
 	COALESCE(e.renderer,'guacamole'),
+	e.dual_control_required, e.exclusive_checkout, e.break_glass_enabled,
 	e.last_connected_at, e.connect_count, e.created_at, e.updated_at`
 
 type pamEntryScanner interface {
@@ -463,6 +472,7 @@ func scanPamEntry(row pamEntryScanner) (*PamEntry, error) {
 		&e.HasSecret, &e.CredentialEntryID, &e.CredentialEntryName,
 		&e.AllowReveal, &e.RequireApproval, &e.RecordSession, &e.ReachMode,
 		&e.Renderer,
+		&e.DualControlRequired, &e.ExclusiveCheckout, &e.BreakGlassEnabled,
 		&e.LastConnectedAt, &e.ConnectCount, &e.CreatedAt, &e.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -561,6 +571,7 @@ func (s *Service) handlePamListEntries(c *gin.Context) {
 			&e.HasSecret, &e.CredentialEntryID, &e.CredentialEntryName,
 			&e.AllowReveal, &e.RequireApproval, &e.RecordSession, &e.ReachMode,
 			&e.Renderer,
+			&e.DualControlRequired, &e.ExclusiveCheckout, &e.BreakGlassEnabled,
 			&e.LastConnectedAt, &e.ConnectCount, &e.CreatedAt, &e.UpdatedAt,
 			&e.Favorite,
 		); err != nil {
@@ -723,15 +734,18 @@ func (s *Service) handlePamCreateEntry(c *gin.Context) {
 		INSERT INTO pam_entries (id, org_id, folder_id, name, entry_type, description, tags,
 		                         hostname, port, username, domain, url, settings,
 		                         vault_secret_id, credential_entry_id,
-		                         allow_reveal, require_approval, record_session, renderer, created_by)
+		                         allow_reveal, require_approval, record_session, renderer, created_by,
+		                         dual_control_required, exclusive_checkout, break_glass_enabled)
 		VALUES ($1, $2, NULLIF($3,'')::uuid, $4, $5, NULLIF($6,''), $7,
 		        NULLIF($8,''), NULLIF($9,0), NULLIF($10,''), NULLIF($11,''), NULLIF($12,''), $13,
 		        NULLIF($14,'')::uuid, NULLIF($15,'')::uuid,
-		        $16, $17, $18, $19, NULLIF($20,'')::uuid)`,
+		        $16, $17, $18, $19, NULLIF($20,'')::uuid,
+		        $21, $22, $23)`,
 		entryID, org.ID, req.FolderID, req.Name, req.EntryType, req.Description, req.Tags,
 		req.Hostname, pamDefaultPort(req.EntryType, req.Port), req.Username, req.Domain, req.URL, settingsJSON,
 		vaultSecretID, req.CredentialEntryID,
-		req.AllowReveal, req.RequireApproval, req.RecordSession, pamNormalizeRenderer(req.Renderer, req.EntryType), userID)
+		req.AllowReveal, req.RequireApproval, req.RecordSession, pamNormalizeRenderer(req.Renderer, req.EntryType), userID,
+		req.DualControlRequired, req.ExclusiveCheckout, req.BreakGlassEnabled)
 	if err != nil {
 		if vaultSecretID != "" && s.vaultSvc != nil {
 			if delErr := s.vaultSvc.Delete(ctx, vaultSecretID); delErr != nil {
@@ -845,14 +859,17 @@ func (s *Service) handlePamUpdateEntry(c *gin.Context) {
 		       domain = NULLIF($8,''), url = NULLIF($9,''), settings = $10,
 		       vault_secret_id = NULLIF($11,'')::uuid, credential_entry_id = NULLIF($12,'')::uuid,
 		       allow_reveal = $13, require_approval = $14, record_session = $15,
-		       renderer = $18, updated_at = NOW()
+		       renderer = $18,
+		       dual_control_required = $19, exclusive_checkout = $20, break_glass_enabled = $21,
+		       updated_at = NOW()
 		 WHERE id = $16 AND org_id = $17`,
 		req.FolderID, req.Name, req.Description, req.Tags,
 		req.Hostname, pamDefaultPort(req.EntryType, req.Port), req.Username,
 		req.Domain, req.URL, settingsJSON,
 		vaultSecretID, req.CredentialEntryID,
 		req.AllowReveal, req.RequireApproval, req.RecordSession,
-		entryID, org.ID, pamNormalizeRenderer(req.Renderer, req.EntryType))
+		entryID, org.ID, pamNormalizeRenderer(req.Renderer, req.EntryType),
+		req.DualControlRequired, req.ExclusiveCheckout, req.BreakGlassEnabled)
 	if err != nil {
 		s.logger.Error("handlePamUpdateEntry: update failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update entry"})
@@ -1182,6 +1199,14 @@ func (s *Service) handlePamRevealEntry(c *gin.Context) {
 		return
 	}
 
+	// v105 checkout controls: exclusivity + dual-control (two-person rule).
+	// A dual-control entry returns 202 until a second admin authorizes the
+	// checkout; an exclusive entry returns 409 while another principal holds it.
+	if proceed, status, body := s.pamCheckoutGate(ctx, org.ID, entryID, userID, "reveal", req.Reason); !proceed {
+		c.JSON(status, body)
+		return
+	}
+
 	// PAM's entry-level ACL above is the authorization; pass isAdmin=true so
 	// the vault does not also require a vault_access_grants row (these
 	// entry-backing secrets have none). Reveal still records the checkout
@@ -1201,6 +1226,11 @@ func (s *Service) handlePamRevealEntry(c *gin.Context) {
 		"entry_id": entryID, "reason": req.Reason, "user_id": userID,
 		// Secret value intentionally omitted.
 	})
+
+	// Record the live checkout so an exclusive entry blocks concurrent access
+	// until this lease expires or the holder checks in. Best-effort: a ledger
+	// failure must not fail a reveal the caller was already authorized for.
+	s.pamRecordCheckout(ctx, org.ID, entryID, userID, "reveal", req.Reason, false)
 
 	// Returned once; never logged. Same encoder-buffer caveat as vault reveal.
 	c.JSON(http.StatusOK, gin.H{"value": string(pt)})

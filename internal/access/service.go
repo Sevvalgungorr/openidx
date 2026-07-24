@@ -618,6 +618,16 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.POST("/pam/entries/:id/reveal", svc.handlePamRevealEntry)
 		api.POST("/pam/entries/:id/request", svc.handlePamRequestAccess)
 
+		// v105 checkout controls — break-glass, dual-control (two-person rule),
+		// exclusivity. Break-glass and check-in share the reveal authorization
+		// surface (in-handler); the second-person authorization queue and the
+		// live-checkout ledger are admin-only.
+		api.POST("/pam/entries/:id/break-glass", svc.handlePamBreakGlass)
+		api.POST("/pam/entries/:id/checkin", svc.handlePamCheckin)
+		api.GET("/pam/checkout-authorizations", svc.requireAdminRole(), svc.handlePamListCheckoutAuthorizations)
+		api.POST("/pam/checkout-authorizations/:id/:decision", svc.requireAdminRole(), svc.handlePamDecideCheckoutAuthorization)
+		api.GET("/pam/checkouts/active", svc.requireAdminRole(), svc.handlePamListActiveCheckouts)
+
 		// Quick Links — admin-curated, user-searchable support/collaboration launcher.
 		api.GET("/quick-links/my", svc.handleMyQuickLinks)
 		api.GET("/quick-links", svc.requireAdminRole(), svc.handleListQuickLinks)

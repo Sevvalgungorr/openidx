@@ -740,5 +740,12 @@ func allMigrations() []*Migration {
 			UpSQL:       groupsPerOrgNameUp,
 			DownSQL:     groupsPerOrgNameDown,
 		},
+		{
+			Version:     105,
+			Name:        "pam_checkout_controls",
+			Description: "Add PAM checkout controls: break_glass_enabled/dual_control_required/exclusive_checkout flags on pam_entries plus pam_checkout_authorizations (two-person second-approver ledger) and pam_active_checkouts (live exclusivity/break-glass ledger). Privileged-access two-person rule + exclusivity + audited emergency access (DORA RTS Art 21). Additive/idempotent.",
+			UpSQL:       pamCheckoutControlsUp,
+			DownSQL:     pamCheckoutControlsDown,
+		},
 	}
 }
