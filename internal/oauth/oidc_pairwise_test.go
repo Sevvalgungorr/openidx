@@ -51,3 +51,22 @@ func TestGenerateSubject_Pairwise(t *testing.T) {
 		t.Error("different users must map to different pairwise subjects")
 	}
 }
+
+// Discovery must advertise "pairwise" only when it's actually enabled — never
+// advertise a subject type we don't honor ("advertised = working").
+func TestDiscoverySubjectTypes(t *testing.T) {
+	off := &Service{config: &config.Config{OIDCPairwiseSubjects: false}}
+	if got := off.discoverySubjectTypes(); len(got) != 1 || got[0] != "public" {
+		t.Errorf("flag off: got %v, want [public]", got)
+	}
+	on := &Service{config: &config.Config{OIDCPairwiseSubjects: true}}
+	got := on.discoverySubjectTypes()
+	if len(got) != 2 || got[0] != "public" || got[1] != "pairwise" {
+		t.Errorf("flag on: got %v, want [public pairwise]", got)
+	}
+	// nil config must not panic and defaults to public-only.
+	nilCfg := &Service{}
+	if got := nilCfg.discoverySubjectTypes(); len(got) != 1 || got[0] != "public" {
+		t.Errorf("nil config: got %v, want [public]", got)
+	}
+}

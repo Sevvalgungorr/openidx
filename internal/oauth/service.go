@@ -1221,6 +1221,17 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 	svc.RegisterSocialLoginRoutes(router)
 }
 
+// discoverySubjectTypes returns the OIDC subject types the provider actually
+// honors: always "public", and "pairwise" only when OIDCPairwiseSubjects is on
+// (so discovery never advertises a subject type we don't implement — the
+// "advertised = working" rule).
+func (s *Service) discoverySubjectTypes() []string {
+	if s.config != nil && s.config.OIDCPairwiseSubjects {
+		return []string{"public", "pairwise"}
+	}
+	return []string{"public"}
+}
+
 func (s *Service) handleDiscovery(c *gin.Context) {
 	// CORS is handled by the APISIX gateway for all routes
 	c.Header("Cache-Control", "public, max-age=3600")
@@ -1249,7 +1260,7 @@ func (s *Service) handleDiscovery(c *gin.Context) {
 		ScopesSupported:                   []string{"openid", "profile", "email", "offline_access"},
 		ResponseTypesSupported:            []string{"code", "id_token", "token id_token", "code id_token"},
 		GrantTypesSupported:               []string{"authorization_code", "refresh_token", "client_credentials", grantTypeTokenExchange},
-		SubjectTypesSupported:             []string{"public"},
+		SubjectTypesSupported:             s.discoverySubjectTypes(),
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 		ClaimsSupported:                   []string{"sub", "iss", "aud", "exp", "iat", "email", "email_verified", "name", "given_name", "family_name", "sid"},

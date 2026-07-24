@@ -122,8 +122,10 @@ func buildDiscoveryDocument(issuer string) *DiscoveryDocument {
 			"code id_token token", // Hybrid Flow
 		},
 		SubjectTypesSupported: []string{
-			"public",   // Same subject for all clients (default)
-			"pairwise", // Different subject per client (for privacy)
+			"public", // Same subject for all clients (default). "pairwise" is
+			// advertised by the live discovery (service.handleDiscovery) only when
+			// OIDCPairwiseSubjects is enabled — see discoverySubjectTypes — so this
+			// static builder (used in tests/tools) lists the always-true default.
 		},
 		IDTokenSigningAlgValuesSupported: []string{
 			"RS256", // RSA with SHA-256 (recommended)
