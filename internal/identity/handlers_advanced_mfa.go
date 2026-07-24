@@ -3,8 +3,12 @@ package identity
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	apperrors "github.com/openidx/openidx/internal/common/errors"
 )
 
@@ -589,17 +593,26 @@ func (s *Service) handleCreateMagicLink(c *gin.Context) {
 
 	link, err := s.CreateMagicLink(c.Request.Context(), req.Email, req.Purpose, req.RedirectURL, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Do not leak whether the account exists — return the same generic
+		// response the OAuth passwordless flow uses.
+		s.logger.Debug("magic link creation failed (may be an unknown email)", zap.Error(err))
+		c.JSON(http.StatusOK, gin.H{"message": "If an account exists with that email, a magic link has been sent."})
 		return
 	}
 
-	// In production, send the link via email instead of returning it
-	// Here we return it for testing purposes
+	// Deliver the link by email. Previously this handler RETURNED the raw token in
+	// the JSON body ("for testing"), which leaks a one-time credential on a routed
+	// endpoint. Send it instead and never echo the token. Failures are logged but
+	// not surfaced, so we don't reveal account existence.
+	base := strings.TrimRight(s.cfg.OAuthIssuer, "/")
+	verifyURL := base + "/oauth/magic-link-verify?token=" + url.QueryEscape(link.Token)
+	if err := s.SendMagicLinkEmail(c.Request.Context(), req.Email, verifyURL); err != nil {
+		s.logger.Error("failed to send magic link email", zap.Error(err))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "Magic link sent to your email",
+		"message":    "If an account exists with that email, a magic link has been sent.",
 		"expires_at": link.ExpiresAt,
-		// Only for testing:
-		"link": "/auth/magic-link?token=" + link.Token,
 	})
 }
 
