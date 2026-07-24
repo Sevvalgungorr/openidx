@@ -209,6 +209,7 @@ export const navigation: NavDomainGroup[] = [
           { name: 'Network Setup', href: '/ziti-setup', icon: Server, minRole: 'admin', keywords: ['ziti setup', 'controller', 'router'] },
           { name: 'Ziti Network', href: '/ziti-network', icon: Globe, minRole: 'admin', keywords: ['openziti', 'identities', 'edge routers'] },
           { name: 'Ziti Discovery', href: '/ziti-discovery', icon: Search, minRole: 'admin', keywords: ['scan', 'discover services'] },
+          { name: 'AI Insights', href: '/ziti-ai-insights', icon: Brain, minRole: 'admin', keywords: ['anomaly', 'risk score', 'quarantine', 'ai'] },
           { name: 'BrowZer', href: '/browzer-management', icon: Play, minRole: 'admin', keywords: ['browser access', 'clientless'] },
           { name: 'App Publish', href: '/app-publish', icon: Upload, minRole: 'admin', keywords: ['publish application', 'expose'] },
           { name: 'Certificates', href: '/certificates', icon: FileKey, minRole: 'admin', keywords: ['tls', 'pki', 'ca'] },

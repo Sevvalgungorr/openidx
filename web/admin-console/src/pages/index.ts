@@ -34,6 +34,7 @@ export const ProxyRoutes = lazy(() => import('./proxy-routes').then((m) => ({ de
 export const ZitiSetup = lazy(() => import('./ziti-setup').then((m) => ({ default: m.ZitiSetupPage })))
 export const ZitiNetwork = lazy(() => import('./ziti-network').then((m) => ({ default: m.ZitiNetworkPage })))
 export const ZitiDiscovery = lazy(() => import('./ziti-discovery').then((m) => ({ default: m.ZitiDiscoveryPage })))
+export const ZitiAIInsights = lazy(() => import('./ziti-ai-insights').then((m) => ({ default: m.ZitiAIInsightsPage })))
 export const BrowzerManagement = lazy(() => import('./browzer-management').then((m) => ({ default: m.BrowZerManagementPage })))
 export const Certificates = lazy(() => import('./certificates').then((m) => ({ default: m.CertificatesPage })))
 export const Devices = lazy(() => import('./devices').then((m) => ({ default: m.DevicesPage })))

@@ -775,5 +775,12 @@ func allMigrations() []*Migration {
 			UpSQL:       sshCASessionBrokerUp,
 			DownSQL:     sshCASessionBrokerDown,
 		},
+		{
+			Version:     110,
+			Name:        "ziti_ai_insights",
+			Description: "Add ziti_identity_activity (learned per-identity behavioral baselines: session counts + hour-of-day histograms per service), ziti_ai_anomalies (deviation ledger: new-service access, off-hours activity, dormant reactivation, session spikes) and ziti_ai_quarantine (saved pre-quarantine role attributes for restore). The AI-driven network intelligence substrate for the Ziti overlay. Controller-scoped like other ziti_* tables, additive/idempotent.",
+			UpSQL:       zitiAIInsightsUp,
+			DownSQL:     zitiAIInsightsDown,
+		},
 	}
 }

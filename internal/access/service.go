@@ -528,6 +528,22 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.DELETE("/ziti/sessions/:id", adminOnly, svc.handleDeleteZitiSession)
 		api.POST("/ziti/sessions/batch-terminate", adminOnly, svc.handleBatchDeleteZitiSessions)
 
+		// AI-driven network intelligence: behavioral baselines over live fabric
+		// sessions, anomaly ledger, fused identity risk scores, policy-hygiene
+		// recommendations, and quarantine response. Analysis mutates the
+		// ledger/baselines and quarantine rewrites identity attributes, so
+		// those are admin-only; reads stay open to authenticated users.
+		api.GET("/ziti/ai/insights", svc.handleZitiAIInsights)
+		api.POST("/ziti/ai/analyze", adminOnly, svc.handleZitiAIAnalyze)
+		api.GET("/ziti/ai/anomalies", svc.handleListZitiAnomalies)
+		api.POST("/ziti/ai/anomalies/:id/status", adminOnly, svc.handleUpdateZitiAnomalyStatus)
+		api.GET("/ziti/ai/identity-risk", svc.handleZitiIdentityRisk)
+		api.GET("/ziti/ai/recommendations", svc.handleZitiAIRecommendations)
+		api.POST("/ziti/ai/identities/:id/quarantine", adminOnly, svc.handleQuarantineZitiIdentity)
+		api.POST("/ziti/ai/identities/:id/unquarantine", adminOnly, svc.handleUnquarantineZitiIdentity)
+		// Controller version / OpenZiti v2.0 feature detection
+		api.GET("/ziti/controller/features", svc.handleZitiControllerFeatures)
+
 		// Phase 5: Certificates
 		api.GET("/ziti/certificates", svc.handleListCertificates)
 		api.GET("/ziti/certificates/expiry-alerts", svc.handleGetCertExpiryAlerts)

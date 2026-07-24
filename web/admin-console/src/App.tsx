@@ -46,6 +46,7 @@ import {
   ZitiSetup,
   ZitiNetwork,
   ZitiDiscovery,
+  ZitiAIInsights,
   BrowzerManagement,
   Certificates,
   Devices,
@@ -248,6 +249,7 @@ function App() {
         <Route path="ziti-setup" element={<ZitiSetup />} />
         <Route path="ziti-network" element={<ZitiNetwork />} />
         <Route path="ziti-discovery" element={<ZitiDiscovery />} />
+        <Route path="ziti-ai-insights" element={<ZitiAIInsights />} />
         <Route path="browzer-management" element={<BrowzerManagement />} />
         <Route path="app-publish" element={<AppPublish />} />
         <Route path="certificates" element={<Certificates />} />

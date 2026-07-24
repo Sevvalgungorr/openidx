@@ -1979,20 +1979,34 @@ func (zm *ZitiManager) GetService(zitiID string) (*ZitiServiceInfo, error) {
 	return nil, fmt.Errorf("service not found: %s", zitiID)
 }
 
-// TestServiceDial tests if a Ziti service is dialable
+// TestServiceDial tests if a Ziti service is dialable by attempting a real
+// dial from the access-proxy identity. A successful dial proves the whole
+// chain: the service exists, a policy grants this identity dial access, an
+// edge router is reachable, and a terminator answers. Failures return the
+// SDK's error so the caller can see which link is broken (no policy, no
+// terminator, router offline, ...).
 func (zm *ZitiManager) TestServiceDial(ctx context.Context, serviceName string) (bool, error) {
 	if zm.zitiCtx == nil {
 		return false, fmt.Errorf("Ziti context not initialized")
 	}
 
-	// Check if service exists first
+	// Check if service exists first for a clearer error than a raw dial failure
 	_, err := zm.GetServiceByName(serviceName)
 	if err != nil {
 		return false, err
 	}
 
-	// For now, just return true if the service exists
-	// In a full implementation, we would attempt to dial the service
+	timeout := 5 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if until := time.Until(deadline); until > 0 && until < timeout {
+			timeout = until
+		}
+	}
+	conn, err := zm.zitiCtx.DialWithOptions(serviceName, &ziti.DialOptions{ConnectTimeout: timeout})
+	if err != nil {
+		return false, fmt.Errorf("dial %s failed: %w", serviceName, err)
+	}
+	_ = conn.Close()
 	return true, nil
 }
 
