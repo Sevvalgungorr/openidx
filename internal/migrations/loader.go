@@ -754,5 +754,12 @@ func allMigrations() []*Migration {
 			UpSQL:       sodViolationsUp,
 			DownSQL:     sodViolationsDown,
 		},
+		{
+			Version:     107,
+			Name:        "privileged_accounts_discovered",
+			Description: "Add privileged_accounts_discovered — the privileged-account discovery register. A periodic scan sweeps the identity store for the privileged population (standing/non-expiring admin grants, privileged group membership, service-account naming patterns, dormant privileged accounts) and tracks each to onboarding/acceptance. The discovery substrate for PAM/JIT onboarding. Org-scoped, additive/idempotent.",
+			UpSQL:       privilegedAccountsUp,
+			DownSQL:     privilegedAccountsDown,
+		},
 	}
 }

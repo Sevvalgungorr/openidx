@@ -1629,6 +1629,15 @@ func RegisterRoutes(router *gin.Engine, svc *Service, extraMiddleware ...gin.Han
 		gov.POST("/sod/violations/:id/status", svc.handleUpdateSoDViolationStatus)
 		gov.GET("/sod/statistics", svc.handleSoDStatistics)
 
+		// Privileged-account discovery: sweep the identity store for the
+		// privileged population (standing admin grants, privileged groups,
+		// service accounts, dormant privileged accounts) and track each to
+		// onboarding. The discovery substrate for PAM/JIT.
+		gov.POST("/privileged-accounts/scan", svc.handleRunPrivilegedDiscovery)
+		gov.GET("/privileged-accounts", svc.handleListPrivilegedAccounts)
+		gov.GET("/privileged-accounts/statistics", svc.handlePrivilegedStatistics)
+		gov.POST("/privileged-accounts/:id/status", svc.handleUpdatePrivilegedAccountStatus)
+
 		// Access request workflows
 		gov.GET("/requests", svc.handleListAccessRequests)
 		gov.POST("/requests", svc.handleCreateAccessRequest)
