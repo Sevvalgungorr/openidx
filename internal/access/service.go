@@ -628,6 +628,17 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.POST("/pam/checkout-authorizations/:id/:decision", svc.requireAdminRole(), svc.handlePamDecideCheckoutAuthorization)
 		api.GET("/pam/checkouts/active", svc.requireAdminRole(), svc.handlePamListActiveCheckouts)
 
+		// v109 SSH certificate authority + session brokering (`openidx connect`).
+		// CA init/rotate is admin-only; anyone authenticated may request a
+		// short-lived cert (host-side AuthorizedPrincipals still gates the
+		// login). The brokered-session ledger list is admin-only.
+		api.POST("/pam/ssh-ca/init", svc.requireAdminRole(), svc.handleInitSSHCA)
+		api.GET("/pam/ssh-ca", svc.handleGetSSHCA)
+		api.POST("/pam/connect/ssh", svc.handleSSHConnect)
+		api.POST("/pam/brokered-sessions", svc.handleBrokerSession)
+		api.GET("/pam/brokered-sessions", svc.requireAdminRole(), svc.handleListBrokeredSessions)
+		api.POST("/pam/brokered-sessions/:id/end", svc.handleEndBrokeredSession)
+
 		// Quick Links — admin-curated, user-searchable support/collaboration launcher.
 		api.GET("/quick-links/my", svc.handleMyQuickLinks)
 		api.GET("/quick-links", svc.requireAdminRole(), svc.handleListQuickLinks)

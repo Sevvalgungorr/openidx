@@ -768,5 +768,12 @@ func allMigrations() []*Migration {
 			UpSQL:       entitlementWarehouseUp,
 			DownSQL:     entitlementWarehouseDown,
 		},
+		{
+			Version:     109,
+			Name:        "ssh_ca_session_broker",
+			Description: "Add ssh_ca (per-org SSH certificate authority; private key held in the vault, only the public key stored) + brokered_sessions (the ssh/db/k8s brokered-connection ledger). The `openidx connect` substrate: short-lived, principal-scoped SSH certs instead of standing keys (Wave C1). Org-scoped, additive/idempotent.",
+			UpSQL:       sshCASessionBrokerUp,
+			DownSQL:     sshCASessionBrokerDown,
+		},
 	}
 }
