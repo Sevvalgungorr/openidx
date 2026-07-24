@@ -747,5 +747,12 @@ func allMigrations() []*Migration {
 			UpSQL:       pamCheckoutControlsUp,
 			DownSQL:     pamCheckoutControlsDown,
 		},
+		{
+			Version:     106,
+			Name:        "sod_violations",
+			Description: "Add sod_violations — the detective segregation-of-duties register. A periodic sweep scans existing user role/group assignments against separation_of_duty policies and records who currently holds a conflicting combination (vs the preventive control that only blocks new grants). Tracks each violation to closure (open/acknowledged/resolved/waived). SOX/ISAE/DORA detective control. Org-scoped, additive/idempotent.",
+			UpSQL:       sodViolationsUp,
+			DownSQL:     sodViolationsDown,
+		},
 	}
 }

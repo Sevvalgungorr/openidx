@@ -1620,6 +1620,15 @@ func RegisterRoutes(router *gin.Engine, svc *Service, extraMiddleware ...gin.Han
 		gov.DELETE("/policies/:id", svc.handleDeletePolicy)
 		gov.POST("/policies/:id/evaluate", svc.handleEvaluatePolicy)
 
+		// Detective segregation-of-duties: sweep existing assignments for toxic
+		// combinations and manage the violation register (dashboard). The
+		// preventive control (evaluateSoDPolicy) blocks new grants; this finds
+		// what already exists.
+		gov.POST("/sod/sweep", svc.handleRunSoDSweep)
+		gov.GET("/sod/violations", svc.handleListSoDViolations)
+		gov.POST("/sod/violations/:id/status", svc.handleUpdateSoDViolationStatus)
+		gov.GET("/sod/statistics", svc.handleSoDStatistics)
+
 		// Access request workflows
 		gov.GET("/requests", svc.handleListAccessRequests)
 		gov.POST("/requests", svc.handleCreateAccessRequest)
