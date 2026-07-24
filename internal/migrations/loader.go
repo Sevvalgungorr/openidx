@@ -761,5 +761,12 @@ func allMigrations() []*Migration {
 			UpSQL:       privilegedAccountsUp,
 			DownSQL:     privilegedAccountsDown,
 		},
+		{
+			Version:     108,
+			Name:        "entitlement_warehouse",
+			Description: "Add entitlement_warehouse — a denormalized snapshot unioning every entitlement source (user_roles, group_memberships, pam_entry_grants, vault_access_grants) into one 'who has access to what' surface, each row stamped time_bound + orphaned (owner disabled/missing). The access-certification and orphan-detection substrate. Org-scoped, additive/idempotent.",
+			UpSQL:       entitlementWarehouseUp,
+			DownSQL:     entitlementWarehouseDown,
+		},
 	}
 }

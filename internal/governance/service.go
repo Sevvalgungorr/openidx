@@ -1638,6 +1638,14 @@ func RegisterRoutes(router *gin.Engine, svc *Service, extraMiddleware ...gin.Han
 		gov.GET("/privileged-accounts/statistics", svc.handlePrivilegedStatistics)
 		gov.POST("/privileged-accounts/:id/status", svc.handleUpdatePrivilegedAccountStatus)
 
+		// Entitlement warehouse: one "who has access to what" surface unioning
+		// every entitlement source, with orphaned-entitlement detection (owner
+		// disabled/missing). The access-certification substrate.
+		gov.POST("/entitlements/rebuild", svc.handleRebuildEntitlements)
+		gov.GET("/entitlements", svc.handleListEntitlements)
+		gov.GET("/entitlements/orphans", svc.handleListOrphanedEntitlements)
+		gov.GET("/entitlements/statistics", svc.handleEntitlementStatistics)
+
 		// Access request workflows
 		gov.GET("/requests", svc.handleListAccessRequests)
 		gov.POST("/requests", svc.handleCreateAccessRequest)
