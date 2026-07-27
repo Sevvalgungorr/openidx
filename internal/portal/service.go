@@ -16,6 +16,7 @@ import (
 	apperrors "github.com/openidx/openidx/internal/common/errors"
 	"go.uber.org/zap"
 
+	"github.com/openidx/openidx/internal/ai"
 	"github.com/openidx/openidx/internal/common/database"
 	"github.com/openidx/openidx/internal/common/orgctx"
 )
@@ -85,8 +86,9 @@ type NetworkOverview struct {
 
 // Service provides portal business logic
 type Service struct {
-	db     *database.PostgresDB
-	logger *zap.Logger
+	db       *database.PostgresDB
+	logger   *zap.Logger
+	aiClient *ai.Client // optional local-LLM client for security insights
 }
 
 // NewService creates a new portal service
@@ -930,4 +932,7 @@ func RegisterRoutes(router *gin.RouterGroup, svc *Service) {
 	router.PUT("/portal/devices/:id", svc.handleUpdateDevice)
 	router.DELETE("/portal/devices/:id", svc.handleDeleteDevice)
 	router.POST("/portal/devices/:id/trust", svc.handleRequestDeviceTrust)
+
+	// My security insights (caller-scoped; plain-language self-assessment)
+	router.GET("/portal/security-insights", svc.handleGetSecurityInsights)
 }

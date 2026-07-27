@@ -127,6 +127,7 @@ export const navigation: NavDomainGroup[] = [
           { name: 'My Access', href: '/my-access', icon: Eye, minRole: 'user', keywords: ['entitlements', 'permissions'] },
           { name: 'My Privileged Access', href: '/my-privileged-access', icon: KeyRound, minRole: 'user', keywords: ['pam', 'my secrets', 'checkout', 'privileged'] },
           { name: 'My Devices', href: '/my-devices', icon: Smartphone, minRole: 'user', keywords: ['phone', 'enrollment'] },
+          { name: 'My Security', href: '/my-security', icon: ShieldCheck, minRole: 'user', keywords: ['security score', 'risk', 'insights', 'mfa'] },
           { name: 'Trusted Browsers', href: '/trusted-browsers', icon: Monitor, minRole: 'user', keywords: ['remembered'] },
           { name: 'Access Requests', href: '/access-requests', icon: GitPullRequest, minRole: 'user', keywords: ['request access', 'approvals'] },
           { name: 'Notifications', href: '/notification-center', icon: Bell, minRole: 'user', keywords: ['inbox', 'alerts'] },
@@ -283,6 +284,7 @@ export const navigation: NavDomainGroup[] = [
         items: [
           { name: 'AI Agents', href: '/ai-agents', icon: Bot, minRole: 'admin', keywords: ['assistant', 'automation'] },
           { name: 'Security Posture', href: '/ispm', icon: ShieldCheck, minRole: 'admin', keywords: ['ispm', 'posture management'] },
+          { name: 'Identity Intelligence', href: '/ai-intelligence', icon: Brain, minRole: 'admin', keywords: ['fusion', 'copilot', 'briefing', 'local ai', 'llm'] },
           { name: 'Recommendations', href: '/ai-recommendations', icon: Lightbulb, minRole: 'admin', keywords: ['suggestions', 'insights'] },
           { name: 'Predictions', href: '/predictive-analytics', icon: TrendingUp, minRole: 'admin', keywords: ['forecast', 'ml'] },
         ],

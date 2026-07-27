@@ -66,6 +66,8 @@ import {
   AIAgents,
   ISPMDashboard,
   AIRecommendations,
+  AIIdentityIntelligence,
+  MySecurity,
   PredictiveAnalytics,
   SAMLServiceProviders,
   BulkOperations,
@@ -224,6 +226,7 @@ function App() {
         <Route path="my-access" element={<MyAccess />} />
         <Route path="my-privileged-access" element={<MyPrivilegedAccess />} />
         <Route path="my-devices" element={<MyDevices />} />
+        <Route path="my-security" element={<MySecurity />} />
         <Route path="trusted-browsers" element={<TrustedBrowsers />} />
         <Route path="access-requests" element={<AccessRequests />} />
         <Route path="notification-center" element={<NotificationCenter />} />
@@ -298,6 +301,7 @@ function App() {
         <Route path="ai-agents" element={<AIAgents />} />
         <Route path="ispm" element={<ISPMDashboard />} />
         <Route path="ai-recommendations" element={<AIRecommendations />} />
+        <Route path="ai-intelligence" element={<AIIdentityIntelligence />} />
         <Route path="predictive-analytics" element={<PredictiveAnalytics />} />
 
         {/* Enterprise - Admin Protected */}

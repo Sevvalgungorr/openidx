@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/openidx/openidx/internal/ai"
 	"github.com/openidx/openidx/internal/common/config"
 	"github.com/openidx/openidx/internal/common/database"
 	"github.com/openidx/openidx/internal/common/orgctx"
@@ -255,6 +256,7 @@ type Service struct {
 	apiKeyService    APIKeyManager
 	webhookService   WebhookManager
 	securityService  SecurityService
+	aiClient         *ai.Client
 }
 
 // requireAdmin checks if the authenticated user has admin or super_admin role.
@@ -281,6 +283,7 @@ func NewService(db *database.PostgresDB, redis *database.RedisClient, cfg *confi
 		config:   cfg,
 		logger:   logger.With(zap.String("service", "admin")),
 		settings: NewPostgresSettingsRepository(db),
+		aiClient: ai.NewClient(cfg, logger),
 	}
 }
 
@@ -1110,6 +1113,14 @@ func RegisterRoutes(router *gin.RouterGroup, svc *Service) {
 	router.POST("/recommendations/:id/dismiss", svc.handleDismissRecommendation)
 	router.POST("/recommendations/:id/apply", svc.handleApplyRecommendation)
 	router.POST("/recommendations/generate", svc.handleGenerateRecommendations)
+
+	// AI Identity Intelligence — cross-pillar fusion (IAM risk + alerts + MFA
+	// + devices + breaches + Ziti anomalies) with optional local-LLM narration.
+	router.GET("/ai/intelligence/overview", svc.handleAIIntelligenceOverview)
+	router.GET("/ai/intelligence/users/:id", svc.handleAIIntelligenceUser)
+	router.GET("/ai/intelligence/briefing", svc.handleAIIntelligenceBriefing)
+	router.POST("/ai/intelligence/ask", svc.handleAIIntelligenceAsk)
+	router.GET("/ai/intelligence/status", svc.handleAIIntelligenceStatus)
 
 	// Predictive Analytics
 	router.GET("/analytics/predictions", svc.handlePredictionsSummary)

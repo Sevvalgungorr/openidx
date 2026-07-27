@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
+	"github.com/openidx/openidx/internal/ai"
 	"github.com/openidx/openidx/internal/api"
 	"github.com/openidx/openidx/internal/audit"
 	"github.com/openidx/openidx/internal/auth"
@@ -252,8 +253,10 @@ func main() {
 	// Start role expiration checker (cleans up expired time-bound role assignments)
 	identityService.StartRoleExpirationChecker(bgCtx)
 
-	// Initialize portal service
+	// Initialize portal service (with the optional local AI client for
+	// plain-language security insights; template output when disabled)
 	portalService := portal.NewService(db, log)
+	portalService.SetAIClient(ai.NewClient(cfg, log))
 
 	// Initialize notification service
 	notifService := notifications.NewService(db, log)
