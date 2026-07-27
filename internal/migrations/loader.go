@@ -789,5 +789,12 @@ func allMigrations() []*Migration {
 			UpSQL:       postureCheckPlatformsUp,
 			DownSQL:     postureCheckPlatformsDown,
 		},
+		{
+			Version:     112,
+			Name:        "remote_support_recording_purged_at",
+			Description: "Add remote_support_sessions.recording_purged_at (+partial index) so the remote-support recording retention sweeper can track purged blobs. The column was referenced by internal/access/remote_support_retention.go but never added to this table (only to guacamole_sessions in v59), so the sweeper failed every run with SQLSTATE 42703 and expired recordings were never purged. Additive/idempotent.",
+			UpSQL:       remoteSupportPurgedAtUp,
+			DownSQL:     remoteSupportPurgedAtDown,
+		},
 	}
 }
