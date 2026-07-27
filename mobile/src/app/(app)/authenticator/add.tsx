@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Link, Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -95,6 +95,12 @@ export default function AddAccountScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <Link href="/(app)/authenticator/scan" asChild>
+            <Pressable style={styles.scanBtn}>
+              <Text style={styles.scanBtnText}>📷  Scan QR code</Text>
+            </Pressable>
+          </Link>
+          <Text style={styles.orDivider}>or add without the camera</Text>
           <View style={styles.tabs}>
             <Tab label="Setup key / link" active={mode === 'uri'} onPress={() => setMode('uri')} />
             <Tab label="Enter manually" active={mode === 'manual'} onPress={() => setMode('manual')} />
@@ -177,6 +183,15 @@ function Tab({ label, active, onPress }: { label: string; active: boolean; onPre
 
 const styles = StyleSheet.create({
   container: { padding: 16, gap: 16 },
+  scanBtn: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#208AEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  orDivider: { fontSize: 12, opacity: 0.5, textAlign: 'center', marginTop: -4 },
   tabs: { flexDirection: 'row', gap: 8 },
   tab: {
     flex: 1,
