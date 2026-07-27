@@ -63,6 +63,7 @@ export default function HomeScreen() {
         <Text style={styles.sub}>You are signed in.</Text>
 
         <View style={styles.nav}>
+          <NavRow href="/(app)/authenticator" label="Authenticator" />
           <NavRow href="/(app)/approvals" label="Approvals" badge={pending} />
           <NavRow href="/(app)/my-access" label="My Access" />
           <NavRow href="/(app)/notifications" label="Notifications" badge={unread} />
