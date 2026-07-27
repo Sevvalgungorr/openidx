@@ -186,14 +186,23 @@ func (s *Service) mintZitiEnrollmentJWT(ctx context.Context, subject string) (jw
 	// cached at identity-creation time. If the stored token is missing or expired,
 	// re-issue a fresh OTT and persist it. (This is the mobile "JWT expired 31 days
 	// ago" bug: the backend kept returning the same stale JWT every call.)
-	if stored != nil && *stored != "" && !enrollmentJWTExpired(*stored) {
+	//
+	// A non-expired token can still be UNUSABLE: if it was minted while the
+	// controller advertised an internal-only name (e.g. ziti-controller.localtest.me
+	// -> 127.0.0.1 on a phone) its `iss`/`ctrls` send the client back to itself.
+	// When ZITI_CTRL_PUBLIC_ADDRESS is configured we also re-issue on that address
+	// mismatch so a mobile device always gets a reachable controller address.
+	publicAddr := s.config.ZitiCtrlPublicAddress
+	if stored != nil && *stored != "" && !enrollmentJWTExpired(*stored) &&
+		!enrollmentJWTAddressStale(*stored, publicAddr) {
 		return *stored, name, nil
 	}
 
 	// Try the controller's current OTT first; if none is pending (already consumed
-	// or lapsed) re-enroll to mint a fresh one.
+	// or lapsed) re-enroll to mint a fresh one. Re-issue when the controller's copy
+	// is missing, expired, OR carries a stale (internal-only) controller address.
 	jwt, err = zm.GetIdentityEnrollmentJWT(ctx, zitiID)
-	if err != nil || jwt == "" || enrollmentJWTExpired(jwt) {
+	if err != nil || jwt == "" || enrollmentJWTExpired(jwt) || enrollmentJWTAddressStale(jwt, publicAddr) {
 		fresh, rerr := zm.ReEnrollIdentity(ctx, zitiID)
 		if rerr != nil {
 			// If we have no usable token at all, surface the refresh error;
@@ -254,4 +263,97 @@ func enrollmentJWTExpired(token string) bool {
 	}
 	// 60s skew: don't hand out a token that lapses during enrollment.
 	return time.Now().Add(60 * time.Second).After(time.Unix(exp, 0))
+}
+
+// enrollmentJWTAddressStale reports whether an OTT enrollment JWT points a client
+// at a controller address that does NOT match wantAddr (host or host:port). The
+// JWT carries the controller's advertised address in `iss` (a URL) and `ctrls`
+// (tls:host:port entries); a device uses those to dial the fabric. If the token
+// was minted while the controller advertised an internal-only name (e.g.
+// ziti-controller.localtest.me, which a phone resolves to 127.0.0.1) it is
+// unusable off-box even though it hasn't expired, so we treat it as stale and
+// re-issue.
+//
+// wantAddr empty disables the check (returns false): single-host/dev installs
+// where the advertised name is already reachable. Parsing failures are treated
+// as NOT stale here so a malformed token is still caught by enrollmentJWTExpired
+// rather than double-flagged.
+func enrollmentJWTAddressStale(token, wantAddr string) bool {
+	wantAddr = strings.TrimSpace(wantAddr)
+	if wantAddr == "" {
+		return false
+	}
+	wantHost := hostOnly(wantAddr)
+	if wantHost == "" {
+		return false
+	}
+
+	parsed, _, err := jwt.NewParser().ParseUnverified(token, jwt.MapClaims{})
+	if err != nil || parsed == nil {
+		return false
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		return false
+	}
+
+	// Collect every controller host the token would send a client to.
+	var hosts []string
+	if iss, ok := claims["iss"].(string); ok && iss != "" {
+		// iss is a URL like https://host:port; strip scheme then port.
+		h := iss
+		if i := strings.Index(h, "://"); i >= 0 {
+			h = h[i+3:]
+		}
+		hosts = append(hosts, hostOnly(h))
+	}
+	if ctrls, ok := claims["ctrls"].([]interface{}); ok {
+		for _, c := range ctrls {
+			if s, ok := c.(string); ok && s != "" {
+				// entries look like tls:host:port
+				h := s
+				if i := strings.Index(h, ":"); i >= 0 && strings.HasPrefix(h, "tls:") {
+					h = strings.TrimPrefix(h, "tls:")
+				}
+				hosts = append(hosts, hostOnly(h))
+			}
+		}
+	}
+	if len(hosts) == 0 {
+		return false
+	}
+	// Stale if ANY advertised host differs from the wanted public host: a device
+	// that dials the wrong one fails, so all must match.
+	for _, h := range hosts {
+		if h != "" && !strings.EqualFold(h, wantHost) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostOnly strips a trailing :port from a host[:port] string, leaving the host.
+// IPv6 literals are not expected for controller advertise addresses, so a simple
+// last-colon split is sufficient and avoids mishandling scheme-less inputs.
+func hostOnly(hostport string) string {
+	h := strings.TrimSpace(hostport)
+	// drop any trailing path
+	if i := strings.IndexAny(h, "/"); i >= 0 {
+		h = h[:i]
+	}
+	if i := strings.LastIndex(h, ":"); i >= 0 {
+		// only treat as port if what follows is all digits
+		port := h[i+1:]
+		allDigits := port != ""
+		for _, r := range port {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			h = h[:i]
+		}
+	}
+	return h
 }

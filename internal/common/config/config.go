@@ -183,9 +183,20 @@ type Config struct {
 	AdminAPIRequireAuth bool `mapstructure:"admin_api_require_auth"`
 
 	// OpenZiti configuration
-	ZitiEnabled            bool   `mapstructure:"ziti_enabled"`
-	ZitiReconcilerEnabled  bool   `mapstructure:"ziti_reconciler"`
-	ZitiCtrlURL            string `mapstructure:"ziti_ctrl_url"`
+	ZitiEnabled           bool   `mapstructure:"ziti_enabled"`
+	ZitiReconcilerEnabled bool   `mapstructure:"ziti_reconciler"`
+	ZitiCtrlURL           string `mapstructure:"ziti_ctrl_url"`
+	// ZitiCtrlPublicAddress is the controller address that ENROLLING CLIENTS must
+	// reach (host:port), as opposed to ZitiCtrlURL which is how this backend
+	// reaches the controller internally. Enrollment JWTs carry the controller's
+	// advertised address in their `iss`/`ctrls`; if the controller was ever
+	// bootstrapped with an internal-only name (e.g. ziti-controller.localtest.me,
+	// which resolves to 127.0.0.1 on a phone) a cached JWT points a mobile client
+	// back at itself -> connection refused. When set, the backend treats a cached
+	// enrollment JWT whose controller host does NOT match this value as stale and
+	// re-issues a fresh OTT so the device gets a reachable address. Empty disables
+	// the check (single-host/dev installs where the advertised name is fine).
+	ZitiCtrlPublicAddress  string `mapstructure:"ziti_ctrl_public_address"`
 	ZitiAdminUser          string `mapstructure:"ziti_admin_user"`
 	ZitiAdminPassword      string `mapstructure:"ziti_admin_password"`
 	ZitiIdentityDir        string `mapstructure:"ziti_identity_dir"`
@@ -643,6 +654,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	// legacy imperative hosting path.
 	v.SetDefault("ziti_reconciler", true)
 	v.SetDefault("ziti_ctrl_url", "https://ziti-controller:1280")
+	v.SetDefault("ziti_ctrl_public_address", "")
 	v.SetDefault("ziti_admin_user", "admin")
 	v.SetDefault("ziti_admin_password", defaultZitiAdminPassword)
 	v.SetDefault("ziti_identity_dir", "/ziti")
@@ -818,6 +830,7 @@ func bindEnvVars(v *viper.Viper) {
 		"ziti_enabled":                        "ZITI_ENABLED",
 		"ziti_reconciler":                     "ZITI_RECONCILER",
 		"ziti_ctrl_url":                       "ZITI_CTRL_URL",
+		"ziti_ctrl_public_address":            "ZITI_CTRL_PUBLIC_ADDRESS",
 		"ziti_admin_user":                     "ZITI_ADMIN_USER",
 		"ziti_admin_password":                 "ZITI_ADMIN_PASSWORD",
 		"ziti_identity_dir":                   "ZITI_IDENTITY_DIR",
