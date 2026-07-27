@@ -857,11 +857,115 @@ func (h *AgentAPIHandler) HandleReport(c *gin.Context) {
 	h.logAuditEvent("agent.report", agentID, "success", fmt.Sprintf("score=%.2f", complianceScore))
 	h.logAuditEventToDB(c.Request.Context(), "agent.report", agentID, "success", fmt.Sprintf("score=%.2f", complianceScore))
 
+	// Drive the phone's Ziti tier from posture: a compliant report grants the
+	// `device-trusted` attribute (Tier-2: remote/PAM + admin surfaces), a failing
+	// one removes it (back to the Tier-1 minimum). Flag-gated + best-effort so it
+	// never fails the report and is inert unless explicitly enabled.
+	h.applyPostureDeviceTrust(c.Request.Context(), agentID, complianceStatus)
+
 	c.JSON(http.StatusAccepted, gin.H{
 		"status":              "accepted",
 		"compliance_score":    complianceScore,
 		"enforcement_actions": enforcementActions,
 	})
+}
+
+// applyPostureDeviceTrust upgrades/downgrades an enrolled device's Ziti tier from
+// its latest posture verdict. When posture is compliant the phone's Ziti identity
+// gains the `device-trusted` role attribute (the Tier-2 gate the reconciler's
+// dial policies require for remote/PAM + admin surfaces); when it is not, the
+// attribute is removed so the device falls back to the Tier-1 minimum.
+//
+// Controlled by config.PostureDeviceTrustGate:
+//   - "off"     : no-op (default; posture recorded but never touches Ziti attrs).
+//   - "observe" : log the decision but do not modify attributes.
+//   - "enforce" : add/remove the attribute on the controller.
+//
+// Best-effort: any lookup/patch error is logged and swallowed so an agent report
+// always succeeds. Idempotent: only patches when the attribute set changes.
+func (h *AgentAPIHandler) applyPostureDeviceTrust(ctx context.Context, agentID, complianceStatus string) {
+	if h.zm == nil || h.zm.cfg == nil {
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(h.zm.cfg.PostureDeviceTrustGate))
+	if mode == "" || mode == "off" {
+		return
+	}
+	if h.db == nil || h.db.Pool == nil {
+		return
+	}
+
+	// Resolve the reporting agent's Ziti identity (controller id) via its
+	// enrolling user, exactly like the posture bridge does.
+	rctx := orgctx.WithBypassRLS(ctx)
+	var zitiID string
+	//orgscope:ignore posture->tier gate resolves the reporting agent's own Ziti identity by globally-unique agent_id (data plane)
+	if err := h.db.Pool.QueryRow(rctx, `
+		SELECT zi.ziti_id FROM ziti_identities zi
+		JOIN enrolled_agents ea ON ea.enrolled_by_user_id = zi.user_id
+		WHERE ea.agent_id = $1 LIMIT 1`, agentID).Scan(&zitiID); err != nil {
+		h.logger.Debug("posture tier: no Ziti identity for agent's enrolling user",
+			zap.String("agent_id", agentID), zap.Error(err))
+		return
+	}
+
+	// Compliant (no critical/high posture failure) earns device-trust.
+	wantTrusted := complianceStatus == "compliant"
+
+	attrs, err := h.zm.GetIdentityRoleAttributes(rctx, zitiID)
+	if err != nil {
+		h.logger.Debug("posture tier: read identity attributes failed",
+			zap.String("ziti_id", sanitizeForLog(zitiID)), zap.Error(err))
+		return
+	}
+	next, changed := deviceTrustAttrs(attrs, wantTrusted)
+	if !changed {
+		return // already in the desired state
+	}
+
+	if mode == "observe" {
+		h.logger.Info("posture tier (observe): would change device-trust",
+			zap.String("agent_id", agentID),
+			zap.String("ziti_id", sanitizeForLog(zitiID)),
+			zap.Bool("grant", wantTrusted),
+			zap.String("compliance", complianceStatus))
+		return
+	}
+
+	if err := h.zm.PatchIdentityRoleAttributes(rctx, zitiID, next); err != nil {
+		h.logger.Warn("posture tier: patch identity attributes failed",
+			zap.String("ziti_id", sanitizeForLog(zitiID)), zap.Error(err))
+		return
+	}
+	h.logger.Info("posture tier: device-trust updated",
+		zap.String("agent_id", agentID),
+		zap.String("ziti_id", sanitizeForLog(zitiID)),
+		zap.Bool("granted", wantTrusted),
+		zap.String("compliance", complianceStatus))
+}
+
+// deviceTrustAttrs returns the desired role-attribute set after granting or
+// revoking the `device-trusted` attribute, plus whether a change is needed. It
+// is pure so the tier decision is unit-testable without a controller: given the
+// current attributes and whether trust is wanted, it adds/removes exactly the one
+// attribute and reports changed=false when the set already matches (idempotent).
+func deviceTrustAttrs(attrs []string, wantTrusted bool) (next []string, changed bool) {
+	const trustAttr = "device-trusted"
+	has := false
+	next = make([]string, 0, len(attrs)+1)
+	for _, a := range attrs {
+		if a == trustAttr {
+			has = true
+			if !wantTrusted {
+				continue // drop it when downgrading
+			}
+		}
+		next = append(next, a)
+	}
+	if wantTrusted && !has {
+		next = append(next, trustAttr)
+	}
+	return next, has != wantTrusted
 }
 
 // verifyPlayIntegrityResult is invoked by HandleReport for every check

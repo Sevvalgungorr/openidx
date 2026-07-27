@@ -110,6 +110,7 @@ interface PostureCheck {
   parameters: Record<string, unknown>
   enabled: boolean
   severity: string
+  platforms?: string[] | null
   created_at: string
 }
 
@@ -2444,7 +2445,7 @@ function PostureSection() {
   const [createModal, setCreateModal] = useState(false)
   const [editTarget, setEditTarget] = useState<PostureCheck | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PostureCheck | null>(null)
-  const [form, setForm] = useState({ name: '', check_type: 'OS', parameters: '{}', severity: 'medium', enabled: true })
+  const [form, setForm] = useState({ name: '', check_type: 'OS', parameters: '{}', severity: 'medium', enabled: true, platforms: [] as string[] })
 
   const { data: summary } = useQuery({
     queryKey: ['ziti-posture-summary'],
@@ -2492,7 +2493,7 @@ function PostureSection() {
     onError: () => toast({ title: 'Error', description: 'Failed to delete posture check.', variant: 'destructive' }),
   })
 
-  const resetForm = () => setForm({ name: '', check_type: 'OS', parameters: '{}', severity: 'medium', enabled: true })
+  const resetForm = () => setForm({ name: '', check_type: 'OS', parameters: '{}', severity: 'medium', enabled: true, platforms: [] })
 
   const openEditModal = (check: PostureCheck) => {
     setForm({
@@ -2501,6 +2502,7 @@ function PostureSection() {
       parameters: JSON.stringify(check.parameters, null, 2),
       severity: check.severity,
       enabled: check.enabled,
+      platforms: Array.isArray(check.platforms) ? check.platforms : [],
     })
     setEditTarget(check)
   }
@@ -2547,6 +2549,7 @@ function PostureSection() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Severity</TableHead>
+                <TableHead>Platforms</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="w-[50px]" />
@@ -2558,6 +2561,11 @@ function PostureSection() {
                   <TableCell className="font-medium">{check.name}</TableCell>
                   <TableCell><Badge variant="outline">{check.check_type}</Badge></TableCell>
                   <TableCell><Badge variant={severityColor(check.severity)}>{check.severity}</Badge></TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {Array.isArray(check.platforms) && check.platforms.length > 0
+                      ? check.platforms.join(', ')
+                      : 'all'}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={check.enabled ? 'default' : 'secondary'}>
                       {check.enabled ? 'Enabled' : 'Disabled'}
@@ -2634,6 +2642,32 @@ function PostureSection() {
                   className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                   placeholder='{"os_type": "Windows", "min_version": "10"}'
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Platforms</Label>
+                <div className="flex flex-wrap gap-3">
+                  {['android', 'ios', 'windows', 'macos', 'linux'].map((p) => (
+                    <label key={p} className="flex items-center gap-1.5 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={form.platforms.includes(p)}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            platforms: e.target.checked
+                              ? [...form.platforms, p]
+                              : form.platforms.filter((x) => x !== p),
+                          })
+                        }
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave all unchecked to apply to every platform. Select android/ios to scope a
+                  check to mobile devices only.
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.enabled} onCheckedChange={(checked) => setForm({ ...form, enabled: checked })} />

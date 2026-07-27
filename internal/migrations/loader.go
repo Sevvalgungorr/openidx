@@ -782,5 +782,12 @@ func allMigrations() []*Migration {
 			UpSQL:       zitiAIInsightsUp,
 			DownSQL:     zitiAIInsightsDown,
 		},
+		{
+			Version:     111,
+			Name:        "posture_check_platforms",
+			Description: "Add posture_checks.platforms JSONB (+GIN index) so the agent config endpoint can filter posture checks to the reporting device's platform (android/ios/any). The column was already referenced by internal/access/agent_api.go HandleConfig but never created, breaking mobile posture with SQLSTATE 42703. NULL means all-platforms; additive/idempotent.",
+			UpSQL:       postureCheckPlatformsUp,
+			DownSQL:     postureCheckPlatformsDown,
+		},
 	}
 }

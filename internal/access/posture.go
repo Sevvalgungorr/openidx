@@ -23,8 +23,12 @@ type PostureCheck struct {
 	Enabled         bool                   `json:"enabled"`
 	Severity        string                 `json:"severity"`
 	RemediationHint string                 `json:"remediation_hint,omitempty"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	// Platforms scopes the check to specific device platforms (e.g. ["android"],
+	// ["ios"], ["android","ios"]). Empty/nil means all platforms — the agent
+	// config endpoint treats a NULL platforms column as "runs everywhere".
+	Platforms []string  `json:"platforms,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // PostureCheckResult represents the outcome of a posture check evaluation for an identity
@@ -156,11 +160,16 @@ func (zm *ZitiManager) CreatePostureCheck(ctx context.Context, check *PostureChe
 	if org, oerr := orgctx.From(ctx); oerr == nil {
 		orgID = org.ID
 	}
+	// platforms is stored as a JSONB array; nil => NULL => "all platforms".
+	var platformsJSON []byte
+	if len(check.Platforms) > 0 {
+		platformsJSON, _ = json.Marshal(check.Platforms)
+	}
 	_, err = zm.db.Pool.Exec(ctx,
-		`INSERT INTO posture_checks (id, ziti_id, name, check_type, parameters, enabled, severity, remediation_hint, created_at, updated_at, org_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		`INSERT INTO posture_checks (id, ziti_id, name, check_type, parameters, enabled, severity, remediation_hint, platforms, created_at, updated_at, org_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		check.ID, check.ZitiID, check.Name, check.CheckType, paramsJSON,
-		check.Enabled, check.Severity, check.RemediationHint, check.CreatedAt, check.UpdatedAt, orgID)
+		check.Enabled, check.Severity, check.RemediationHint, platformsJSON, check.CreatedAt, check.UpdatedAt, orgID)
 	if err != nil {
 		// Attempt to clean up the Ziti resource on DB failure
 		zm.mgmtRequest("DELETE", fmt.Sprintf("/edge/management/v1/posture-checks/%s", check.ZitiID), nil)
@@ -181,7 +190,7 @@ func (zm *ZitiManager) ListPostureChecks(ctx context.Context) ([]PostureCheck, e
 		orgID = org.ID
 	}
 	rows, err := zm.db.Pool.Query(ctx,
-		`SELECT id, ziti_id, name, check_type, parameters, enabled, severity, remediation_hint, created_at, updated_at
+		`SELECT id, ziti_id, name, check_type, parameters, enabled, severity, remediation_hint, platforms, created_at, updated_at
 		 FROM posture_checks WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query posture checks: %w", err)
@@ -192,8 +201,9 @@ func (zm *ZitiManager) ListPostureChecks(ctx context.Context) ([]PostureCheck, e
 	for rows.Next() {
 		var c PostureCheck
 		var paramsJSON []byte
+		var platformsJSON []byte
 		err := rows.Scan(&c.ID, &c.ZitiID, &c.Name, &c.CheckType, &paramsJSON,
-			&c.Enabled, &c.Severity, &c.RemediationHint, &c.CreatedAt, &c.UpdatedAt)
+			&c.Enabled, &c.Severity, &c.RemediationHint, &platformsJSON, &c.CreatedAt, &c.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan posture check row: %w", err)
 		}
@@ -204,6 +214,11 @@ func (zm *ZitiManager) ListPostureChecks(ctx context.Context) ([]PostureCheck, e
 		}
 		if c.Parameters == nil {
 			c.Parameters = make(map[string]interface{})
+		}
+		if platformsJSON != nil {
+			if err := json.Unmarshal(platformsJSON, &c.Platforms); err != nil {
+				zm.logger.Warn("Failed to unmarshal posture check platforms", zap.String("check_id", c.ID), zap.Error(err))
+			}
 		}
 		checks = append(checks, c)
 	}
@@ -292,12 +307,16 @@ func (zm *ZitiManager) UpdatePostureCheck(ctx context.Context, id string, check 
 	}
 
 	// Update in database
+	var platformsJSON []byte
+	if len(check.Platforms) > 0 {
+		platformsJSON, _ = json.Marshal(check.Platforms)
+	}
 	_, err = zm.db.Pool.Exec(ctx,
 		`UPDATE posture_checks
-		 SET name=$1, check_type=$2, parameters=$3, enabled=$4, severity=$5, remediation_hint=$6, updated_at=$7
-		 WHERE id=$8 AND org_id=$9`,
+		 SET name=$1, check_type=$2, parameters=$3, enabled=$4, severity=$5, remediation_hint=$6, platforms=$7, updated_at=$8
+		 WHERE id=$9 AND org_id=$10`,
 		check.Name, check.CheckType, paramsJSON, check.Enabled, check.Severity,
-		check.RemediationHint, check.UpdatedAt, id, orgID)
+		check.RemediationHint, platformsJSON, check.UpdatedAt, id, orgID)
 	if err != nil {
 		return fmt.Errorf("failed to update posture check in database: %w", err)
 	}

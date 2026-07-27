@@ -1392,6 +1392,7 @@ CREATE TABLE IF NOT EXISTS posture_checks (
     enabled BOOLEAN DEFAULT true,
     severity VARCHAR(50) DEFAULT 'medium',
     remediation_hint TEXT,
+    platforms JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
