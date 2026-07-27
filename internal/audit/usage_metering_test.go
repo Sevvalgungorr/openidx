@@ -37,13 +37,17 @@ func TestUsageMeteringAggregation(t *testing.T) {
 	db.Pool.QueryRow(ctx, `INSERT INTO users (org_id) VALUES ($1) RETURNING id`, orgA).Scan(&uA)
 
 	// Seed fabric events: 2 overlay logins + 3 service dials (2 to svc-x, 1 svc-y).
+	// Anchor every event to a fixed midday-UTC instant on the current day so the
+	// daily rollup buckets deterministically. Using NOW()-based offsets is flaky
+	// near a UTC midnight boundary (events straddle two days -> split counters).
+	base := "(date_trunc('day', now() at time zone 'utc') at time zone 'utc' + interval '12 hours')"
 	db.Pool.Exec(ctx, `INSERT INTO unified_audit_events (source, event_type, user_id, details, created_at) VALUES
-        ('ziti','ziti.api_session.created',$1,'{}'::jsonb, NOW() - interval '2 hours'),
-        ('ziti','ziti.api_session.created',$1,'{}'::jsonb, NOW() - interval '1 hour'),
-        ('ziti','ziti.service.dialed',$1,'{"service":"svc-x"}'::jsonb, NOW() - interval '90 minutes'),
-        ('ziti','ziti.service.dialed',$1,'{"service":"svc-x"}'::jsonb, NOW() - interval '30 minutes'),
-        ('ziti','ziti.service.dialed',$1,'{"service":"svc-y"}'::jsonb, NOW() - interval '10 minutes'),
-        ('agent','agent.report',$1,'{}'::jsonb, NOW())`, uA)
+        ('ziti','ziti.api_session.created',$1,'{}'::jsonb, `+base+` - interval '2 hours'),
+        ('ziti','ziti.api_session.created',$1,'{}'::jsonb, `+base+` - interval '1 hour'),
+        ('ziti','ziti.service.dialed',$1,'{"service":"svc-x"}'::jsonb, `+base+` - interval '90 minutes'),
+        ('ziti','ziti.service.dialed',$1,'{"service":"svc-x"}'::jsonb, `+base+` - interval '30 minutes'),
+        ('ziti','ziti.service.dialed',$1,'{"service":"svc-y"}'::jsonb, `+base+` - interval '10 minutes'),
+        ('agent','agent.report',$1,'{}'::jsonb, `+base+`)`, uA)
 
 	svc := &Service{db: db, logger: zap.NewNop(), config: &config.Config{}}
 	w := &meteringWorker{svc: svc, logger: zap.NewNop()}
@@ -84,8 +88,10 @@ func TestUsageMeteringAggregation(t *testing.T) {
 	}
 
 	// A new event after the cursor rolls up incrementally (idempotent counter).
+	// Place it 1 minute past the base anchor so it is strictly after the cursor
+	// and still lands in the same UTC day as the rest of the batch.
 	db.Pool.Exec(ctx, `INSERT INTO unified_audit_events (source, event_type, user_id, details, created_at) VALUES
-        ('ziti','ziti.service.dialed',$1,'{"service":"svc-x"}'::jsonb, NOW())`, uA)
+        ('ziti','ziti.service.dialed',$1,'{"service":"svc-x"}'::jsonb, `+base+` + interval '1 minute')`, uA)
 	w.aggregateBatch(ctx)
 	db.Pool.QueryRow(ctx,
 		`SELECT count FROM usage_metering_daily WHERE metric='service_dial' AND service='svc-x' AND org_id=$1`, orgA).Scan(&svcx)
