@@ -58,6 +58,26 @@ interface QrPayloadResponse {
   qr_payload_json: string
 }
 
+interface AgentPostureRow {
+  check_type: string
+  status: string
+  score: number
+  severity: string
+  message: string
+  enforced: boolean
+  enforcement_action: string
+  reported_at: string
+  expires_at: string
+}
+
+interface AgentPosture {
+  agent_id: string
+  compliant: boolean
+  device_trusted: boolean
+  tier: string
+  results: AgentPostureRow[]
+}
+
 export function AgentFleetPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -68,6 +88,13 @@ export function AgentFleetPage() {
   const [qrData, setQrData] = useState<QrPayloadResponse | null>(null)
   const [qrDescription, setQrDescription] = useState('')
   const [qrTTLMinutes, setQrTTLMinutes] = useState(60)
+  const [postureAgent, setPostureAgent] = useState<AgentRecord | null>(null)
+
+  const { data: postureData, isLoading: postureLoading } = useQuery({
+    queryKey: ['agent-posture', postureAgent?.agent_id],
+    queryFn: () => api.get<AgentPosture>(`/api/v1/access/agents/${postureAgent!.agent_id}/posture`),
+    enabled: !!postureAgent,
+  })
 
   const { data: agents = [], isLoading } = useQuery({
     queryKey: ['agent-fleet'],
@@ -237,6 +264,9 @@ export function AgentFleetPage() {
                               Approve agent
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem onSelect={() => setPostureAgent(agent)}>
+                            View posture &amp; tier
+                          </DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => copyToClipboard(agent.agent_id)}>
                             <Copy className="mr-2 h-4 w-4" /> Copy agent ID
                           </DropdownMenuItem>
@@ -340,6 +370,66 @@ export function AgentFleetPage() {
                   Copy JSON
                 </Button>
                 <Button onClick={() => setQrOpen(false)}>Done</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Posture & tier detail dialog */}
+      <Dialog open={!!postureAgent} onOpenChange={(open) => !open && setPostureAgent(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Device posture &amp; Ziti tier</DialogTitle>
+          </DialogHeader>
+          {postureLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Loading…</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Badge variant={postureData?.compliant ? 'default' : 'destructive'}>
+                  {postureData?.compliant ? 'Compliant' : 'Non-compliant'}
+                </Badge>
+                <Badge variant={postureData?.device_trusted ? 'default' : 'outline'}>
+                  {postureData?.device_trusted ? 'Tier 2 · device-trusted' : 'Tier 1 · minimum access'}
+                </Badge>
+                <span className="text-muted-foreground font-mono text-xs">{postureAgent?.agent_id}</span>
+              </div>
+              {!postureData?.device_trusted && (
+                <p className="text-xs text-muted-foreground">
+                  Tier 2 (remote/PAM + admin surfaces) is granted only while the device reports
+                  compliant posture. Tier 1 devices reach self-service + console only.
+                </p>
+              )}
+              <div className="rounded-md border divide-y">
+                {(postureData?.results ?? []).map((r) => (
+                  <div key={r.check_type} className="flex items-start gap-3 p-3 text-sm">
+                    <span>
+                      {r.status === 'pass' ? '🟢' : r.status === 'fail' ? '🔴' : '⚪'}
+                    </span>
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {r.check_type}
+                        <Badge variant="outline" className="ml-2 text-xs">{r.severity}</Badge>
+                        {r.enforced && r.enforcement_action !== 'none' && (
+                          <Badge variant="destructive" className="ml-1 text-xs">{r.enforcement_action}</Badge>
+                        )}
+                      </div>
+                      {r.message && <div className="text-xs text-muted-foreground mt-0.5">{r.message}</div>}
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        reported {r.reported_at ? new Date(r.reported_at).toLocaleString() : '—'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {(postureData?.results ?? []).length === 0 && (
+                  <div className="p-6 text-center text-muted-foreground text-sm">
+                    No posture reports yet from this device.
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setPostureAgent(null)}>Close</Button>
               </DialogFooter>
             </div>
           )}

@@ -121,6 +121,7 @@ func (h *AgentAPIHandler) RegisterAgentAdminRoutes(r *gin.RouterGroup) {
 	r.GET("/agent/tokens", h.HandleListTokens)
 	r.DELETE("/agent/tokens/:token_id", h.HandleRevokeToken)
 	r.GET("/agents", h.HandleListAgents)
+	r.GET("/agents/:agent_id/posture", h.HandleAgentPosture)
 	r.DELETE("/agents/:agent_id", h.HandleRevokeAgent)
 	r.POST("/agents/:agent_id/approve", h.HandleApproveAgent)
 	r.POST("/agent/qr", h.HandleGenerateQR)
@@ -1507,6 +1508,100 @@ func (h *AgentAPIHandler) HandleListAgents(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, agents)
+}
+
+// agentPostureRow is one latest posture result for an agent, for the console.
+type agentPostureRow struct {
+	CheckType         string    `json:"check_type"`
+	Status            string    `json:"status"`
+	Score             float64   `json:"score"`
+	Severity          string    `json:"severity"`
+	Message           string    `json:"message"`
+	Enforced          bool      `json:"enforced"`
+	EnforcementAction string    `json:"enforcement_action"`
+	ReportedAt        time.Time `json:"reported_at"`
+	ExpiresAt         time.Time `json:"expires_at"`
+}
+
+// agentPostureResponse is the payload for GET /agents/:agent_id/posture: the
+// latest result per check_type plus the derived Ziti tier so an admin can see
+// exactly why a device is (or isn't) device-trusted.
+type agentPostureResponse struct {
+	AgentID       string            `json:"agent_id"`
+	Compliant     bool              `json:"compliant"`
+	DeviceTrusted bool              `json:"device_trusted"`
+	Tier          string            `json:"tier"` // "tier1" | "tier2"
+	Results       []agentPostureRow `json:"results"`
+}
+
+// HandleAgentPosture returns an agent's latest posture result per check plus its
+// current Ziti tier (device-trusted or not). Admin-gated. Read-only.
+func (h *AgentAPIHandler) HandleAgentPosture(c *gin.Context) {
+	agentID := c.Param("agent_id")
+	if agentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agent_id is required"})
+		return
+	}
+	resp := agentPostureResponse{AgentID: agentID, Results: []agentPostureRow{}, Tier: "tier1"}
+	if h.db == nil || h.db.Pool == nil {
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+	ctx := c.Request.Context()
+
+	// Latest row per check_type (DISTINCT ON, newest first).
+	rows, err := h.db.Pool.Query(ctx, `
+		SELECT DISTINCT ON (check_type)
+		       check_type, status, score, severity, COALESCE(message,''),
+		       enforced, COALESCE(enforcement_action,''), reported_at, expires_at
+		  FROM agent_posture_results
+		 WHERE agent_id = $1
+		 ORDER BY check_type, reported_at DESC`, agentID)
+	if err != nil {
+		h.logger.Warn("HandleAgentPosture: query failed", zap.String("agent_id", sanitizeForLog(agentID)), zap.Error(err))
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+	defer rows.Close()
+
+	compliant := true
+	for rows.Next() {
+		var r agentPostureRow
+		if err := rows.Scan(&r.CheckType, &r.Status, &r.Score, &r.Severity, &r.Message,
+			&r.Enforced, &r.EnforcementAction, &r.ReportedAt, &r.ExpiresAt); err != nil {
+			continue
+		}
+		// A critical/high failure makes the device non-compliant (mirrors the
+		// enforcement logic in HandleReport).
+		if r.Status == "fail" && (r.Severity == "critical" || r.Severity == "high") {
+			compliant = false
+		}
+		resp.Results = append(resp.Results, r)
+	}
+	resp.Compliant = compliant
+
+	// Reflect the actual Ziti tier: is device-trusted currently on the identity?
+	if h.zm != nil {
+		rctx := orgctx.WithBypassRLS(ctx)
+		var zitiID string
+		//orgscope:ignore console posture view resolves the agent's own Ziti identity by globally-unique agent_id (admin read)
+		if err := h.db.Pool.QueryRow(rctx, `
+			SELECT zi.ziti_id FROM ziti_identities zi
+			JOIN enrolled_agents ea ON ea.enrolled_by_user_id = zi.user_id
+			WHERE ea.agent_id = $1 LIMIT 1`, agentID).Scan(&zitiID); err == nil && zitiID != "" {
+			if attrs, aerr := h.zm.GetIdentityRoleAttributes(rctx, zitiID); aerr == nil {
+				for _, a := range attrs {
+					if a == "device-trusted" {
+						resp.DeviceTrusted = true
+						resp.Tier = "tier2"
+						break
+					}
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // HandleRevokeAgent sets an agent's status to 'revoked' and optionally removes

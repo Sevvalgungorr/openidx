@@ -118,4 +118,45 @@ describe('AgentFleetPage', () => {
     expect(await screen.findByText('Agent Fleet')).toBeInTheDocument()
     expect(screen.queryByText('agt-001')).not.toBeInTheDocument()
   })
+
+  it('opens the posture & tier dialog and shows tier + checks', async () => {
+    const user = userEvent.setup()
+    // Route the posture endpoint; the agents list uses the default array mock.
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/posture')) {
+        return Promise.resolve({
+          agent_id: 'agt-001',
+          compliant: true,
+          device_trusted: true,
+          tier: 'tier2',
+          results: [
+            {
+              check_type: 'screen_lock',
+              status: 'pass',
+              score: 100,
+              severity: 'high',
+              message: 'Device lock enrolled',
+              enforced: false,
+              enforcement_action: 'none',
+              reported_at: '2026-01-10T00:00:00Z',
+              expires_at: '2026-01-11T00:00:00Z',
+            },
+          ],
+        }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve([activeAgent]) as ReturnType<typeof api.get>
+    })
+    render(<AgentFleetPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('agt-001')).toBeInTheDocument()
+    // Open the row action menu, then the posture item.
+    await user.click(screen.getByRole('button', { name: '' }) ?? screen.getAllByRole('button')[0])
+    const menuItem = await screen.findByText(/view posture & tier/i)
+    await user.click(menuItem)
+
+    expect(await screen.findByText('Device posture & Ziti tier')).toBeInTheDocument()
+    expect(await screen.findByText(/Tier 2 · device-trusted/i)).toBeInTheDocument()
+    expect(screen.getByText('screen_lock')).toBeInTheDocument()
+    expect(screen.getByText('Device lock enrolled')).toBeInTheDocument()
+  })
 })

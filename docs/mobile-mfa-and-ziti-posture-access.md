@@ -209,3 +209,80 @@ OpenIDX admin, not baked into code):
 
 Until an entry is `reach_mode:ziti`, PAM sessions stay `direct` and the mobile
 `dial()` path has nothing to target.
+
+---
+
+## 9. Concrete mobile TODO list (this iteration)
+
+Grounded in the current app (`mobile/src/...`). Backend for all of these is live.
+
+### 9.1 Fix the fake "✓ Enrolled" (CRITICAL) — `app/(app)/security/device.tsx`
+
+Today:
+```ts
+const enrolled = !!identity.data;            // only the agent-enroll record
+{enrolled ? '✓ Enrolled & managed' : 'Not enrolled'}
+```
+The screen already fetches `ziti = useQuery({ queryFn: zitiStatus })` but the
+headline ignores it. Make enrollment truthful:
+```ts
+const agentEnrolled = !!identity.data;
+const zitiOk = ziti.data === 'enrolled';       // from zitiStatus()
+const enrolled = agentEnrolled && (!zitiAvailable() || zitiOk);
+```
+- Show three explicit states: **Enrolled** (both ok), **Overlay pending/failed**
+  (agent ok, Ziti not `enrolled`), **Not enrolled**.
+- In `enroll.mutationFn`, wrap `zitiEnroll(jwt)` in try/catch; on
+  `ConnectException`/error set an error state and surface it — do NOT show the ✓.
+- After a successful `zitiEnroll`, re-`invalidateQueries(['ziti-status'])` and
+  confirm `zitiStatus() === 'enrolled'` before declaring success.
+
+### 9.2 Actually route PAM remote access over Ziti (CRITICAL) — `features/pam/*`, `app/(app)/pam/session/[id].tsx`
+
+`zitiDial()` exists in `features/ziti/native.ts` but is **never called**. For a
+PAM entry with `reach_mode === 'ziti'`:
+1. Before opening the session, call `const local = await zitiDial(entry.ziti_service_name)`.
+2. Broker/open the session against that loopback address instead of the public
+   Guacamole URL (the session screen currently just loads `url` in a WebView).
+3. If `zitiStatus() !== 'enrolled'` or the identity isn't Tier-2 yet, block with a
+   "complete device checks to unlock remote access" message.
+
+Test target now live: PAM entry `test_main` (SSH), `ziti_service_name =
+openidx-pam-7b54be1f-cb8b-4e83-894d-c66a73331efa`, intercept port 14000.
+
+Note: the PAM list API already returns `reach_mode` and (extend the type to also
+read) `ziti_service_name`. Add `ziti_service_name?: string` to the PAM entry type
+in `features/pam/api.ts`.
+
+### 9.3 Show the device tier / trust state — `security/device.tsx`
+
+Reflect Tier-1 vs Tier-2 so the user knows what unlocks remote access. The
+console reads this from `GET /api/v1/access/agents/{agent_id}/posture` →
+`{ compliant, device_trusted, tier, results[] }`. The phone can call the same
+endpoint (admin-gated) OR infer locally: "compliant posture reported → trusted".
+Simplest: show a badge driven by whether the last `reportPosture` was compliant.
+
+### 9.4 Report posture automatically + periodically — `security/device.tsx` / a background task
+
+Currently posture is only sent on a manual button. Send it:
+- right after a successful enroll,
+- on app foreground,
+- on a timer (results expire after 24h; every few hours is enough).
+This keeps `device-trusted` fresh so Tier-2 doesn't lapse.
+
+### 9.5 (Optional) "My Security" mobile screen
+
+The console has `my-security` + `ai-identity-intelligence`; the app has no
+equivalent. Add a screen backed by `GET /api/v1/identity/portal/security-insights`
+(already live) showing the user's risk score, level, and tips — the same payload
+the web `MySecurityPage` renders.
+
+### Admin side (already shipped this iteration — for your awareness)
+
+- **Agent Fleet → per-agent “View posture & tier”** shows each device's latest
+  posture per check + its Tier-1/Tier-2 (`device-trusted`) state, so an admin can
+  see exactly why a phone does/doesn't have remote access.
+- **PAM Connections → “Enable Ziti reach”** button flips an entry to
+  `reach_mode:ziti` from the UI.
+- **Ziti Network → Posture checks** now supports platform scoping (android/ios).
+
