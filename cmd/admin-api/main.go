@@ -245,6 +245,13 @@ func main() {
 	if cfg.Environment != "development" {
 		// Accept both OAuth JWTs and minted API keys / service-account PATs.
 		v1.Use(middleware.AuthWithAPIKey(cfg.OAuthJWKSURL, apiKeyService.MiddlewareValidator()))
+	} else if cfg.AdminAPIRequireAuth {
+		// Dev mode but the box is reachable off-localhost: force the same
+		// hard-blocking auth as production so the admin surface (service accounts,
+		// directories, etc.) refuses anonymous callers instead of serving them via
+		// the default-org fallback.
+		log.Warn("ADMIN_API_REQUIRE_AUTH=true: forcing hard auth on /api/v1 admin surface despite APP_ENV=development")
+		v1.Use(middleware.AuthWithAPIKey(cfg.OAuthJWKSURL, apiKeyService.MiddlewareValidator()))
 	} else {
 		// In dev mode, use soft auth to identify caller without blocking
 		v1.Use(middleware.SoftAuth(cfg.OAuthJWKSURL))

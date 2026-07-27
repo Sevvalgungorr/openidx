@@ -130,6 +130,23 @@ func TestLoad(t *testing.T) {
 		os.Unsetenv("DATABASE_URL")
 	})
 
+	t.Run("AdminAPIRequireAuth defaults false and parses from env", func(t *testing.T) {
+		os.Setenv("DATABASE_URL", "postgres://localhost/test")
+		os.Unsetenv("ADMIN_API_REQUIRE_AUTH")
+
+		cfg, err := Load("test-service")
+		require.NoError(t, err)
+		assert.False(t, cfg.AdminAPIRequireAuth, "must default off so local dev is unchanged")
+
+		os.Setenv("ADMIN_API_REQUIRE_AUTH", "true")
+		cfg, err = Load("test-service")
+		require.NoError(t, err)
+		assert.True(t, cfg.AdminAPIRequireAuth, "ADMIN_API_REQUIRE_AUTH=true must force hard auth on the admin surface")
+
+		os.Unsetenv("ADMIN_API_REQUIRE_AUTH")
+		os.Unsetenv("DATABASE_URL")
+	})
+
 	t.Run("Load fails with invalid port", func(t *testing.T) {
 		os.Setenv("DATABASE_URL", "postgres://localhost/test")
 		os.Unsetenv("OPENIDX_PORT")

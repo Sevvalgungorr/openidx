@@ -3132,6 +3132,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service) {
 
 		// Push MFA
 		identity.POST("/mfa/push/register", svc.handleRegisterPushDevice)
+		// Alias: the admin console posts enrollments to /mfa/push/devices (REST-style,
+		// matching the GET/DELETE on the same collection). Same handler + payload as
+		// /mfa/push/register, so both work and the console's "Enroll Device" stops 404ing.
+		identity.POST("/mfa/push/devices", svc.handleRegisterPushDevice)
 		identity.GET("/mfa/push/devices", svc.handleGetPushDevices)
 		identity.DELETE("/mfa/push/devices/:device_id", svc.handleDeletePushDevice)
 		identity.POST("/mfa/push/challenge", svc.handleCreatePushChallenge)

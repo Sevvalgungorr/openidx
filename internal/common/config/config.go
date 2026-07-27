@@ -171,6 +171,17 @@ type Config struct {
 	// (APP_ENV!=development) always hard-blocks regardless of this flag.
 	AccessAPIRequireAuth bool `mapstructure:"access_api_require_auth"`
 
+	// AdminAPIRequireAuth forces the admin-api surface (service accounts,
+	// directories, applications, etc.) onto hard-blocking auth even when
+	// APP_ENV=development. In dev the admin group otherwise uses SoftAuth, which
+	// verifies a bearer when present but does NOT reject anonymous callers —
+	// leaving the whole admin surface (list/create/delete of tenants' service
+	// accounts and directory integrations) reachable without a token. Set this
+	// (env ADMIN_API_REQUIRE_AUTH=true) on any box reachable off-localhost so a
+	// dev-mode install still refuses unauthenticated admin calls. Default false
+	// preserves local-dev ergonomics; production always hard-blocks.
+	AdminAPIRequireAuth bool `mapstructure:"admin_api_require_auth"`
+
 	// OpenZiti configuration
 	ZitiEnabled            bool   `mapstructure:"ziti_enabled"`
 	ZitiReconcilerEnabled  bool   `mapstructure:"ziti_reconciler"`
@@ -570,6 +581,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("dark_mode_tier2", false)
 	v.SetDefault("dev_admin_bypass", false)
 	v.SetDefault("access_api_require_auth", false)
+	v.SetDefault("admin_api_require_auth", false)
 
 	// Database defaults
 	v.SetDefault("database_url", "postgres://openidx:openidx_secret@localhost:5432/openidx?sslmode=disable")
@@ -770,6 +782,7 @@ func bindEnvVars(v *viper.Viper) {
 		"dark_mode_tier2":                                 "DARK_MODE_TIER2",
 		"dev_admin_bypass":                                "DEV_ADMIN_BYPASS",
 		"access_api_require_auth":                         "ACCESS_API_REQUIRE_AUTH",
+		"admin_api_require_auth":                          "ADMIN_API_REQUIRE_AUTH",
 		"shutdown_timeout_seconds":                        "SHUTDOWN_TIMEOUT_SECONDS",
 		"oauth_issuer":                                    "OAUTH_ISSUER",
 		"tenant_base_domain":                              "TENANT_BASE_DOMAIN",
