@@ -286,3 +286,86 @@ the web `MySecurityPage` renders.
   `reach_mode:ziti` from the UI.
 - **Ziti Network → Posture checks** now supports platform scoping (android/ios).
 
+---
+
+## 10. App-open lock: biometric / passcode at launch (CRITICAL)
+
+Requirement: when the app is opened (and when it returns to the foreground after
+being away), require the device's Face ID / Touch ID / fingerprint, with the
+device passcode as fallback, so it is certain the person holding the phone is the
+account owner — before any account data, MFA codes, PAM targets, or approvals are
+shown.
+
+### What already exists
+
+`app/(app)/_layout.tsx` already implements a `useAppLock()` gate: it locks on
+launch and on every `background`/`inactive → active` transition and calls
+`LocalAuthentication.authenticateAsync()`. Good foundation. But it has gaps that
+every mature app (banking apps, 1Password, Google/Microsoft Authenticator) solve.
+
+### How the reference apps actually do it (and what to copy)
+
+- **Presence assertion, not authentication** (OWASP MASVS V4.5). The biometric
+  prompt confirms "the enrolled device owner is here now"; it unlocks the already
+  established OpenIDX session. It must NOT be treated as the login itself. Our
+  session/token still comes from the OAuth/passkey flow — keep it that way.
+- **Grace period.** Do NOT re-prompt on every brief app-switch. Banking apps and
+  1Password use a configurable idle timeout (e.g. immediately / 1 min / 5 min).
+  Record `lastBackgrounded = Date.now()` on background; on `active`, only lock if
+  `now - lastBackgrounded > graceMs`. Current code locks on every `inactive`
+  (even the pull-down notification shade), which is annoying enough that users
+  disable it — the opposite of the goal.
+- **Privacy screen while backgrounded.** In the app switcher / recents, mask the
+  screen (a blur or a solid brand cover) so account data and TOTP codes aren't
+  visible in the OS snapshot. iOS: cover on `willResignActive`; Android: set
+  `FLAG_SECURE` on the window (also blocks screenshots).
+- **Fallback chain.** `authenticateAsync({ promptMessage, disableDeviceFallback:
+  false })` so a failed/absent biometric falls back to the device passcode. If
+  the device has NO lock at all, decide policy: allow (current behavior) OR warn
+  and require enrolling one for a security app. Recommend: allow but surface a
+  "Your device has no lock — enable one" nudge (ties into the `screen_lock`
+  posture check).
+- **Bind secrets to the lock (L2 hardening).** Store the OpenIDX refresh/session
+  token and the TOTP secrets in the keystore with a user-authentication-required
+  key (iOS `.biometryCurrentSet` + `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`;
+  Android `setUserAuthenticationRequired(true)` +
+  `setInvalidatedByBiometricEnrollment(true)`). Then a bypass of the JS boolean
+  can't reach the secrets — the OS refuses to release them without a real
+  biometric/passcode. `expo-secure-store` supports `requireAuthentication: true`;
+  the authenticator secrets in `features/authenticator/store.ts` and the tokens
+  in `features/ziti/device.ts` should use it.
+- **User setting.** A Security setting: "Require Face ID / passcode to open" (on
+  by default) + the grace-period picker (Immediately / After 1 minute / After 5
+  minutes). Store the preference in secure storage. Most apps default this ON.
+- **Re-lock on sensitive actions (step-up, MASVS V4.2).** Beyond app-open,
+  re-prompt biometric right before high-impact actions: approving an MFA/login
+  request, revealing a TOTP secret/QR, or starting a PAM remote session. This is
+  the "certain it's really you" guarantee at the moment it matters, not just at
+  open.
+
+### Concrete tasks
+
+1. `useAppLock()` — add a grace period (default 60s, from the user setting);
+   only lock on `active` when `now - lastBackgrounded > graceMs`. Keep the
+   immediate lock on true cold start.
+2. Add `disableDeviceFallback: false` so passcode is the fallback; handle the
+   "no hardware / not enrolled" branch explicitly (allow + nudge).
+3. Privacy screen: iOS cover view on resign-active; Android `FLAG_SECURE`.
+4. Migrate token + authenticator-secret storage to
+   `SecureStore.setItemAsync(..., { requireAuthentication: true })` (or the
+   platform keystore equivalents above) so secrets are OS-gated by the lock.
+5. Add the Security setting (toggle + grace picker), default ON / 60s.
+6. Step-up biometric before: approve request, reveal TOTP, start PAM session.
+7. Localize the prompt copy (TR/EN): promptMessage "OpenIDX kilidini aç" /
+   "Unlock OpenIDX".
+
+### Acceptance
+
+- Cold open → biometric/passcode required before any screen renders.
+- Return after > grace period → prompt again; within grace → no prompt.
+- App switcher shows a masked screen, not account data / TOTP codes.
+- Biometric fail → device passcode fallback; success unlocks.
+- Secrets unreadable without passing the OS auth (verify by disabling the lock).
+- Setting toggles the whole behavior; default is ON.
+
+
