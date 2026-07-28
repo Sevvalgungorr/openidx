@@ -17,6 +17,7 @@ import { api } from '../lib/api'
 import { useAppStore } from '../lib/store'
 import { roleLevel, ROLE_LEVELS } from '../lib/roles'
 import { filterNavigation, type ViewMode } from '../config/navigation'
+import { CommandPalette } from './command-palette'
 import { NotificationBell } from './notification-bell'
 import { TenantSelector } from './tenant-selector'
 import { ErrorBoundary } from './error-boundary'
@@ -174,7 +175,7 @@ export function Layout() {
                 aria-label="Search menu"
                 className="h-9 pl-8 pr-8 [&::-webkit-search-cancel-button]:hidden"
               />
-              {searching && (
+              {searching ? (
                 <button
                   onClick={() => setQuery('')}
                   className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"
@@ -182,6 +183,10 @@ export function Layout() {
                 >
                   <X className="h-4 w-4" />
                 </button>
+              ) : (
+                <kbd className="pointer-events-none absolute right-2 top-2 hidden rounded border bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-400 sm:block">
+                  ⌘K
+                </kbd>
               )}
             </div>
           </div>
@@ -321,6 +326,9 @@ export function Layout() {
           </div>
         </main>
       </div>
+
+      {/* Global ⌘K / Ctrl-K jump-to-page palette (role-filtered). */}
+      <CommandPalette />
     </div>
   )
 }

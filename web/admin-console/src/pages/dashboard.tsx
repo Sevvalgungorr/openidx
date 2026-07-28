@@ -17,10 +17,20 @@ import {
   MonitorPlay,
 } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  Rocket,
+  Eye,
+  ShieldCheck,
+  Smartphone,
+  GitPullRequest,
+  Bell,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { roleLevel, ROLE_LEVELS } from '../lib/roles'
+import { GettingStarted } from '../components/getting-started'
 
 // Matches the /api/v1/dashboard recent_events item.
 interface RecentEvent {
@@ -122,42 +132,97 @@ function activityIcon(type: string) {
   }
 }
 
+// The end-user landing: friendly, task-oriented shortcuts into the personal
+// self-service pages a regular user actually has access to — instead of the
+// admin stat cards (which linked to /users, /applications, /audit-logs that a
+// plain user cannot open) and org-wide analytics.
+function PersonalDashboard({ name }: { name?: string }) {
+  const firstName = (name ?? '').trim().split(/\s+/)[0] || 'there'
+  const actions = [
+    { title: 'My Apps', description: 'Launch the applications assigned to you', icon: Rocket, link: '/app-launcher', color: 'text-blue-600' },
+    { title: 'My Access', description: 'See your roles and groups; request more', icon: Eye, link: '/my-access', color: 'text-green-600' },
+    { title: 'My Security', description: 'Your security score and recommendations', icon: ShieldCheck, link: '/my-security', color: 'text-purple-600' },
+    { title: 'My Devices', description: 'Manage your registered devices', icon: Smartphone, link: '/my-devices', color: 'text-orange-600' },
+    { title: 'Access Requests', description: 'Request access to roles, groups or apps', icon: GitPullRequest, link: '/access-requests', color: 'text-sky-600' },
+    { title: 'Notifications', description: 'Your inbox and alerts', icon: Bell, link: '/notification-center', color: 'text-rose-600' },
+  ]
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Welcome, {firstName}</h1>
+        <p className="text-muted-foreground">Your apps, access and security in one place.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {actions.map((a) => (
+          <Link key={a.title} to={a.link} className="block transition-transform hover:scale-[1.02]">
+            <Card className="cursor-pointer h-full hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                <a.icon className={`h-6 w-6 ${a.color}`} />
+                <CardTitle className="text-base font-semibold">{a.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">{a.description}</p>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function DashboardPage() {
   const [period, setPeriod] = useState('30d')
-  const { hasRole } = useAuth()
+  const { hasRole, user } = useAuth()
+
+  // Persona split: operator+ get the administrative overview; a plain end user
+  // gets a personal dashboard instead — and the org-wide admin queries below
+  // are gated off for them, so a regular user's dashboard never calls the
+  // org-scoped analytics endpoints.
+  const isStaff = roleLevel(user?.roles ?? []) >= ROLE_LEVELS.operator
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get<DashboardStats>('/api/v1/dashboard'),
+    enabled: isStaff,
   })
 
   const { data: loginAnalytics } = useQuery({
     queryKey: ['analytics-logins', period],
     queryFn: () => api.get<{ data: { date: string; successful: number; failed: number }[] }>(`/api/v1/analytics/logins?period=${period}`),
+    enabled: isStaff,
   })
 
   const { data: riskAnalytics } = useQuery({
     queryKey: ['analytics-risk', period],
     queryFn: () => api.get<{ data: { level: string; count: number }[] }>(`/api/v1/analytics/risk?period=${period}`),
+    enabled: isStaff,
   })
 
   const { data: eventAnalytics } = useQuery({
     queryKey: ['analytics-events', period],
     queryFn: () => api.get<{ data: { event_type: string; count: number }[] }>(`/api/v1/analytics/events?period=${period}`),
+    enabled: isStaff,
   })
 
   const { data: zitiStatus } = useQuery({
     queryKey: ['ziti-status'],
     queryFn: () => api.get<ZitiStatus>('/api/v1/access/ziti/status'),
     refetchInterval: 15000,
+    enabled: isStaff,
   })
 
   const { data: zitiSync } = useQuery({
     queryKey: ['ziti-sync-status'],
     queryFn: () => api.get<ZitiSyncStatus>('/api/v1/access/ziti/sync/status'),
-    enabled: !!zitiStatus?.enabled,
+    enabled: isStaff && !!zitiStatus?.enabled,
     refetchInterval: 15000,
   })
+
+  // End users see a personal landing, not the org overview or its stat cards.
+  if (!isStaff) {
+    return <PersonalDashboard name={user?.name} />
+  }
 
   const statCards = [
     {
@@ -205,6 +270,9 @@ export function DashboardPage() {
           Overview of your identity platform
         </p>
       </div>
+
+      {/* First-run onboarding — self-hides once the required steps are done. */}
+      {roleLevel(user?.roles ?? []) >= ROLE_LEVELS.admin && <GettingStarted />}
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

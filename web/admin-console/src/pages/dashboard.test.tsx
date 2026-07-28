@@ -6,8 +6,13 @@ import { DashboardPage } from './dashboard'
 
 // Toggleable admin role for the Privileged Access entry-point test.
 const { mockHasRole } = vi.hoisted(() => ({ mockHasRole: vi.fn((_role: string) => true) }))
+// A staff-level user so the Dashboard renders the admin view rather than the
+// end-user PersonalDashboard (the persona split keys off user.roles). The
+// Privileged Access section is gated separately via hasRole, so these two are
+// decoupled — the "hides for non-admins" test flips hasRole without changing
+// the staff persona.
 vi.mock('../lib/auth', () => ({
-  useAuth: () => ({ hasRole: mockHasRole }),
+  useAuth: () => ({ hasRole: mockHasRole, user: { name: 'Admin', roles: ['admin'] } }),
 }))
 
 // Mock Recharts components

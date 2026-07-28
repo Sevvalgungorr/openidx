@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Badge } from '../components/ui/badge'
 import { Input } from '../components/ui/input'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { UserLink } from '../components/user-link'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -109,7 +110,7 @@ export function AIIdentityIntelligencePage() {
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -261,8 +262,7 @@ export function AIIdentityIntelligencePage() {
                 {(overview?.top_risks || []).map((u) => (
                   <tr key={u.user_id} className="hover:bg-muted/50">
                     <td className="p-4">
-                      <div className="font-medium">{u.username}</div>
-                      <div className="text-xs text-muted-foreground">{u.email}</div>
+                      <UserLink userId={u.user_id} name={u.username} subtitle={u.email} />
                     </td>
                     <td className="p-4 font-mono">{u.score}</td>
                     <td className="p-4">

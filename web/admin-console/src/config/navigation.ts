@@ -388,3 +388,50 @@ export function filterNavigation(filter: NavFilter, groups: NavDomainGroup[] = n
 export function allNavHrefs(groups: NavDomainGroup[] = navigation): string[] {
   return groups.flatMap((g) => g.sections.flatMap((s) => s.items.map((i) => i.href)))
 }
+
+/** A nav item flattened with its domain label — the row shape the command palette renders. */
+export interface FlatNavItem extends NavItem {
+  domainLabel: string
+}
+
+/**
+ * Flatten domain groups into a single ordered list, carrying each item's
+ * domain label. Pass the already-role-filtered groups (from filterNavigation)
+ * so the command palette only ever offers pages the user can actually open.
+ */
+export function flattenNavItems(groups: NavDomainGroup[] = navigation): FlatNavItem[] {
+  const out: FlatNavItem[] = []
+  for (const g of groups) {
+    for (const s of g.sections) {
+      for (const item of s.items) {
+        out.push({ ...item, domainLabel: g.label || 'Home' })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Rank a flattened item against a lowercased query for the command palette.
+ * Higher is better; <= 0 means "no match". Name matches beat keyword matches,
+ * and a prefix/word-start match beats a mid-string one, so "use" surfaces
+ * "Users" above a page that merely lists "users" as a keyword.
+ */
+export function scoreNavItem(item: FlatNavItem, q: string): number {
+  if (!q) return 1
+  const name = item.name.toLowerCase()
+  if (name === q) return 100
+  if (name.startsWith(q)) return 80
+  if (new RegExp(`\\b${escapeRegExp(q)}`).test(name)) return 60
+  if (name.includes(q)) return 40
+  if (item.domainLabel.toLowerCase().includes(q)) return 20
+  for (const kw of item.keywords ?? []) {
+    if (kw.toLowerCase().includes(q)) return 15
+  }
+  if (item.href.toLowerCase().includes(q)) return 10
+  return 0
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
