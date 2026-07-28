@@ -25,6 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -1859,12 +1860,32 @@ func (s *Service) GenerateTOTPSecret(ctx context.Context, userID string) (*TOTPE
 	}, nil
 }
 
+// validateTOTPWithSkew validates a TOTP code allowing a +/- 1 period (30s)
+// clock-skew window, matching what Google/Microsoft Authenticator and most
+// verifiers accept. The default totp.Validate uses skew=0, so a user whose
+// phone clock drifts by even a few seconds across a period boundary gets a
+// spurious "invalid code" during enrollment/verification. Skew=1 fixes the most
+// common "my code doesn't work" failure without meaningfully weakening the OTP.
+func validateTOTPWithSkew(code, secret string) bool {
+	code = strings.TrimSpace(code)
+	valid, err := totp.ValidateCustom(code, secret, time.Now().UTC(), totp.ValidateOpts{
+		Period:    30,
+		Skew:      1,
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+	if err != nil {
+		return false
+	}
+	return valid
+}
+
 // EnrollTOTP enrolls a user with TOTP MFA after verification
 func (s *Service) EnrollTOTP(ctx context.Context, userID, secret, verificationCode string) error {
 	s.logger.Info("Enrolling TOTP for user", zap.String("user_id", userID))
 
 	// Verify the code first
-	valid := totp.Validate(verificationCode, secret)
+	valid := validateTOTPWithSkew(verificationCode, secret)
 	if !valid {
 		return fmt.Errorf("invalid TOTP verification code")
 	}
@@ -1920,7 +1941,7 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID, code string) (bool, er
 	}
 
 	// Verify the code
-	valid := totp.Validate(code, secret)
+	valid := validateTOTPWithSkew(code, secret)
 	if valid {
 		// Update last used timestamp
 		now := time.Now()

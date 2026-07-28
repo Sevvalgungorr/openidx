@@ -155,8 +155,18 @@ export function UserProfilePage() {
       setShowBackupCodes(true)
       toast({ title: 'Success', description: 'MFA enabled successfully' })
     },
-    onError: () => {
-      toast({ title: 'Error', description: 'Invalid verification code', variant: 'destructive' })
+    onError: (e: unknown) => {
+      // Surface the backend's real reason so the user can tell "expired setup,
+      // start again" apart from "wrong code, try the next one".
+      const msg = e instanceof Error ? e.message : ''
+      const expired = /expired|not initiated|start setup/i.test(msg)
+      toast({
+        title: expired ? 'Setup expired' : 'Invalid verification code',
+        description: expired
+          ? 'The setup timed out. Click "Setup MFA" again, re-scan the new QR/secret, then enter a fresh code.'
+          : 'That code was not accepted. Make sure your device clock is correct and enter the current 6-digit code (it changes every 30s).',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -623,7 +633,7 @@ export function UserProfilePage() {
                         pattern="\d*"
                         inputMode="numeric"
                         value={mfaCode}
-                        onChange={(e) => setMfaCode(e.target.value)}
+                        onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         className="text-center text-2xl tracking-widest"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && mfaCode.length === 6) {
