@@ -150,8 +150,15 @@ func (zm *ZitiManager) EnsureBrowZerAuthPolicy(ctx context.Context, name, extJWT
 	body, _ := json.Marshal(map[string]interface{}{
 		"name": name,
 		"primary": map[string]interface{}{
+			// cert MUST stay allowed: the same identity is also used by the
+			// NATIVE Ziti SDK (mobile/desktop), which authenticates with its
+			// enrollment certificate. Disabling cert here silently breaks native
+			// overlay connections with "invalid certificate authentication, not
+			// allowed by auth policy" while BrowZer (extJwt) keeps working — a
+			// confusing partial failure. Allowing both lets one identity serve
+			// clientless BrowZer (OIDC) AND the native tunnel.
 			"cert": map[string]interface{}{
-				"allowed":           false,
+				"allowed":           true,
 				"allowExpiredCerts": false,
 			},
 			"updb": map[string]interface{}{
