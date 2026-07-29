@@ -160,6 +160,11 @@ type Service struct {
 	// dcrInitialAccessToken gates POST /oauth/register (RFC 7591). Empty = open
 	// registration (dev/first-run); set to require a bearer initial access token.
 	dcrInitialAccessToken string
+
+	// dcrAllowOpenRegistration must be true for UNAUTHENTICATED registration to be
+	// accepted when dcrInitialAccessToken is empty. Default false = closed, so a
+	// deployment that sets neither value refuses anonymous client registration.
+	dcrAllowOpenRegistration bool
 	// ssfReceiverConfig trusts an upstream SSF transmitter's issuer + JWKS for
 	// inbound SET validation. Empty = only OpenIDX-issued SETs are accepted.
 	ssfReceiverConfig SSFReceiverConfig
@@ -278,19 +283,20 @@ func NewService(db *database.PostgresDB, redis *database.RedisClient, cfg *confi
 	}
 
 	svc := &Service{
-		db:                    db,
-		redis:                 redis,
-		config:                cfg,
-		logger:                logger.With(zap.String("service", "oauth")),
-		idpCipher:             idpCipher,
-		privateKey:            privateKey,
-		publicKey:             &privateKey.PublicKey,
-		keyStore:              keyStore,
-		issuer:                issuer,
-		tenantBaseDomain:      cfg.TenantBaseDomain,
-		dcrInitialAccessToken: cfg.DCRInitialAccessToken,
-		ssfReceiverConfig:     SSFReceiverConfig{Issuer: cfg.SSFReceiverIssuer, JWKSURL: cfg.SSFReceiverJWKSURL},
-		identityService:       idSvc,
+		db:                       db,
+		redis:                    redis,
+		config:                   cfg,
+		logger:                   logger.With(zap.String("service", "oauth")),
+		idpCipher:                idpCipher,
+		privateKey:               privateKey,
+		publicKey:                &privateKey.PublicKey,
+		keyStore:                 keyStore,
+		issuer:                   issuer,
+		tenantBaseDomain:         cfg.TenantBaseDomain,
+		dcrInitialAccessToken:    cfg.DCRInitialAccessToken,
+		dcrAllowOpenRegistration: cfg.DCRAllowOpenRegistration,
+		ssfReceiverConfig:        SSFReceiverConfig{Issuer: cfg.SSFReceiverIssuer, JWKSURL: cfg.SSFReceiverJWKSURL},
+		identityService:          idSvc,
 	}
 
 	// Initialize authorize handler
@@ -1264,7 +1270,7 @@ func (s *Service) handleDiscovery(c *gin.Context) {
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 		ClaimsSupported:                   []string{"sub", "iss", "aud", "exp", "iat", "email", "email_verified", "name", "given_name", "family_name", "sid"},
-		CodeChallengeMethodsSupported:     []string{"S256", "plain"},
+		CodeChallengeMethodsSupported:     []string{"S256"},
 		EndSessionEndpoint:                base + "/oauth/logout",
 		BackchannelLogoutSupported:        true,
 		BackchannelLogoutSessionSupported: true,

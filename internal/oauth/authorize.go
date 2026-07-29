@@ -214,6 +214,13 @@ func (h *AuthorizeHandler) validatePKCEParameters(client *OAuthClient, req *Auth
 		if req.CodeChallengeMethod != "S256" && req.CodeChallengeMethod != "plain" {
 			return fmt.Errorf("unsupported code_challenge_method: %s", req.CodeChallengeMethod)
 		}
+		// Reject "plain" in production: it offers no protection against code
+		// interception and is not advertised in discovery. Fail fast at authorize
+		// rather than only at the token endpoint. (The token endpoint keeps its
+		// own guard for defense in depth.)
+		if req.CodeChallengeMethod == "plain" && h.service.config != nil && h.service.config.IsProduction() {
+			return fmt.Errorf("code_challenge_method 'plain' is not allowed; use S256")
+		}
 	}
 
 	// Validate code challenge format

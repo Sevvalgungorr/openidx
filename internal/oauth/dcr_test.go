@@ -119,12 +119,20 @@ func TestBuildClientAllowsLoopbackAndNativeScheme(t *testing.T) {
 func TestDCRAuthorizedGate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// No gate configured -> open.
-	open := &Service{}
+	// No gate and no opt-in -> closed (default-secure).
+	closed := &Service{}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/oauth/register", nil)
-	if !open.dcrAuthorized(c) {
-		t.Error("expected open registration when no initial access token configured")
+	if closed.dcrAuthorized(c) {
+		t.Error("expected CLOSED registration by default when no initial access token and no opt-in")
+	}
+
+	// No gate but explicit open-registration opt-in -> open.
+	open := &Service{dcrAllowOpenRegistration: true}
+	co, _ := gin.CreateTestContext(httptest.NewRecorder())
+	co.Request = httptest.NewRequest(http.MethodPost, "/oauth/register", nil)
+	if !open.dcrAuthorized(co) {
+		t.Error("expected open registration when dcrAllowOpenRegistration is true")
 	}
 
 	// Gate configured -> requires matching bearer.

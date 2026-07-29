@@ -198,8 +198,9 @@ func buildDiscoveryDocument(issuer string) *DiscoveryDocument {
 			"urn:ietf:params:oauth:grant-type:token-exchange", // RFC 8693 token exchange
 		},
 		CodeChallengeMethodsSupported: []string{
-			"S256",  // SHA-256 (recommended)
-			"plain", // Plain (not recommended)
+			"S256", // SHA-256 — the only advertised PKCE method. "plain" offers no
+			// protection against code interception and is not advertised; the
+			// authorize endpoint also rejects it in production.
 		},
 		DisplayValuesSupported: []string{
 			"page",  // Default

@@ -274,12 +274,15 @@ func (s *Service) registrationResponse(c *gin.Context, client *OAuthClient, regT
 	return resp
 }
 
-// dcrAuthorized checks the initial access token gate. When no gate is
-// configured (empty), registration is open.
+// dcrAuthorized checks the initial access token gate. Default-secure: when no
+// initial access token is configured, registration is refused UNLESS the
+// operator explicitly opts into open registration (dcrAllowOpenRegistration).
+// This prevents an unconfigured deployment from exposing an anonymous OAuth
+// client registration endpoint (a phishing/token-theft vector).
 func (s *Service) dcrAuthorized(c *gin.Context) bool {
 	gate := s.dcrInitialAccessToken
 	if gate == "" {
-		return true
+		return s.dcrAllowOpenRegistration
 	}
 	got := bearerToken(c)
 	return got != "" && subtle.ConstantTimeCompare([]byte(got), []byte(gate)) == 1

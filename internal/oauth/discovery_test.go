@@ -323,9 +323,10 @@ func TestDiscoveryDocumentCodeChallengeMethods(t *testing.T) {
 	issuer := "https://test.openidx.org"
 	doc := buildDiscoveryDocument(issuer)
 
-	t.Run("PKCE methods are supported", func(t *testing.T) {
+	t.Run("only S256 PKCE is advertised", func(t *testing.T) {
 		assert.Contains(t, doc.CodeChallengeMethodsSupported, "S256", "S256 method must be supported")
-		assert.Contains(t, doc.CodeChallengeMethodsSupported, "plain", "plain method should be supported")
+		assert.NotContains(t, doc.CodeChallengeMethodsSupported, "plain",
+			"plain PKCE must NOT be advertised (offers no code-interception protection)")
 	})
 }
 

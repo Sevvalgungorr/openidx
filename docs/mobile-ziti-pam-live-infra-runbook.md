@@ -128,3 +128,35 @@ mismatch drops you to the login screen).
 4. Broker tunnel identity `hasEdgeRouterConnection: true`
 5. `nc 100.64.2.1:<port>` from broker netns returns the target's SSH/RDP banner (§4)
 6. `/guacamole-ziti/` nginx location + `GUACAMOLE_ZITI_PUBLIC_URL` set (§5)
+
+---
+
+## 6. SPA security headers (nginx, not repo code)
+
+A ZAP scan flagged the site root (`https://openidx.tdv.org/`) missing HSTS /
+CSP / X-Frame-Options / X-Content-Type-Options. The SPA + static assets are
+served by **oidx-nginx on :8443** (behind APISIX), which bypasses the Go
+services' security-header middleware. Add these to the `server { }` block in
+`/home/cmit/oidx-runtime/oidx-tls/nginx.conf` (reapply after any nginx rebuild),
+then `docker exec oidx-nginx nginx -s reload`:
+
+```nginx
+add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+```
+
+The API services (oauth, admin, ...) set their own headers via
+`middleware.SecurityHeadersForEnv`; note HSTS there is gated on
+`APP_ENV=production`, so a prod box mislabeled `development` won't emit HSTS on
+API responses — set `APP_ENV=production` or rely on the nginx HSTS above.
+
+## 7. Dynamic client registration is closed by default
+
+`POST /oauth/register` (RFC 7591) is **closed by default** (401) unless the
+operator sets `DCR_INITIAL_ACCESS_TOKEN` (require a bearer) or
+`DCR_ALLOW_OPEN_REGISTRATION=true` (deliberately open). Leave both unset for a
+locked-down IdP.

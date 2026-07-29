@@ -101,10 +101,17 @@ type Config struct {
 	// Empty (the default) disables subdomain tenant resolution.
 	TenantBaseDomain string `mapstructure:"tenant_base_domain"`
 
-	// DCRInitialAccessToken gates RFC 7591 dynamic client registration. Empty
-	// (default) leaves registration open; set it to require a bearer initial
-	// access token on POST /oauth/register.
+	// DCRInitialAccessToken gates RFC 7591 dynamic client registration. When set,
+	// POST /oauth/register requires this bearer initial access token.
 	DCRInitialAccessToken string `mapstructure:"dcr_initial_access_token"`
+
+	// DCRAllowOpenRegistration permits UNAUTHENTICATED dynamic client registration
+	// when no DCRInitialAccessToken is configured. It is false by default so an
+	// operator who sets neither value gets a closed registration endpoint (POST
+	// /oauth/register → 401) instead of an open one that lets anyone mint OAuth
+	// clients (a phishing/token-theft vector). Set it true only for a deliberately
+	// open registration deployment.
+	DCRAllowOpenRegistration bool `mapstructure:"dcr_allow_open_registration"`
 
 	// SSFReceiverIssuer / SSFReceiverJWKSURL trust an upstream SSF transmitter
 	// for inbound SET (RFC 8417) validation on POST /ssf/events. Empty leaves the
@@ -654,6 +661,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	// Multi-tenancy: empty disables subdomain-based tenant resolution.
 	v.SetDefault("tenant_base_domain", "")
 	v.SetDefault("dcr_initial_access_token", "")
+	v.SetDefault("dcr_allow_open_registration", false)
 	v.SetDefault("ssf_receiver_issuer", "")
 	v.SetDefault("ssf_receiver_jwks_url", "")
 	v.SetDefault("ziti_per_org_attributes", false)
@@ -832,6 +840,7 @@ func bindEnvVars(v *viper.Viper) {
 		"oauth_issuer":                                    "OAUTH_ISSUER",
 		"tenant_base_domain":                              "TENANT_BASE_DOMAIN",
 		"dcr_initial_access_token":                        "DCR_INITIAL_ACCESS_TOKEN",
+		"dcr_allow_open_registration":                     "DCR_ALLOW_OPEN_REGISTRATION",
 		"ssf_receiver_issuer":                             "SSF_RECEIVER_ISSUER",
 		"ssf_receiver_jwks_url":                           "SSF_RECEIVER_JWKS_URL",
 		"ziti_per_org_attributes":                         "ZITI_PER_ORG_ATTRIBUTES",
