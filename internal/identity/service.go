@@ -5740,7 +5740,7 @@ func (s *Service) executeLifecycleAction(ctx context.Context, userID string, act
 			return fmt.Errorf("assign_group action missing 'group_id'")
 		}
 		_, err := s.db.Pool.Exec(ctx,
-			"INSERT INTO group_memberships (id, group_id, user_id, created_at, org_id) VALUES (gen_random_uuid(), $1, $2, NOW(), $3) ON CONFLICT DO NOTHING",
+			"INSERT INTO group_memberships (group_id, user_id, joined_at, org_id) VALUES ($1, $2, NOW(), $3) ON CONFLICT DO NOTHING",
 			groupID, userID, org.ID)
 		return err
 

@@ -280,7 +280,7 @@ func (zm *ZitiManager) rotateIdentityCert(ctx context.Context, certID, associate
 	// Log the rotation event to audit
 	_, err = zm.db.Pool.Exec(ctx,
 		//orgscope:ignore background/auto cert rotation reachable from expiry monitor; system actor, keyed by globally-unique Ziti controller cert id
-		`INSERT INTO audit_events (id, event_type, actor, resource_type, resource_id, details, created_at)
+		`INSERT INTO audit_events (id, event_type, actor_id, target_type, resource_id, details, created_at)
 		 VALUES ($1, 'certificate.rotate', 'system', 'ziti_certificate', $2, $3, NOW())`,
 		uuid.New().String(), certID,
 		fmt.Sprintf(`{"old_cert_id":"%s","new_cert_id":"%s","name":"%s","ziti_identity":"%s","method":"re-enrollment"}`,

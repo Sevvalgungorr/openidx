@@ -610,14 +610,16 @@ func (s *Service) linkOrCreateSocialUser(ctx context.Context, providerID string,
 	var existingUserID string
 	err = s.db.Pool.QueryRow(ctx, `
 		SELECT user_id FROM social_account_links
-		WHERE provider_id = $1 AND external_user_id = $2
+		WHERE provider_id = $1 AND external_id = $2
 	`, providerID, userInfo.ID).Scan(&existingUserID)
 
 	if err == nil {
 		// Already linked - update last login info and return
 		_, _ = s.db.Pool.Exec(ctx, `
-			UPDATE social_account_links SET last_login_at = NOW(), display_name = $3, email = $4
-			WHERE provider_id = $1 AND external_user_id = $2
+			UPDATE social_account_links SET last_login_at = NOW(),
+				profile_data = jsonb_set(COALESCE(profile_data, '{}'::jsonb), '{display_name}', to_jsonb($3::text)),
+				email = $4
+			WHERE provider_id = $1 AND external_id = $2
 		`, providerID, userInfo.ID, userInfo.Name, userInfo.Email)
 
 		return existingUserID, nil
@@ -683,10 +685,12 @@ func (s *Service) linkOrCreateSocialUser(ctx context.Context, providerID string,
 // createSocialAccountLink inserts a social account link record
 func (s *Service) createSocialAccountLink(ctx context.Context, providerID, userID string, userInfo *SocialUserInfo) error {
 	_, err := s.db.Pool.Exec(ctx, `
-		INSERT INTO social_account_links (id, provider_id, user_id, external_user_id, display_name, email, last_login_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-		ON CONFLICT (provider_id, external_user_id) DO UPDATE SET
-			user_id = $3, display_name = $5, email = $6, last_login_at = NOW()
+		INSERT INTO social_account_links (id, provider_id, user_id, external_id, profile_data, email, last_login_at, linked_at)
+		VALUES ($1, $2, $3, $4, jsonb_build_object('display_name', $5::text), $6, NOW(), NOW())
+		ON CONFLICT (provider_id, external_id) DO UPDATE SET
+			user_id = $3,
+			profile_data = jsonb_set(COALESCE(social_account_links.profile_data, '{}'::jsonb), '{display_name}', to_jsonb($5::text)),
+			email = $6, last_login_at = NOW()
 	`, uuid.New().String(), providerID, userID, userInfo.ID, userInfo.Name, userInfo.Email)
 
 	return err

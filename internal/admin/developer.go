@@ -107,7 +107,7 @@ func (s *Service) handleGetDeveloperSettings(c *gin.Context) {
 
 	var valueBytes []byte
 	err := s.db.Pool.QueryRow(ctx,
-		"SELECT value FROM developer_settings WHERE key = 'global'").Scan(&valueBytes)
+		"SELECT setting_value FROM developer_settings WHERE setting_key = 'global'").Scan(&valueBytes)
 
 	if err != nil {
 		// Return defaults when no row exists
@@ -145,9 +145,9 @@ func (s *Service) handleUpdateDeveloperSettings(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	_, err = s.db.Pool.Exec(ctx, `
-		INSERT INTO developer_settings (key, value, updated_at)
+		INSERT INTO developer_settings (setting_key, setting_value, updated_at)
 		VALUES ('global', $1, NOW())
-		ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
+		ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = NOW()
 	`, valueBytes)
 	if err != nil {
 		s.logger.Error("Failed to upsert developer settings", zap.Error(err))

@@ -230,9 +230,9 @@ func (s *Service) RequestGroupJoin(ctx context.Context, userID, groupID, justifi
 	if !requireApproval {
 		// Add the user directly to the group
 		_, err := s.db.Pool.Exec(ctx,
-			`INSERT INTO group_memberships (id, group_id, user_id, created_at, org_id) VALUES ($1, $2, $3, $4, $5)
+			`INSERT INTO group_memberships (group_id, user_id, joined_at, org_id) VALUES ($1, $2, $3, $4)
 			 ON CONFLICT DO NOTHING`,
-			uuid.New().String(), groupID, userID, time.Now().UTC(), org.ID,
+			groupID, userID, time.Now().UTC(), org.ID,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to add user to group: %w", err)
@@ -466,9 +466,9 @@ func (s *Service) ReviewGroupRequest(ctx context.Context, requestID, reviewerID,
 		}
 
 		_, err = s.db.Pool.Exec(ctx,
-			`INSERT INTO group_memberships (id, group_id, user_id, created_at, org_id) VALUES ($1, $2, $3, $4, $5)
+			`INSERT INTO group_memberships (group_id, user_id, joined_at, org_id) VALUES ($1, $2, $3, $4)
 			 ON CONFLICT DO NOTHING`,
-			uuid.New().String(), groupID, userID, now, org.ID,
+			groupID, userID, now, org.ID,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to add user to group: %w", err)

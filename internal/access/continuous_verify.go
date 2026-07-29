@@ -210,7 +210,7 @@ func (cv *ContinuousVerifier) verifyActiveSessions(ctx context.Context) {
 
 			// Log audit event
 			cv.svc.db.Pool.Exec(ctx,
-				`INSERT INTO audit_events (id, event_type, actor, resource_type, resource_id, details, created_at, org_id)
+				`INSERT INTO audit_events (id, event_type, actor_id, target_type, resource_id, details, created_at, org_id)
 				 VALUES (gen_random_uuid(), 'session.revoked.continuous_verify', $1, 'proxy_session', $2, $3, NOW(), $4)`,
 				sess.UserID, sess.SessionID,
 				fmt.Sprintf(`{"reason":"%s","risk_score":%d}`, decision.Reason, decision.RiskScore), sess.OrgID)
