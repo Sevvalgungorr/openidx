@@ -276,6 +276,42 @@ func (s *Service) handleCreateEmailOTPChallenge(c *gin.Context) {
 	})
 }
 
+// handleVerifyEmailOTPEnrollment verifies the code emailed during enrollment,
+// completing the enroll → verify handshake the console expects (mirrors the SMS
+// verify step). EnrollEmailOTP already stores the row enabled and emails a code;
+// without this endpoint the console's "Verify & Enable" POST returned 404 and
+// email OTP could never be confirmed.
+func (s *Service) handleVerifyEmailOTPEnrollment(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
+		return
+	}
+
+	if _, err := s.GetEmailOTPEnrollment(c.Request.Context(), userID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email OTP is not enrolled"})
+		return
+	}
+
+	if err := s.VerifyOTP(c.Request.Context(), userID, "email", req.Code); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Email OTP MFA enrolled successfully",
+		"enabled": true,
+	})
+}
+
 // --- Common OTP Handlers ---
 
 // handleVerifyOTP verifies an OTP code (works for both SMS and Email)

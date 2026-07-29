@@ -3172,6 +3172,7 @@ func RegisterRoutes(router *gin.Engine, svc *Service) {
 
 		// Email OTP MFA
 		identity.POST("/mfa/email/enroll", svc.handleEnrollEmailOTP)
+		identity.POST("/mfa/email/verify", svc.handleVerifyEmailOTPEnrollment)
 		identity.GET("/mfa/email/status", svc.handleGetEmailOTPStatus)
 		identity.DELETE("/mfa/email", svc.handleDeleteEmailOTP)
 		identity.POST("/mfa/email/challenge", svc.handleCreateEmailOTPChallenge)

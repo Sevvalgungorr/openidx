@@ -210,7 +210,7 @@ export const mfaApi = {
   ): Promise<WebAuthnLoginBeginResponse> => {
     try {
       return await api.post<WebAuthnLoginBeginResponse>(
-        '/api/v1/identity/mfa/webauthn/login/begin',
+        '/api/v1/identity/mfa/webauthn/authenticate/begin',
         request
       )
     } catch (error) {
@@ -229,7 +229,7 @@ export const mfaApi = {
   ): Promise<WebAuthnLoginFinishResponse> => {
     try {
       return await api.post<WebAuthnLoginFinishResponse>(
-        '/api/v1/identity/mfa/webauthn/login/finish',
+        '/api/v1/identity/mfa/webauthn/authenticate/finish',
         request
       )
     } catch (error) {
