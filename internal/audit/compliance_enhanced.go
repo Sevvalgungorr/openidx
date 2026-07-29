@@ -231,7 +231,7 @@ func (s *Service) evaluateCC2Communication(ctx context.Context, startDate, endDa
 	// Check notification / webhook configuration
 	var webhookCount int
 	s.db.Pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM webhook_subscriptions WHERE enabled = true AND org_id = $1
+		SELECT COUNT(*) FROM audit_webhook_subscriptions WHERE enabled = true AND org_id = $1
 	`, org.ID).Scan(&webhookCount)
 
 	if webhookCount > 0 {

@@ -803,5 +803,12 @@ func allMigrations() []*Migration {
 			UpSQL:       rolesUpdatedAtUp,
 			DownSQL:     rolesUpdatedAtDown,
 		},
+		{
+			Version:     114,
+			Name:        "audit_webhook_subscriptions",
+			Description: "Add audit_webhook_subscriptions for the event-streamer's outbound webhooks (route /api/v1/audit/webhooks). internal/audit and internal/webhooks both used a table named webhook_subscriptions with incompatible schemas; the admin webhooks migration won, so every audit-webhook query failed with SQLSTATE 42703. This gives the audit streamer its own table (enabled/filters/last_delivery/failure_count) and the audit code targets it. Admin webhook_subscriptions left untouched. Additive/idempotent.",
+			UpSQL:       auditWebhookSubscriptionsUp,
+			DownSQL:     auditWebhookSubscriptionsDown,
+		},
 	}
 }

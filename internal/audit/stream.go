@@ -469,7 +469,7 @@ func (es *EventStreamer) handleRegisterWebhook(c *gin.Context) {
 			return
 		}
 		_, err = es.service.db.Pool.Exec(ctx, `
-			INSERT INTO webhook_subscriptions (id, url, secret, enabled, filters, created_at, org_id)
+			INSERT INTO audit_webhook_subscriptions (id, url, secret, enabled, filters, created_at, org_id)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`, subscription.ID, subscription.URL, subscription.Secret, subscription.Enabled,
 			subscription.Filters, subscription.CreatedAt, org.ID)
@@ -499,7 +499,7 @@ func (es *EventStreamer) handleListWebhooks(c *gin.Context) {
 	}
 	rows, err := es.service.db.Pool.Query(ctx, `
 		SELECT id, url, enabled, filters, created_at, last_delivery, failure_count
-		FROM webhook_subscriptions
+		FROM audit_webhook_subscriptions
 		WHERE org_id = $1
 		ORDER BY created_at DESC
 	`, org.ID)
@@ -513,10 +513,15 @@ func (es *EventStreamer) handleListWebhooks(c *gin.Context) {
 	for rows.Next() {
 		var wh WebhookSubscription
 		var filtersJSON []byte
+		var lastDelivery *time.Time
 		err := rows.Scan(&wh.ID, &wh.URL, &wh.Enabled, &filtersJSON,
-			&wh.CreatedAt, &wh.LastDelivery, &wh.FailureCount)
+			&wh.CreatedAt, &lastDelivery, &wh.FailureCount)
 		if err != nil {
+			es.logger.Warn("Failed to scan webhook subscription row", zap.Error(err))
 			continue
+		}
+		if lastDelivery != nil {
+			wh.LastDelivery = *lastDelivery
 		}
 		if len(filtersJSON) > 0 {
 			json.Unmarshal(filtersJSON, &wh.Filters)
@@ -543,7 +548,7 @@ func (es *EventStreamer) handleDeleteWebhook(c *gin.Context) {
 	}
 
 	_, err = es.service.db.Pool.Exec(ctx,
-		"DELETE FROM webhook_subscriptions WHERE id = $1 AND org_id = $2", id, org.ID)
+		"DELETE FROM audit_webhook_subscriptions WHERE id = $1 AND org_id = $2", id, org.ID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to delete webhook"})
 		return
@@ -569,7 +574,7 @@ func (es *EventStreamer) handleTestWebhook(c *gin.Context) {
 
 	var url string
 	err = es.service.db.Pool.QueryRow(ctx,
-		"SELECT url FROM webhook_subscriptions WHERE id = $1 AND org_id = $2", id, org.ID).Scan(&url)
+		"SELECT url FROM audit_webhook_subscriptions WHERE id = $1 AND org_id = $2", id, org.ID).Scan(&url)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "webhook not found"})
 		return
@@ -689,7 +694,7 @@ func (es *EventStreamer) deliverWebhook(delivery *WebhookDelivery) bool {
 			updateCtx, cancel := context.WithTimeout(orgctx.WithBypassRLS(context.Background()), 5*time.Second)
 			//orgscope:ignore background webhook-delivery bookkeeping; keyed by webhook url, no request context
 			_, _ = es.service.db.Pool.Exec(updateCtx, `
-				UPDATE webhook_subscriptions
+				UPDATE audit_webhook_subscriptions
 				SET last_delivery = NOW(), failure_count = 0
 				WHERE url = $1
 			`, delivery.WebhookURL)
@@ -709,7 +714,7 @@ func (es *EventStreamer) deliverWebhook(delivery *WebhookDelivery) bool {
 		updateCtx, cancel := context.WithTimeout(orgctx.WithBypassRLS(context.Background()), 5*time.Second)
 		//orgscope:ignore background webhook-delivery bookkeeping; keyed by webhook url, no request context
 		_, _ = es.service.db.Pool.Exec(updateCtx, `
-			UPDATE webhook_subscriptions
+			UPDATE audit_webhook_subscriptions
 			SET failure_count = failure_count + 1
 			WHERE url = $1
 		`, delivery.WebhookURL)
