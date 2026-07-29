@@ -1105,6 +1105,48 @@ func TestGetIdentityEnrollmentJWT(t *testing.T) {
 	})
 }
 
+// TestIsIdentityEnrolled verifies the live-controller enrollment check that
+// self-heals the drifted ziti_identities.enrolled flag.
+func TestIsIdentityEnrolled(t *testing.T) {
+	mk := func(t *testing.T, url string) *ZitiManager {
+		cfg := MockConfig(t)
+		cfg.ZitiCtrlURL = url
+		return &ZitiManager{cfg: cfg, logger: MockLogger(t), mgmtToken: "test-token", mgmtClient: &http.Client{}}
+	}
+
+	t.Run("empty enrollment => enrolled", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"id":"id-1","enrollment":{}}}`))
+		}))
+		defer srv.Close()
+		enrolled, err := mk(t, srv.URL).IsIdentityEnrolled(context.Background(), "id-1")
+		require.NoError(t, err)
+		assert.True(t, enrolled)
+	})
+
+	t.Run("pending ott => not enrolled", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"id":"id-1","enrollment":{"ott":{"jwt":"pending"}}}}`))
+		}))
+		defer srv.Close()
+		enrolled, err := mk(t, srv.URL).IsIdentityEnrolled(context.Background(), "id-1")
+		require.NoError(t, err)
+		assert.False(t, enrolled)
+	})
+
+	t.Run("controller error => error, not enrolled", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+		enrolled, err := mk(t, srv.URL).IsIdentityEnrolled(context.Background(), "id-1")
+		require.Error(t, err)
+		assert.False(t, enrolled)
+	})
+}
+
 // TestListServices tests service listing
 func TestListServices(t *testing.T) {
 	t.Run("Successful service list", func(t *testing.T) {

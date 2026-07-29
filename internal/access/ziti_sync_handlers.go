@@ -161,6 +161,24 @@ func (s *Service) handleGetMyZitiIdentity(c *gin.Context) {
 		"attributes": attrs,
 	}
 
+	// Self-heal the stored `enrolled` flag against the controller's live state.
+	// The flag is written false at identity creation and nothing flips it true
+	// when a device completes enrollment out-of-band (native SDK / tunneler), so
+	// a fully-enrolled device would forever show "Pending Enrollment". If the
+	// controller says the identity is enrolled, adopt that and persist it.
+	if !enrolled && s.ziti() != nil {
+		if live, verr := s.ziti().IsIdentityEnrolled(c.Request.Context(), zitiID); verr == nil && live {
+			enrolled = true
+			result["enrolled"] = true
+			if _, uerr := s.db.Pool.Exec(c.Request.Context(),
+				"UPDATE ziti_identities SET enrolled = TRUE, updated_at = NOW() WHERE ziti_id = $1 AND org_id = $2",
+				zitiID, org.ID); uerr != nil {
+				s.logger.Warn("failed to persist self-healed enrolled flag",
+					zap.String("ziti_id", zitiID), zap.Error(uerr))
+			}
+		}
+	}
+
 	// If not enrolled, try to get enrollment JWT
 	if !enrolled {
 		var enrollmentJWT *string

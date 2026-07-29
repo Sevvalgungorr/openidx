@@ -1,6 +1,9 @@
 package access
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAllocateLoopbackPort(t *testing.T) {
 	t.Parallel()
@@ -38,12 +41,17 @@ func TestPamLaunchEntryDialTarget(t *testing.T) {
 	}
 
 	ziti := pamLaunchEntry{Hostname: "dc01.corp", Port: 3389, ReachMode: "ziti", ZitiInterceptPort: 14007}
-	if h, p := ziti.dialTarget(); h != "127.0.0.1" || p != 14007 {
-		t.Fatalf("ziti dialTarget = %s:%d, want 127.0.0.1:14007 — target must NOT be dialed directly", h, p)
+	if h, p := ziti.dialTarget(); h != pamZitiInterceptHost || p != 14007 {
+		t.Fatalf("ziti dialTarget = %s:%d, want %s:14007 — target must NOT be dialed directly", h, p, pamZitiInterceptHost)
+	}
+	// The intercept host must be non-loopback: ziti-edge-tunnel (TUN mode) cannot
+	// intercept 127.0.0.0/8 because the kernel short-circuits loopback.
+	if strings.HasPrefix(pamZitiInterceptHost, "127.") {
+		t.Fatalf("pamZitiInterceptHost = %s is loopback; TUN-mode tunnel cannot intercept it", pamZitiInterceptHost)
 	}
 
 	// A ziti entry with no assigned intercept port must fall back to the real
-	// target rather than dial 127.0.0.1:0.
+	// target rather than dial the intercept host with port 0.
 	broken := pamLaunchEntry{Hostname: "dc01.corp", Port: 3389, ReachMode: "ziti", ZitiInterceptPort: 0}
 	if h, p := broken.dialTarget(); h != "dc01.corp" || p != 3389 {
 		t.Fatalf("ziti-without-port dialTarget = %s:%d, want fallback dc01.corp:3389", h, p)

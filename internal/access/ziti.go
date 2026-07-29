@@ -1085,6 +1085,36 @@ func (zm *ZitiManager) FindIdentityIDByName(ctx context.Context, name string) st
 	return ""
 }
 
+// IsIdentityEnrolled reports whether the controller considers the identity
+// fully enrolled. An identity is enrolled iff it has NO pending enrollment
+// (the `enrollment` object is empty). This is the live source of truth that the
+// DB `ziti_identities.enrolled` flag drifts from: the flag is written false at
+// identity creation and nothing flips it true when a device completes
+// enrollment out-of-band (native SDK / tunneler). Callers can use this to
+// self-heal the stored flag. Returns (false, err) on any controller error so
+// callers keep the stored value rather than falsely claiming enrollment.
+func (zm *ZitiManager) IsIdentityEnrolled(ctx context.Context, zitiID string) (bool, error) {
+	respData, statusCode, err := zm.mgmtRequest("GET",
+		fmt.Sprintf("/edge/management/v1/identities/%s", zitiID), nil)
+	if err != nil {
+		return false, err
+	}
+	if statusCode != http.StatusOK {
+		return false, fmt.Errorf("unexpected status %d getting identity", statusCode)
+	}
+	var resp struct {
+		Data struct {
+			Enrollment map[string]interface{} `json:"enrollment"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respData, &resp); err != nil {
+		return false, err
+	}
+	// A pending OTT/CA/updb enrollment means the device has NOT completed
+	// enrollment yet. An empty enrollment map means it has.
+	return len(resp.Data.Enrollment) == 0, nil
+}
+
 // GetIdentityEnrollmentJWT retrieves the enrollment JWT for an identity
 func (zm *ZitiManager) GetIdentityEnrollmentJWT(ctx context.Context, zitiID string) (string, error) {
 	respData, statusCode, err := zm.mgmtRequest("GET",
@@ -1712,6 +1742,7 @@ func (zm *ZitiManager) TeardownZitiServiceByName(ctx context.Context, serviceNam
 		{"service-policies", "openidx-dial-" + serviceName},
 		{"service-edge-router-policies", "openidx-serp-" + serviceName},
 		{"configs", serviceName + "-host"},
+		{"configs", serviceName + "-intercept"},
 		{"services", serviceName},
 	} {
 		if err := zm.deleteEdgeEntityByName(ctx, p.col, p.name); err != nil {
@@ -2320,6 +2351,88 @@ func (zm *ZitiManager) CreateHostV1ConfigFixed(ctx context.Context, name, host s
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return "", fmt.Errorf("parse host.v1 config response: %w", err)
+	}
+	return resp.Data.ID, nil
+}
+
+// CreateInterceptV1ConfigFixed ensures an intercept.v1 config named `name` that
+// intercepts tcp `host:port` and returns its id (get-or-create-or-update, like
+// CreateHostV1ConfigFixed). The PAM broker's ziti-tunnel uses this to know which
+// address to capture off its tun device and carry over the overlay. `host` must
+// be a NON-loopback address (see pamZitiInterceptHost): ziti-edge-tunnel runs in
+// TUN mode and the kernel short-circuits 127.0.0.0/8 before it reaches the tun
+// device, so a loopback intercept never fires.
+func (zm *ZitiManager) CreateInterceptV1ConfigFixed(ctx context.Context, name, host string, port int) (string, error) {
+	desiredData := map[string]interface{}{
+		"protocols": []string{"tcp"},
+		"addresses": []string{host},
+		"portRanges": []map[string]interface{}{
+			{"low": port, "high": port},
+		},
+	}
+
+	lookupPath := fmt.Sprintf("/edge/management/v1/configs?filter=name=\"%s\"", name)
+	if lookupData, lookupStatus, lookupErr := zm.mgmtRequest("GET", lookupPath, nil); lookupErr == nil && lookupStatus == http.StatusOK {
+		var existing struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Data struct {
+					Addresses  []string `json:"addresses"`
+					PortRanges []struct {
+						Low  json.Number `json:"low"`
+						High json.Number `json:"high"`
+					} `json:"portRanges"`
+				} `json:"data"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(lookupData, &existing) == nil {
+			for _, c := range existing.Data {
+				if c.Name != name || c.ID == "" {
+					continue
+				}
+				matches := len(c.Data.Addresses) == 1 && c.Data.Addresses[0] == host &&
+					len(c.Data.PortRanges) == 1 &&
+					c.Data.PortRanges[0].Low.String() == strconv.Itoa(port) &&
+					c.Data.PortRanges[0].High.String() == strconv.Itoa(port)
+				if matches {
+					zm.logger.Info("Reusing existing intercept.v1 config", zap.String("name", name), zap.String("id", c.ID))
+					return c.ID, nil
+				}
+				// Drifted intercept target — converge by patching in place.
+				patch, _ := json.Marshal(map[string]interface{}{"data": desiredData})
+				if _, ps, perr := zm.mgmtRequest("PATCH", "/edge/management/v1/configs/"+c.ID, patch); perr == nil && (ps == http.StatusOK || ps == http.StatusAccepted) {
+					zm.logger.Info("Updated drifted intercept.v1 config",
+						zap.String("name", name), zap.String("id", c.ID),
+						zap.String("address", host), zap.Int("port", port))
+					return c.ID, nil
+				}
+				zm.logger.Warn("failed to patch drifted intercept.v1 config; reusing as-is",
+					zap.String("name", name), zap.String("id", c.ID))
+				return c.ID, nil
+			}
+		}
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":         name,
+		"configTypeId": zm.resolveConfigTypeID("intercept.v1"),
+		"data":         desiredData,
+	})
+	data, status, err := zm.mgmtRequest("POST", "/edge/management/v1/configs", body)
+	if err != nil {
+		return "", fmt.Errorf("create intercept.v1 config: %w", err)
+	}
+	if status != http.StatusCreated && status != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d creating intercept.v1 config: %s", status, string(data))
+	}
+	var resp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return "", fmt.Errorf("parse intercept.v1 config response: %w", err)
 	}
 	return resp.Data.ID, nil
 }

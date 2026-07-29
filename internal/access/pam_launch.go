@@ -136,13 +136,20 @@ type pamLaunchEntry struct {
 }
 
 // dialTarget returns the host:port guacd should open the protocol connection
-// to. In ziti reach mode this is the broker's loopback intercept (the
-// ziti-tunnel carries it over the overlay to the edge-router-hosted target);
-// in direct mode it is the entry's real target. Falls back to the real target
-// if a ziti entry somehow has no intercept port assigned.
+// to. In ziti reach mode this is the broker's Ziti intercept address (the
+// ziti-tunnel carries it over the overlay to the edge-router-hosted target); in
+// direct mode it is the entry's real target. Falls back to the real target if a
+// ziti entry somehow has no intercept port assigned.
+//
+// The intercept host is a NON-loopback Ziti IP (pamZitiInterceptHost) rather
+// than 127.0.0.1: ziti-edge-tunnel runs in TUN mode and cannot intercept
+// loopback traffic (the kernel short-circuits 127.0.0.0/8 before it reaches the
+// tun device), so guacd dialing 127.0.0.1 got connection-refused. Dialing a
+// tun-routed address lets the tunnel capture it and dial the service. The
+// per-entry intercept config must advertise this same address.
 func (e *pamLaunchEntry) dialTarget() (host string, port int) {
 	if e.ReachMode == "ziti" && e.ZitiInterceptPort > 0 {
-		return "127.0.0.1", e.ZitiInterceptPort
+		return pamZitiInterceptHost, e.ZitiInterceptPort
 	}
 	return e.Hostname, e.Port
 }

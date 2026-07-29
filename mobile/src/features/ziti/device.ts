@@ -7,6 +7,7 @@
  * native Ziti module to enroll), and files a device-trust entry. Posture is
  * reported via POST /agent/report. Agent creds live in the keystore.
  */
+import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
@@ -19,6 +20,7 @@ const AGENT_ID = 'oidx.agent_id';
 const DEVICE_ID = 'oidx.agent_device_id';
 const AUTH_TOKEN = 'oidx.agent_auth_token';
 const ZITI_JWT = 'oidx.ziti_jwt';
+const DEVICE_FINGERPRINT = 'oidx.device_fingerprint';
 
 export type EnrollResult = {
   agent_id: string;
@@ -36,16 +38,37 @@ export async function getAgentIdentity(): Promise<AgentIdentity> {
   return agentId && deviceId ? { agentId, deviceId } : null;
 }
 
-/** Enroll this device (OAuth path — uses the signed-in session). Idempotent-ish:
- *  the backend reconciles by physical device fingerprint. */
+/**
+ * A stable per-install device fingerprint. The backend keys enrollment dedup on
+ * `device_fingerprint`: without a stable value every re-enroll mints a NEW
+ * agent row, so one physical phone shows up as many duplicate agents. We mint a
+ * random UUID once and persist it in the secure keystore, so it survives app
+ * restarts and re-enrolls (a factory reset / reinstall that clears the keystore
+ * intentionally yields a fresh device identity). Namespaced `mobile:` so it
+ * never collides with the desktop agent's machine-GUID fingerprints.
+ */
+async function getDeviceFingerprint(): Promise<string> {
+  const existing = await SecureStore.getItemAsync(DEVICE_FINGERPRINT);
+  if (existing) return existing;
+  const fp = `mobile:${Crypto.randomUUID()}`;
+  await SecureStore.setItemAsync(DEVICE_FINGERPRINT, fp);
+  return fp;
+}
+
+/** Enroll this device (OAuth path — uses the signed-in session). Idempotent:
+ *  the backend reconciles by the stable device_fingerprint we send, so
+ *  re-enrolling the same phone reuses its agent_id instead of duplicating it. */
 export async function enrollDevice(): Promise<EnrollResult> {
   const res = await api.post<EnrollResult>(`${BASE}/agent/enroll/oauth`, {
     hostname: Device.deviceName ?? `${Platform.OS}-device`,
     os: Platform.OS,
     arch: Device.modelName ?? 'unknown',
-    platform: 'mobile',
+    // Send the concrete OS ('android' | 'ios') so the backend records the real
+    // platform; 'mobile' would normalize to 'unknown' and break posture checks.
+    platform: Platform.OS,
     form_factor: Device.deviceType === Device.DeviceType.TABLET ? 'tablet' : 'phone',
     management_mode: 'byod',
+    device_fingerprint: await getDeviceFingerprint(),
   });
   await SecureStore.setItemAsync(AGENT_ID, res.agent_id);
   await SecureStore.setItemAsync(DEVICE_ID, res.device_id);

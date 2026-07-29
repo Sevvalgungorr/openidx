@@ -51,6 +51,16 @@ const (
 	// for a ziti-reach entry. Ports climb from here, one per enabled entry.
 	pamZitiInterceptBasePort = 14000
 
+	// pamZitiInterceptHost is the NON-loopback address the broker's ziti-tunnel
+	// intercepts for every ziti-reach entry (one shared address, per-entry port).
+	// It MUST NOT be a 127.0.0.0/8 loopback: ziti-edge-tunnel runs in TUN mode
+	// and the kernel short-circuits loopback before it reaches the tun device, so
+	// a 127.0.0.1 intercept never fires and guacd gets connection-refused. This
+	// address lives in the tunnel's routed CIDR so it is captured and carried
+	// over the overlay. The Guacamole connection host (dialTarget) and the
+	// per-entry intercept.v1 config both use this value.
+	pamZitiInterceptHost = "100.64.2.1"
+
 	// pamZitiInterceptMaxPort bounds allocation so a runaway can't exhaust the
 	// ephemeral range.
 	pamZitiInterceptMaxPort = 14999
@@ -102,11 +112,20 @@ func (s *Service) usedLoopbackPorts(ctx context.Context) ([]int, error) {
 // reach. Idempotent: re-running converges (get-or-create-or-update everywhere).
 // Names follow the openidx-bind-/openidx-dial-/openidx-serp-/<svc>-host
 // convention so TeardownZitiServiceByName reverses it.
-func (s *Service) provisionEntryZitiService(ctx context.Context, zm *ZitiManager, serviceName, targetHost string, targetPort int) error {
+func (s *Service) provisionEntryZitiService(ctx context.Context, zm *ZitiManager, serviceName, targetHost string, targetPort, interceptPort int) error {
 	// 1. host.v1 config pinned to the target (edge router forwards straight to it).
 	configID, err := zm.CreateHostV1ConfigFixed(ctx, serviceName+"-host", targetHost, targetPort)
 	if err != nil {
 		return fmt.Errorf("host.v1 config: %w", err)
+	}
+
+	// 1b. intercept.v1 config so the broker's ziti-tunnel captures the dial
+	//     address (pamZitiInterceptHost:interceptPort) off its tun device and
+	//     carries it over the overlay. Without this the tunnel has nothing to
+	//     intercept and guacd's dial to that address is never captured.
+	interceptID, err := zm.CreateInterceptV1ConfigFixed(ctx, serviceName+"-intercept", pamZitiInterceptHost, interceptPort)
+	if err != nil {
+		return fmt.Errorf("intercept.v1 config: %w", err)
 	}
 
 	// 2. Service carrying its own role attribute (#<serviceName>). Reuse if it
@@ -122,9 +141,12 @@ func (s *Service) provisionEntryZitiService(ctx context.Context, zm *ZitiManager
 		}
 	}
 
-	// 3. Attach the host.v1 config to the service.
+	// 3. Attach the host.v1 + intercept.v1 configs to the service.
 	if err := zm.EnsureServiceConfig(ctx, zitiID, configID); err != nil {
-		return fmt.Errorf("attach config: %w", err)
+		return fmt.Errorf("attach host config: %w", err)
+	}
+	if err := zm.EnsureServiceConfig(ctx, zitiID, interceptID); err != nil {
+		return fmt.Errorf("attach intercept config: %w", err)
 	}
 
 	// 4. Bind → edge routers (they host the terminator to the target).
@@ -147,6 +169,15 @@ func (s *Service) provisionEntryZitiService(ctx context.Context, zm *ZitiManager
 	}
 	if err := zm.EnsureRouterRoleAttribute(ctx); err != nil {
 		s.logger.Warn("provisionEntryZitiService: ensure router role attribute failed (non-fatal)", zap.Error(err))
+	}
+
+	// 7. Edge-router-policy granting the PAM broker's ziti-tunnel identity access
+	//    to every edge router. Without it the tunnel has no online router for the
+	//    service and dials fail with NO_EDGE_ROUTERS_AVAILABLE. Shared across all
+	//    entries (idempotent name), so it converges regardless of enable order.
+	if err := zm.EnsureEdgeRouterPolicy(ctx, "openidx-erp-pam-broker-dialers",
+		[]string{"#all"}, []string{pamBrokerDialerRole}); err != nil {
+		return fmt.Errorf("broker-dialers edge-router policy: %w", err)
 	}
 	return nil
 }
@@ -243,7 +274,7 @@ func (s *Service) handlePamEnableZiti(c *gin.Context) {
 	}
 
 	serviceName := pamZitiServiceName(entryID)
-	if err := s.provisionEntryZitiService(ctx, zm, serviceName, hostname, port); err != nil {
+	if err := s.provisionEntryZitiService(ctx, zm, serviceName, hostname, port, port2); err != nil {
 		s.logger.Error("handlePamEnableZiti: provisioning failed",
 			zap.String("entry_id", scrubLogValue(entryID)), zap.Error(err))
 		// Best-effort rollback of any partial provisioning.
