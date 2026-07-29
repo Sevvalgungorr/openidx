@@ -367,7 +367,7 @@ func (s *Service) ExportUsersToCSV(ctx context.Context, writer io.Writer) error 
 		LEFT JOIN roles r ON ur.role_id = r.id AND r.org_id = u.org_id
 		LEFT JOIN group_memberships gm ON u.id = gm.user_id AND gm.org_id = u.org_id
 		LEFT JOIN groups g ON gm.group_id = g.id AND g.org_id = u.org_id
-		WHERE u.deleted_at IS NULL AND u.org_id = $1
+		WHERE u.org_id = $1
 		GROUP BY u.id
 		ORDER BY u.username
 	`, org.ID)
@@ -427,7 +427,7 @@ func (s *Service) ExportUsersToCSVStreaming(ctx context.Context) (<-chan []strin
 		LEFT JOIN roles r ON ur.role_id = r.id AND r.org_id = u.org_id
 		LEFT JOIN group_memberships gm ON u.id = gm.user_id AND gm.org_id = u.org_id
 		LEFT JOIN groups g ON gm.group_id = g.id AND g.org_id = u.org_id
-		WHERE u.deleted_at IS NULL AND u.org_id = $1
+		WHERE u.org_id = $1
 		GROUP BY u.id
 		ORDER BY u.username
 	`, org.ID)

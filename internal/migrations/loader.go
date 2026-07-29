@@ -796,5 +796,12 @@ func allMigrations() []*Migration {
 			UpSQL:       remoteSupportPurgedAtUp,
 			DownSQL:     remoteSupportPurgedAtDown,
 		},
+		{
+			Version:     113,
+			Name:        "roles_updated_at",
+			Description: "Add roles.updated_at (backfilled from created_at). CreateRole/UpdateRole in internal/identity/service.go both write updated_at, but the roles table (seeded in v10) only had created_at, so every role create/edit failed with SQLSTATE 42703 and the Roles admin page could not create or update a role. Additive/idempotent.",
+			UpSQL:       rolesUpdatedAtUp,
+			DownSQL:     rolesUpdatedAtDown,
+		},
 	}
 }
