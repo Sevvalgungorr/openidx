@@ -39,7 +39,7 @@ export function GettingStarted() {
   })
   const { data: idps } = useQuery({
     queryKey: ['gs-identity-providers'],
-    queryFn: () => api.get<unknown[]>('/api/v1/identity-providers'),
+    queryFn: () => api.get<unknown[]>('/api/v1/identity/providers'),
     staleTime: 60_000,
   })
   const { data: ziti } = useQuery({

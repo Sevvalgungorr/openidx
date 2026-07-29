@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -166,7 +167,41 @@ func main() {
 			PerUser:      cfg.RateLimitPerUser,
 		}, log))
 	}
-	router.Use(middleware.CORS("http://localhost:3000", "http://localhost:5173", "http://192.168.31.76:3000", "http://192.168.31.76:5173"))
+	// CORS allowlist: the configured production origin(s) from
+	// CORS_ALLOWED_ORIGINS plus the local dev origins. The middleware 403s any
+	// browser request whose Origin isn't listed, and browsers always send Origin
+	// on state-changing methods (POST/PUT/DELETE) — so omitting the production
+	// origin silently blocked every admin write (create service account, etc.)
+	// with an empty-body 403 while same-origin GETs (no Origin header) still
+	// passed. Merge config + dev defaults, de-duplicated. A wildcard config short
+	// -circuits to "*" (the middleware only treats a lone "*" as allow-all).
+	configuredOrigins := cfg.GetCORSOrigins()
+	var corsOrigins []string
+	isWildcard := false
+	for _, o := range configuredOrigins {
+		if strings.TrimSpace(o) == "*" {
+			isWildcard = true
+			break
+		}
+	}
+	if isWildcard {
+		corsOrigins = []string{"*"}
+	} else {
+		merged := append([]string{
+			"http://localhost:3000", "http://localhost:5173",
+			"http://192.168.31.76:3000", "http://192.168.31.76:5173",
+		}, configuredOrigins...)
+		seenOrigin := make(map[string]bool, len(merged))
+		for _, o := range merged {
+			o = strings.TrimSpace(o)
+			if o == "" || seenOrigin[o] {
+				continue
+			}
+			seenOrigin[o] = true
+			corsOrigins = append(corsOrigins, o)
+		}
+	}
+	router.Use(middleware.CORS(corsOrigins...))
 	router.Use(middleware.RequestID())
 	router.Use(middleware.PrometheusMetrics("admin-api"))
 	router.Use(api.StandardVersionMiddleware())

@@ -979,6 +979,7 @@ func bindEnvVars(v *viper.Viper) {
 		"rate_limit_auth_requests":          "RATE_LIMIT_AUTH_REQUESTS",
 		"rate_limit_auth_window":            "RATE_LIMIT_AUTH_WINDOW",
 		"rate_limit_per_user":               "RATE_LIMIT_PER_USER",
+		"cors_allowed_origins":              "CORS_ALLOWED_ORIGINS",
 		"audit_stream_allowed_origins":      "AUDIT_STREAM_ALLOWED_ORIGINS",
 		"recordings_storage_path":           "RECORDINGS_STORAGE_PATH",
 		"recordings_default_retention_days": "RECORDINGS_DEFAULT_RETENTION_DAYS",
