@@ -550,6 +550,13 @@ func main() {
 		ShutdownTimeout: cfg.ShutdownTimeout(),
 	})
 
+	// PAM C2: leader-gated privileged-session risk scorer. No-op when the gate
+	// is "off" (default); "observe" audits what would be suspended; "enforce"
+	// terminates risky sessions. Started after the Guacamole clients are wired
+	// so it can terminate live connections.
+	access.NewPAMSessionRiskScorer(accessService, 60*time.Second, cfg.PAMSessionRiskGate, cfg.PAMSessionRiskThreshold, log).
+		Start(orgctx.WithBypassRLS(context.Background()))
+
 	// Start server in goroutine
 	go func() {
 		log.Info("Starting Access Proxy service", zap.Int("port", port))

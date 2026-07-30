@@ -71,13 +71,14 @@ type SecretDetail struct {
 }
 
 type StoreInput struct {
-	Name        string
-	Type        string
-	Description string
-	Value       []byte
-	Metadata    map[string]interface{}
-	OwnerID     string
-	CreatedBy   string
+	Name          string
+	Type          string
+	Description   string
+	Value         []byte
+	Metadata      map[string]interface{}
+	OwnerID       string
+	CreatedBy     string
+	RequireStepUp bool
 }
 
 func (s *Service) orgID(ctx context.Context) (string, error) {
@@ -114,10 +115,10 @@ func (s *Service) Store(ctx context.Context, in StoreInput) (*SecretMeta, error)
 
 	var meta SecretMeta
 	err = tx.QueryRow(ctx, `
-		INSERT INTO vault_secrets (id, org_id, name, type, description, owner_id, metadata, current_version, created_by)
-		VALUES ($1,$2,$3,$4,$5,NULLIF($6,'')::uuid,$7,1,NULLIF($8,'')::uuid)
+		INSERT INTO vault_secrets (id, org_id, name, type, description, owner_id, metadata, current_version, created_by, require_step_up)
+		VALUES ($1,$2,$3,$4,$5,NULLIF($6,'')::uuid,$7,1,NULLIF($8,'')::uuid,$9)
 		RETURNING id, name, type, COALESCE(description,''), current_version, created_at, updated_at
-	`, secretID, orgID, in.Name, in.Type, in.Description, in.OwnerID, jsonOrEmpty(in.Metadata), in.CreatedBy).
+	`, secretID, orgID, in.Name, in.Type, in.Description, in.OwnerID, jsonOrEmpty(in.Metadata), in.CreatedBy, in.RequireStepUp).
 		Scan(&meta.ID, &meta.Name, &meta.Type, &meta.Description, &meta.CurrentVersion, &meta.CreatedAt, &meta.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -440,6 +441,24 @@ func (s *Service) Reveal(ctx context.Context, secretID, principalID string, user
 			return nil, ErrForbidden
 		}
 	}
+	// Step-up MFA gate (A4): a secret flagged require_step_up may only be
+	// revealed when the caller completed a step-up challenge within the recent
+	// window. Admins are NOT exempt — the whole point is a fresh second factor
+	// on the sensitive action, not a role. Enforced fail-closed: a query error
+	// denies the reveal.
+	stepUp, err := s.secretRequiresStepUp(ctx, secretID)
+	if err != nil {
+		return nil, err
+	}
+	if stepUp {
+		ok, err := s.hasRecentStepUp(ctx, principalID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, ErrStepUpRequired
+		}
+	}
 	version, pt, err := s.decryptCurrent(ctx, secretID)
 	if err != nil {
 		return nil, err
@@ -451,8 +470,51 @@ func (s *Service) Reveal(ctx context.Context, secretID, principalID string, user
 	return pt, nil
 }
 
+// stepUpRecentWindow bounds how fresh a completed step-up must be to authorize a
+// reveal. Short by design: a step-up authorizes the action about to happen, not
+// a standing elevation.
+const stepUpRecentWindow = 5 * time.Minute
+
+// secretRequiresStepUp reports whether the secret is flagged require_step_up.
+func (s *Service) secretRequiresStepUp(ctx context.Context, secretID string) (bool, error) {
+	var req bool
+	//orgscope:ignore vault_secrets is org-scoped by FORCE RLS on the pooled connection (same pattern as decryptCurrent's WHERE id=$1)
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(require_step_up, FALSE) FROM vault_secrets WHERE id = $1`, secretID).Scan(&req)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("vault: check require_step_up: %w", err)
+	}
+	return req, nil
+}
+
+// hasRecentStepUp reports whether the principal completed a step-up challenge
+// within stepUpRecentWindow. Reads the same stepup_challenges ledger the OAuth
+// step-up verify path writes (status='completed', completed_at set).
+func (s *Service) hasRecentStepUp(ctx context.Context, principalID string) (bool, error) {
+	var n int
+	//orgscope:ignore stepup_challenges is user-scoped (user_id); a completed step-up is the same regardless of org, and stepup rows carry org_id under RLS
+	err := s.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM stepup_challenges
+		 WHERE user_id = $1 AND status = 'completed'
+		   AND completed_at IS NOT NULL
+		   AND completed_at > NOW() - $2::interval`,
+		principalID, fmt.Sprintf("%d seconds", int(stepUpRecentWindow.Seconds()))).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("vault: check recent step-up: %w", err)
+	}
+	return n > 0, nil
+}
+
 // ErrForbidden is returned when a principal lacks the required grant.
 var ErrForbidden = errors.New("vault: principal lacks the required grant")
+
+// ErrStepUpRequired is returned when a require_step_up secret is revealed
+// without a recent completed step-up challenge. Handlers map it to 403 +
+// X-Step-Up-Required so the client can trigger the step-up flow and retry.
+var ErrStepUpRequired = errors.New("vault: step-up authentication required")
 
 func (s *Service) recordCheckout(ctx context.Context, secretID string, version int, principalID, mode, reason string, expires *time.Time) {
 	orgID, err := s.orgID(ctx)

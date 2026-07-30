@@ -56,6 +56,11 @@ type RemoteSupportHandler struct {
 	// The Guac retention sweeper uses it to guard against accidentally deleting
 	// the entire recordings root when recording_path is missing or equals the root.
 	guacRecordingsRoot string
+	// guacRecordingRing, when non-nil and enabled, seals (encrypts at rest)
+	// guacd's plaintext on-disk session recordings through the shared
+	// AES-256-GCM keyring after the session ends and its transcript is
+	// generated. See sealGuacRecordings + guac_recording_sealer.go.
+	guacRecordingRing *recordingKeyring
 	// guacamoleClient is used by the session-end detection sweep to query
 	// live active sessions from the Guacamole REST API. Optional — when nil
 	// the sweep is skipped (fail-safe: we never mark sessions ended if we
@@ -106,6 +111,15 @@ func (h *RemoteSupportHandler) SetDefaultRetentionDays(days int) {
 // os.RemoveAll, preventing accidental deletion of the entire recordings root.
 func (h *RemoteSupportHandler) SetGuacRecordingsRoot(root string) {
 	h.guacRecordingsRoot = root
+}
+
+// SetGuacRecordingRing wires the encryption keyring used to seal guacd's
+// on-disk recordings at rest (PAM A1). Optional — when nil or disabled, guac
+// recordings are left plaintext on disk (back-compat) and the sealer sweep is
+// inert. The same keyring/ framing as the WebRTC recording store is reused so
+// rotation and playback are consistent across both recording backends.
+func (h *RemoteSupportHandler) SetGuacRecordingRing(ring *recordingKeyring) {
+	h.guacRecordingRing = ring
 }
 
 // SetGuacamoleClient wires the Guacamole REST client used by the

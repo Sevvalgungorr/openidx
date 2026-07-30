@@ -26,12 +26,13 @@ func (s *Service) RegisterRoutes(g *gin.RouterGroup) {
 }
 
 type createReq struct {
-	Name        string                 `json:"name" binding:"required"`
-	Type        string                 `json:"type"`
-	Description string                 `json:"description"`
-	Value       string                 `json:"value" binding:"required"`
-	Metadata    map[string]interface{} `json:"metadata"`
-	OwnerID     string                 `json:"owner_id"`
+	Name          string                 `json:"name" binding:"required"`
+	Type          string                 `json:"type"`
+	Description   string                 `json:"description"`
+	Value         string                 `json:"value" binding:"required"`
+	Metadata      map[string]interface{} `json:"metadata"`
+	OwnerID       string                 `json:"owner_id"`
+	RequireStepUp bool                   `json:"require_step_up"`
 }
 
 func (s *Service) handleCreate(c *gin.Context) {
@@ -44,6 +45,7 @@ func (s *Service) handleCreate(c *gin.Context) {
 		Name: req.Name, Type: req.Type, Description: req.Description,
 		Value: []byte(req.Value), Metadata: req.Metadata,
 		OwnerID: req.OwnerID, CreatedBy: currentUserID(c),
+		RequireStepUp: req.RequireStepUp,
 	})
 	if err != nil {
 		apperrors.HandleErrorWithLogger(c, apperrors.Internal("create", err), s.logger)
@@ -114,6 +116,16 @@ func (s *Service) handleReveal(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, ErrForbidden) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "not permitted"})
+			return
+		}
+		if errors.Is(err, ErrStepUpRequired) {
+			// Tell the client to run the step-up flow and retry. The header lets
+			// the console distinguish this from an ordinary 403.
+			c.Header("X-Step-Up-Required", "true")
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":            "step-up authentication required",
+				"step_up_required": true,
+			})
 			return
 		}
 		if errors.Is(err, ErrNotFound) {

@@ -130,6 +130,10 @@ type Service struct {
 	agentHandler         *AgentAPIHandler
 	remoteSupportHandler *RemoteSupportHandler
 	vaultSvc             *vault.Service
+	// guacRecordingRing seals guacd recordings at rest (PAM A1). Nil when
+	// encryption is unconfigured — the recording download handler then streams
+	// plaintext unchanged. Same keyring the sealer worker uses.
+	guacRecordingRing *recordingKeyring
 }
 
 // handleAgentAPKDownload serves the hosted Android agent APK without auth so
@@ -605,6 +609,13 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		// Guacamole transcript download (Task 3 — PAM M4)
 		api.GET("/guacamole/sessions/:id/transcript", svc.requireAdminRole(), svc.handleGetGuacTranscript)
 
+		// Guacamole session recording download (PAM A1). Streams the raw guacd
+		// recording, transparently decrypting it when the file was sealed
+		// (encrypted at rest) by the recording sealer. Plaintext recordings
+		// stream through unchanged, so this works whether or not encryption is
+		// configured.
+		api.GET("/guacamole/sessions/:id/recording", svc.requireAdminRole(), svc.handleGetGuacRecording)
+
 		// Guacamole live monitor — read-only connection sharing (Task 4 — PAM M4)
 		api.POST("/guacamole/sessions/:id/share", svc.requireAdminRole(), svc.handleShareGuacSession)
 
@@ -643,6 +654,12 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.GET("/pam/checkout-authorizations", svc.requireAdminRole(), svc.handlePamListCheckoutAuthorizations)
 		api.POST("/pam/checkout-authorizations/:id/:decision", svc.requireAdminRole(), svc.handlePamDecideCheckoutAuthorization)
 		api.GET("/pam/checkouts/active", svc.requireAdminRole(), svc.handlePamListActiveCheckouts)
+
+		// Privilege graph (C1) — the unified-architecture moat. Admin-only: it
+		// exposes effective-access blast radius across IAM+IGA+PAM.
+		api.GET("/pam/privilege-graph/secret/:id", svc.requireAdminRole(), svc.handleSecretPrivilegeGraph)
+		api.GET("/pam/privilege-graph/entry/:id", svc.requireAdminRole(), svc.handleEntryPrivilegeGraph)
+		api.GET("/pam/privilege-graph/user/:id", svc.requireAdminRole(), svc.handleUserPrivilegeGraph)
 
 		// v109 SSH certificate authority + session brokering (`openidx connect`).
 		// CA init/rotate is admin-only; anyone authenticated may request a
@@ -855,6 +872,23 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 				remoteSupport.SetRecordingStore(store)
 				remoteSupport.SetDefaultRetentionDays(svc.config.RecordingsDefaultRetentionDays)
 				remoteSupport.SetGuacRecordingsRoot(svc.config.GuacamoleRecordingPath)
+				// PAM A1: seal guacd's plaintext on-disk recordings at rest via
+				// the same keyring. Built independently of the WebRTC store's
+				// ring above (which is out of scope here and absent under the S3
+				// backend) because guac recordings are always local files. Nil /
+				// disabled ring → sealer inert (recordings stay plaintext).
+				if guacRing, gErr := newRecordingKeyring(
+					svc.config.RecordingsEncryptionKeys,
+					svc.config.RecordingsEncryptionActiveKeyID,
+					svc.config.RecordingsEncryptionKey,
+				); gErr != nil {
+					svc.logger.Warn("guac recording keyring invalid; guac recordings NOT sealed — fix the key config",
+						zap.Error(gErr))
+				} else if guacRing.Enabled() {
+					remoteSupport.SetGuacRecordingRing(guacRing)
+					svc.guacRecordingRing = guacRing
+					svc.logger.Info("Guacamole recording encryption-at-rest enabled (PAM A1)")
+				}
 				// Sweep every hour. Cheap query — predicate index on
 				// recording_finalized_at WHERE recording_purged_at IS NULL.
 				remoteSupport.StartRecordingRetentionEnforcer(context.Background(), time.Hour)

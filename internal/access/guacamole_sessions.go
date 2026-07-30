@@ -7,6 +7,7 @@ package access
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -561,6 +562,84 @@ func (s *Service) handleGetGuacTranscript(c *gin.Context) {
 
 	c.Header("Content-Type", "text/plain; charset=utf-8")
 	c.File(transcriptPath)
+}
+
+// ---- handleGetGuacRecording ----
+// GET /api/v1/access/guacamole/sessions/:id/recording (admin)
+//
+// Streams the raw guacd session recording for the given guacamole_sessions row.
+// When the file was sealed (encrypted at rest) by the recording sealer
+// (recording_sealed_at IS NOT NULL), the bytes are transparently decrypted
+// through the keyring before streaming; a plaintext (unsealed) recording is
+// streamed through unchanged. Org-scoped via the same
+// guacamole_connections → proxy_routes JOIN as the transcript handler. Returns
+// 404 when the session has no recording or the file is absent from disk.
+// Audits guacamole.recording_downloaded.
+func (s *Service) handleGetGuacRecording(c *gin.Context) {
+	sessionID := c.Param("id")
+	ctx := c.Request.Context()
+
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "organization context required"})
+		return
+	}
+
+	var recordingPath string
+	var sealedAt *time.Time
+	err = s.db.Pool.QueryRow(ctx,
+		`SELECT gs.recording_path, gs.recording_sealed_at
+		   FROM guacamole_sessions gs
+		   JOIN guacamole_connections gc ON gc.id = gs.connection_id
+		   JOIN proxy_routes pr ON pr.id = gc.route_id
+		  WHERE gs.id = $1 AND pr.org_id = $2`,
+		sessionID, org.ID).Scan(&recordingPath, &sealedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+		s.logger.Error("handleGetGuacRecording: query failed",
+			zap.String("session_id", sessionID), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to look up session"})
+		return
+	}
+	if recordingPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no recording for this session"})
+		return
+	}
+	f, statErr := os.Open(recordingPath)
+	if statErr != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "recording file not found on disk"})
+		return
+	}
+	defer f.Close()
+
+	s.logAuditEvent(c, "guacamole.recording_downloaded", sessionID, "guacamole_session",
+		map[string]interface{}{
+			"session_id": sessionID,
+			"sealed":     sealedAt != nil,
+		})
+
+	filename := "openidx-guac-recording-" + sessionID
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Header("Content-Type", "application/octet-stream")
+
+	// Sealed recordings are decrypted on the fly; the derived per-recording key
+	// matches the sealer's (guacRecordingSessionKey of the same path). Plaintext
+	// recordings stream through unchanged.
+	if sealedAt != nil && s.guacRecordingRing != nil && s.guacRecordingRing.Enabled() {
+		reader := newDecryptingReader(f, s.guacRecordingRing, guacRecordingSessionKey(recordingPath))
+		if _, cErr := io.Copy(c.Writer, reader); cErr != nil {
+			s.logger.Warn("handleGetGuacRecording: decrypt copy failed",
+				zap.String("session_id", sessionID), zap.Error(cErr))
+		}
+		return
+	}
+	if _, cErr := io.Copy(c.Writer, f); cErr != nil {
+		s.logger.Warn("handleGetGuacRecording: copy failed",
+			zap.String("session_id", sessionID), zap.Error(cErr))
+	}
 }
 
 // ---- recordGuacSession ----

@@ -810,5 +810,19 @@ func allMigrations() []*Migration {
 			UpSQL:       auditWebhookSubscriptionsUp,
 			DownSQL:     auditWebhookSubscriptionsDown,
 		},
+		{
+			Version:     115,
+			Name:        "vault_require_step_up",
+			Description: "Add vault_secrets.require_step_up so PAM can enforce step-up MFA at credential reveal for high-value secrets. The step-up challenge/verify flow already records completed challenges, but nothing on the reveal path required one; a valid grant alone revealed the secret. internal/vault Reveal now refuses (403, X-Step-Up-Required) unless the caller completed a step-up within the recent window. Additive, defaults false.",
+			UpSQL:       vaultRequireStepUpUp,
+			DownSQL:     vaultRequireStepUpDown,
+		},
+		{
+			Version:     116,
+			Name:        "guac_recording_seal",
+			Description: "Add guacamole_sessions recording-seal metadata (recording_sealed_at, recording_sha256, recording_key_id) plus a partial index. guacd writes RDP/SSH recordings to disk as plaintext (openidx never sees those bytes inline, unlike the already-encrypted WebRTC remote-support path), so a filesystem compromise leaks a replayable recording. PAM A1 adds a leader-gated sealer that encrypts each finished recording through the existing AES-256-GCM keyring and stores an integrity hash. Additive/nullable — NULL sealed_at means still plaintext (sealer off or not yet run).",
+			UpSQL:       guacRecordingSealUp,
+			DownSQL:     guacRecordingSealDown,
+		},
 	}
 }

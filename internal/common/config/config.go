@@ -170,6 +170,20 @@ type Config struct {
 	//   "enforce" — actually add/remove `device-trusted` per posture.
 	PostureDeviceTrustGate string `mapstructure:"posture_device_trust_gate"`
 
+	// PAMSessionRiskGate drives the privileged-session risk scorer (PAM C2).
+	// A leader-gated worker scores every active Guacamole/PAM session on
+	// off-hours, duration, and the user's live risk score, and can auto-suspend
+	// (terminate) sessions above PAMSessionRiskThreshold. Same tri-state as the
+	// posture gate:
+	//   "off"     (default) — do not score; sessions run unchanged.
+	//   "observe" — score + log/audit what WOULD be suspended; never terminates.
+	//   "enforce" — actually terminate sessions scoring >= the threshold.
+	PAMSessionRiskGate string `mapstructure:"pam_session_risk_gate"`
+
+	// PAMSessionRiskThreshold is the score (0-100) at/above which a privileged
+	// session is auto-suspended in "enforce" mode. Default 80.
+	PAMSessionRiskThreshold int `mapstructure:"pam_session_risk_threshold"`
+
 	// DevAdminBypass, when true, treats every caller as admin across the
 	// access-service admin surface (the inline PAM admin check and the
 	// requireAdminRole gate) — a local-development convenience so a single
@@ -647,6 +661,8 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("dark_mode_tier1", false)
 	v.SetDefault("dark_mode_tier2", false)
 	v.SetDefault("posture_device_trust_gate", "off")
+	v.SetDefault("pam_session_risk_gate", "off")
+	v.SetDefault("pam_session_risk_threshold", 80)
 	v.SetDefault("dev_admin_bypass", false)
 	v.SetDefault("access_api_require_auth", false)
 	v.SetDefault("admin_api_require_auth", false)
@@ -868,6 +884,8 @@ func bindEnvVars(v *viper.Viper) {
 		"dark_mode_tier1":                     "DARK_MODE_TIER1",
 		"dark_mode_tier2":                     "DARK_MODE_TIER2",
 		"posture_device_trust_gate":           "POSTURE_DEVICE_TRUST_GATE",
+		"pam_session_risk_gate":               "PAM_SESSION_RISK_GATE",
+		"pam_session_risk_threshold":          "PAM_SESSION_RISK_THRESHOLD",
 		"dev_admin_bypass":                    "DEV_ADMIN_BYPASS",
 		"access_api_require_auth":             "ACCESS_API_REQUIRE_AUTH",
 		"admin_api_require_auth":              "ADMIN_API_REQUIRE_AUTH",

@@ -204,6 +204,7 @@ func (h *RemoteSupportHandler) StartRecordingRetentionEnforcer(ctx context.Conte
 		h.sweepExpiredGuacRecordings(ctx)
 		h.detectEndedGuacSessions(ctx)
 		h.generateGuacTranscripts(ctx)
+		h.sealGuacRecordings(ctx)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -215,6 +216,7 @@ func (h *RemoteSupportHandler) StartRecordingRetentionEnforcer(ctx context.Conte
 				h.sweepExpiredGuacRecordings(ctx)
 				h.detectEndedGuacSessions(ctx)
 				h.generateGuacTranscripts(ctx)
+				h.sealGuacRecordings(ctx)
 			}
 		}
 	}()
