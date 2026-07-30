@@ -1,9 +1,0 @@
-{
-  "results": [
-    {
-      "title": "Claude search",
-      "content": "```json\n{\n  \"results\": [\n    {\n      \"title\": \"SOC 2 Compliance Checklist: How to Pass the Audit\",\n      \"content\": \"SOC 2 compliance is essential for building trust and meeting security expectations for SaaS and cloud-based service providers. SOC 2 sets the standard for managing customer data based on five Trust Services Criteria (TSC): Security, Availability, Confidentiality, Processing Integrity, and Privacy. Unlike ISO 27001, SOC 2 is not one-size-fits-all - it provides a flexible framework for organizations to implement and prove the effectiveness of security controls relevant to their business model. SOC 2 compliance has become a minimum requirement for B2B SaaS providers, particularly those handling customer data.\",\n      \"url\": \"https://www.splunk.com/en_us/blog/learn/soc-2-compliance-checklist.html\"\n    },\n    {\n      \"title\": \"ISO/IEC 27001:2022 - Key Changes and Updates\",\n      \"content\": \"ISO/IEC 27001:2022 represents a major update with the title changed to include cyberse",
-      "url": ""
-    }
-  ]
-}

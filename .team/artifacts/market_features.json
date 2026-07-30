@@ -1,9 +1,0 @@
-{
-  "results": [
-    {
-      "title": "Claude search",
-      "content": "{\"results\": [{\"title\": \"Entra ID vs Okta vs SailPoint: Understanding Their Real Roles in Enterprise IAM\", \"content\": \"Modern IAM is a layered architecture. Active Directory remains the foundational identity store for on-prem workloads. Microsoft Entra ID operates as the control plane for Zero Trust enforcement with Conditional Access, Identity Protection, PIM, Passwordless (FIDO2/WHfB). Okta excels as SaaS federation and access broker with SSO & MFA, SaaS integrations, Lifecycle automation. SailPoint complements both by owning identity governance with Joiner/Mover/Leaver processes, Access requests & approvals, Role modeling, Compliance & audit readiness. Zero Trust enforcement lives in the cloud control plane (Entra ID), governance lives in IGA (SailPoint), and federation is optimized through tools like Okta.\", \"url\": \"https://www.linkedin.com/posts/ridleyzileli_iam-identitysecurity-zerotrust-activity-7413778132601765888-2ira\"}, {\"title\": \"Okta vs Microsoft Entra ID: Access Management ",
-      "url": ""
-    }
-  ]
-}

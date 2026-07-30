@@ -1,9 +1,0 @@
-{
-  "results": [
-    {
-      "title": "Claude search",
-      "content": "```json\n{\n  \"results\": [\n    {\n      \"title\": \"Okta vs Microsoft Entra ID: Access Management Comparison\",\n      \"content\": \"Comprehensive comparison of Okta and Microsoft Entra ID covering SSO, MFA, Conditional Access, Security & Protocols, Setup & Ease of Use, and Cost. Key insights: Okta excels in heterogeneous environments with flexible controls, while Entra ID shines in Microsoft ecosystems with bundled cost savings. Okta offers more detailed policy building but requires more configuration time. Entra ID easier to roll out with templates and real-time risk-based access controls.\",\n      \"url\": \"https://www.linkedin.com/posts/a-abdelghafar_okta-entraid-accessmanagement-activity-7310002254479089664-JbTU\"\n    },\n    {\n      \"title\": \"Microsoft Entra ID - Cloud IAM Platform\",\n      \"content\": \"Microsoft Entra is Microsoft's identity and access management brand providing authentication, MFA, passwordless login, and conditional access. Features include SSO, multicloud IAM, identity prote",
-      "url": ""
-    }
-  ]
-}

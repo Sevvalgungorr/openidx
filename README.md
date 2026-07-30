@@ -230,12 +230,6 @@ The core platform is built and self-hostable today. Shipped and working:
 - [x] OpenZiti ZTNA plane — dark services, BrowZer clientless access, endpoint agents
 - [x] Multi-tenancy (FORCE RLS), tamper-evident audit, backups, observability
 
-The forward-looking product strategy, competitive analysis, and prioritized
-gap register live in the docs:
-[`docs/ULTIMATE_PRODUCT_PLAN.md`](docs/ULTIMATE_PRODUCT_PLAN.md),
-[`docs/MARKET_REANALYSIS_AND_GTM_2026-07.md`](docs/MARKET_REANALYSIS_AND_GTM_2026-07.md),
-and [`docs/MARKET_GAP_ANALYSIS_2026.md`](docs/MARKET_GAP_ANALYSIS_2026.md).
-
 Near-term focus areas: outbound SCIM provisioning to SaaS apps, HR-driven
 joiner/mover/leaver, Ziti fabric-event ingestion into the audit pipeline,
 per-org overlay scoping for MSP/multi-tenant deployments, and the agent-identity
@@ -265,9 +259,8 @@ make build
 
 OpenIDX is licensed under the [Apache 2.0 License](LICENSE). The entire platform
 in this repository is Apache-2.0 today. A future commercial/open-core boundary
-(for MSP orchestration, compliance packs, and enterprise support) is described in
-the [go-to-market strategy](docs/MARKET_REANALYSIS_AND_GTM_2026-07.md); the
-Apache-2.0 core is committed to staying Apache-2.0.
+(for MSP orchestration, compliance packs, and enterprise support) may apply to
+new buyer-tier features; the Apache-2.0 core is committed to staying Apache-2.0.
 
 ## Support
 

@@ -1,9 +1,0 @@
-{
-  "results": [
-    {
-      "title": "Claude search",
-      "content": "{\n  \"results\": [\n    {\n      \"title\": \"Zero Trust Network Access (ZTNA) Overview\",\n      \"content\": \"Zero Trust Network Access (ZTNA) is an IT security solution that enables remote employees to securely access resources on an enterprise network. ZTNA relies on critical principles: constant authentication, limited permissions, continuous monitoring, and separation of network and application access. Unlike VPNs that grant broad network access, ZTNA provides application-level access only. Gartner predicts that by 2025, at least 70% of new remote access deployments will be based on ZTNA rather than traditional VPNs.\",\n      \"url\": \"https://www.forcepoint.com/zh-hans/cyber-edu/zero-trust-network-access-ztna\"\n    },\n    {\n      \"title\": \"2025 Identity and Access Management Market Analysis\",\n      \"content\": \"The IAM market is projected to grow from $25.96 billion in 2025 to $42.61 billion by 2030 at a CAGR of 10.4%. Key drivers include adoption of zero-trust architectures, AI-powered access ",
-      "url": ""
-    }
-  ]
-}

@@ -71,3 +71,25 @@ secrets.yaml
 # Archives / data exports (never committed — prevents stray *.zip like
 # tdv.org_*.zip from being swept in by `git add -A`)
 *.zip
+
+# --- Local-only: AI-agent tooling, market research, and personal docs ---
+# These are intentionally kept out of the public repository but remain on
+# local disk. Do not commit.
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+.claude/
+claude-host-server.sh
+run-claude-host.sh
+run-claude-host-v2.sh
+.team/
+docs/superpowers/
+docs/e-ihracat-basvuru/
+docs/MARKET_GAP_ANALYSIS_2026.md
+docs/MARKET_GAP_PROGRESS_2026-07.md
+docs/MARKET_REANALYSIS_AND_GTM_2026-07.md
+docs/IAM_COMPETITOR_ANALYSIS.md
+docs/ULTIMATE_PRODUCT_PLAN.md
+docs/SESSION_HANDOFF_2026-07-22.md
+mobile/HANDOFF.md
