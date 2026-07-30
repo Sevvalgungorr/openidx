@@ -831,5 +831,12 @@ func allMigrations() []*Migration {
 			UpSQL:       moderatedSessionsUp,
 			DownSQL:     moderatedSessionsDown,
 		},
+		{
+			Version:     118,
+			Name:        "mcp_tool_approval",
+			Description: "Add AI-agent tool-call approval (PAM C5): mcp_tool_policies.require_approval flag + mcp_tool_approvals HITL ledger (pending→approved/denied/expired/consumed). The MCP gateway pauses a require_approval tool invocation until a human approves it, binding the approval to the exact call via a sha256 request hash. New table is org-scoped (FORCE RLS, bypass-aware policy) with a hot-path partial index on pending rows. Additive; require_approval defaults false so existing allowlist entries invoke immediately as before.",
+			UpSQL:       mcpToolApprovalUp,
+			DownSQL:     mcpToolApprovalDown,
+		},
 	}
 }

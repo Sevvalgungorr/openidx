@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openidx/openidx/internal/common/middleware"
 	"github.com/openidx/openidx/internal/common/orgctx"
+	"go.uber.org/zap"
 )
 
 // MCP / AI-agent gateway (Wave D1). An AI agent authenticates with an
@@ -205,6 +206,24 @@ func (s *Service) handleMCPInvoke(c *gin.Context) {
 
 	// 4. Forward to the MCP server.
 	body, _ := io.ReadAll(io.LimitReader(c.Request.Body, 8<<20))
+
+	// 4a. HITL approval gate (PAM C5): sensitive tools wait for a human. When
+	// approval is required and not yet granted, gateToolCall writes the 202
+	// response and we stop here; the agent retries the identical call once
+	// approved.
+	proceed, gerr := s.gateToolCall(c.Request.Context(), c, mcpApprovalContext{
+		OrgID: orgID, ServerID: server.ID, Server: server.Name,
+		Tool: tool, ClientID: clientID, Subject: subject,
+	}, roles, body)
+	if gerr != nil {
+		s.logger.Error("handleMCPInvoke: approval gate failed", zap.Error(gerr))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "approval gate error"})
+		return
+	}
+	if !proceed {
+		return
+	}
+
 	status, respBody, ferr := s.forwardMCP(c.Request.Context(), server, tool, body)
 	if ferr != nil {
 		s.auditMCP(c.Request.Context(), clientID, subject, server.Name, tool, "error")

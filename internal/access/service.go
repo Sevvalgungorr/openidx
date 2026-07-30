@@ -496,6 +496,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.POST("/mcp/servers", adminOnly, svc.handleCreateMCPServer)
 		api.DELETE("/mcp/servers/:id", adminOnly, svc.handleDeleteMCPServer)
 		api.POST("/mcp/servers/:id/policies", adminOnly, svc.handleAddMCPToolPolicy)
+		// PAM C5: HITL approval queue for sensitive AI-agent tool calls. Static
+		// path segment 'approvals' is registered before the ':server' wildcard.
+		api.GET("/mcp/approvals/pending", adminOnly, svc.handleListPendingToolApprovals)
+		api.POST("/mcp/approvals/:id/:decision", adminOnly, svc.handleDecideToolApproval)
 		// Agent-facing gateway: POST /api/v1/access/mcp/:server/tools/:tool.
 		api.POST("/mcp/:server/tools/:tool", svc.handleMCPInvoke)
 
