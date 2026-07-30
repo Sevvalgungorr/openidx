@@ -3,6 +3,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useNtfyPush } from '@/features/notifications/push';
+
 // Grace period: don't re-prompt for a brief app-switch (notification shade, a
 // quick jump to another app to copy a code, an OAuth round-trip). Banking apps
 // and 1Password all use an idle window rather than locking on every blur. Should
@@ -84,6 +86,10 @@ function useAppLock() {
 
 export default function AppLayout() {
   const { locked, unlock, checking } = useAppLock();
+  // Real-time push over the self-hosted ntfy server (no FCM/APNs). Mounted in
+  // the authenticated group so it only runs with a session; no-ops when the
+  // backend has no ntfy configured.
+  useNtfyPush();
 
   if (locked) {
     return (

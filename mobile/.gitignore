@@ -41,3 +41,7 @@ example
 # generated native folders
 /ios
 /android
+
+# local `expo lint` bootstrap artifact — not part of the repo (its deps are
+# deliberately not in package.json; see PR #611 Trivy note)
+eslint.config.js
