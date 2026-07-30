@@ -61,6 +61,12 @@ interface ZitiIdentity {
   created_at: string
 }
 
+interface ZitiEndpointStatus {
+  url: string
+  active: boolean
+  healthy: boolean
+}
+
 interface ZitiStatus {
   enabled: boolean
   sdk_ready: boolean
@@ -70,6 +76,9 @@ interface ZitiStatus {
   console_url?: string
   services_count: number
   identities_count: number
+  /** true when ZITI_CTRL_URLS configures >1 management endpoint (HA cluster) */
+  ha?: boolean
+  controller_endpoints?: ZitiEndpointStatus[]
 }
 
 interface ZitiSyncStatus {
@@ -569,6 +578,28 @@ function ConnectionTab() {
           </div>
           {ctrlVer && (
             <p className="text-xs text-muted-foreground">Controller version: {ctrlVer}</p>
+          )}
+          {status?.ha && status.controller_endpoints && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                HA controller cluster
+                <Badge className="bg-blue-100 text-blue-700">
+                  {status.controller_endpoints.filter((e) => e.healthy).length}/{status.controller_endpoints.length} healthy
+                </Badge>
+              </div>
+              <div className="space-y-1">
+                {status.controller_endpoints.map((ep) => (
+                  <div key={ep.url} className="flex items-center gap-2 text-xs font-mono">
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${ep.healthy ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="truncate">{ep.url}</span>
+                    {ep.active && <Badge className="bg-green-100 text-green-700 ml-auto shrink-0">active</Badge>}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Management calls fail over automatically between cluster members (set via ZITI_CTRL_URLS).
+              </p>
+            </div>
           )}
           <div className="flex flex-wrap gap-2 pt-2">
             <Button variant="outline" disabled={test.isPending} onClick={() => test.mutate(form)}>Test</Button>

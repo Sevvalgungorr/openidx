@@ -675,6 +675,15 @@ services:
     ports:
       - "3022:3022"
       - "3023:3023"
+    # Same IPC-based agent probe as the controller: proves the router process
+    # is up and responsive (it previously ran with no healthcheck at all, so a
+    # wedged router looked "Up" while the data plane was dead).
+    healthcheck:
+      test: ["CMD", "ziti", "agent", "stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     depends_on:
       ziti-controller:
         condition: service_healthy

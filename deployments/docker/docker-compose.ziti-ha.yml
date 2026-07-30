@@ -1,0 +1,101 @@
+# Ziti data-plane redundancy overlay — adds a second edge router.
+#
+# The bootstrap edge-router policies are role-based on #all, so a new router
+# joins the mesh with zero policy changes: every service is immediately
+# reachable through EITHER router, and the fabric routes around a dead one.
+# With this overlay active, restarting/patching a router no longer interrupts
+# the overlay (existing sessions re-path through the surviving router).
+#
+# Usage (on top of the base stack):
+#   docker compose -f docker-compose.yml -f docker-compose.ziti-ha.yml up -d \
+#     ziti-controller ziti-router-init ziti-router ziti-router-2-init ziti-router-2
+# or simply:
+#   make ziti-quickstart HA=1
+#
+# Controller HA (Raft quorum) is a Kubernetes/Helm concern — see
+# docs/ZITI_HA_DEPLOYMENT.md. For compose installs, controller restarts are
+# tolerated by design: the data plane (routers) keeps forwarding established
+# sessions while the controller is down; this overlay removes the router as a
+# single point of failure.
+
+services:
+  ziti-router-2-init:
+    image: openziti/ziti-controller:${ZITI_VERSION:-1.6.12}
+    container_name: openidx-ziti-router-2-init
+    user: "0:0"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        TOKEN_FILE=/ziti-shared/router-2.jwt
+        if [ -f "$$TOKEN_FILE" ] && [ -s "$$TOKEN_FILE" ]; then
+          echo "Router-2 JWT already exists, skipping creation"
+          exit 0
+        fi
+        echo "Logging in to Ziti controller..."
+        ziti edge login ziti-controller.localtest.me:1280 -u admin -p "$${ZITI_PWD}" --yes
+        echo "Creating second edge router..."
+        ziti edge create edge-router openidx-router-2 --jwt-output-file "$$TOKEN_FILE" 2>/dev/null || \
+          echo "Router may already exist, trying to fetch JWT..."
+        if [ ! -f "$$TOKEN_FILE" ] || [ ! -s "$$TOKEN_FILE" ]; then
+          ROUTER_ID=$$(ziti edge list edge-routers 'name="openidx-router-2"' -j 2>/dev/null | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          if [ -n "$$ROUTER_ID" ]; then
+            echo "Re-creating router to get fresh JWT..."
+            ziti edge delete edge-router "$$ROUTER_ID" 2>/dev/null || true
+            ziti edge create edge-router openidx-router-2 --jwt-output-file "$$TOKEN_FILE"
+          fi
+        fi
+        if [ -f "$$TOKEN_FILE" ] && [ -s "$$TOKEN_FILE" ]; then
+          chmod 644 "$$TOKEN_FILE"
+          echo "Router-2 JWT saved to $$TOKEN_FILE"
+        else
+          echo "ERROR: Could not obtain router-2 JWT"
+          exit 1
+        fi
+    environment:
+      - ZITI_PWD=${ZITI_PWD:?ZITI_PWD required - run scripts/generate-secrets.sh}
+    volumes:
+      - ziti_router_shared:/ziti-shared
+    depends_on:
+      ziti-controller:
+        condition: service_healthy
+    networks:
+      - openidx-network
+
+  ziti-router-2:
+    image: openziti/ziti-router:${ZITI_VERSION:-1.6.12}
+    container_name: openidx-ziti-router-2
+    restart: unless-stopped
+    environment:
+      - ZITI_BOOTSTRAP=true
+      - ZITI_BOOTSTRAP_ENROLLMENT=true
+      - ZITI_CTRL_ADVERTISED_ADDRESS=ziti-controller.localtest.me
+      - ZITI_CTRL_ADVERTISED_PORT=1280
+      - ZITI_ROUTER_ADVERTISED_ADDRESS=ziti-router-2
+      - ZITI_ROUTER_PORT=3022
+      - ZITI_ENROLL_TOKEN=/ziti-shared/router-2.jwt
+    entrypoint: ["/bin/bash", "/openidx/entrypoint.bash"]
+    volumes:
+      - ./ziti-router/entrypoint.bash:/openidx/entrypoint.bash:ro
+      - ./ziti-router/config-2.yml:/etc/ziti/router-config.yml:ro
+      - ziti_router_2_data:/ziti-router
+      - ziti_router_shared:/ziti-shared:ro
+    ports:
+      - "3024:3022"
+    healthcheck:
+      test: ["CMD", "ziti", "agent", "stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      ziti-controller:
+        condition: service_healthy
+      ziti-router-2-init:
+        condition: service_completed_successfully
+    networks:
+      - openidx-network
+
+volumes:
+  ziti_router_2_data:

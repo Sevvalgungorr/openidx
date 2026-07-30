@@ -61,6 +61,12 @@ func (s *Service) handleZitiStatus(c *gin.Context) {
 		status["controller_version"] = version
 	}
 
+	// Management endpoint pool (HA failover state). ha=true when more than one
+	// controller endpoint is configured via ZITI_CTRL_URLS.
+	endpoints := s.ziti().ControllerEndpoints()
+	status["controller_endpoints"] = endpoints
+	status["ha"] = len(endpoints) > 1
+
 	org, oerr := orgctx.From(c.Request.Context())
 	if oerr != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "organization context required"})

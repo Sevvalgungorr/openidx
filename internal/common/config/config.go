@@ -208,6 +208,12 @@ type Config struct {
 	ZitiEnabled           bool   `mapstructure:"ziti_enabled"`
 	ZitiReconcilerEnabled bool   `mapstructure:"ziti_reconciler"`
 	ZitiCtrlURL           string `mapstructure:"ziti_ctrl_url"`
+	// ZitiCtrlURLs optionally lists ADDITIONAL controller management endpoints
+	// (comma-separated, same PKI/credentials — i.e. members of one HA cluster).
+	// When set, management API calls fail over between ZitiCtrlURL and these
+	// endpoints: an endpoint that errors is put in cooldown and the next healthy
+	// one takes over. Empty = single-controller (ZitiCtrlURL only).
+	ZitiCtrlURLs string `mapstructure:"ziti_ctrl_urls"`
 	// ZitiCtrlPublicAddress is the controller address that ENROLLING CLIENTS must
 	// reach (host:port), as opposed to ZitiCtrlURL which is how this backend
 	// reaches the controller internally. Enrollment JWTs carry the controller's
@@ -678,6 +684,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	// legacy imperative hosting path.
 	v.SetDefault("ziti_reconciler", true)
 	v.SetDefault("ziti_ctrl_url", "https://ziti-controller:1280")
+	v.SetDefault("ziti_ctrl_urls", "")
 	v.SetDefault("ziti_ctrl_public_address", "")
 	v.SetDefault("ziti_admin_user", "admin")
 	v.SetDefault("ziti_admin_password", defaultZitiAdminPassword)
@@ -856,6 +863,7 @@ func bindEnvVars(v *viper.Viper) {
 		"ziti_enabled":                                    "ZITI_ENABLED",
 		"ziti_reconciler":                                 "ZITI_RECONCILER",
 		"ziti_ctrl_url":                                   "ZITI_CTRL_URL",
+		"ziti_ctrl_urls":                                  "ZITI_CTRL_URLS",
 		"ziti_ctrl_public_address":                        "ZITI_CTRL_PUBLIC_ADDRESS",
 		"ziti_admin_user":                                 "ZITI_ADMIN_USER",
 		"ziti_admin_password":                             "ZITI_ADMIN_PASSWORD",

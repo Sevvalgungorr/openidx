@@ -635,55 +635,60 @@ services:
 
   #---------------------------------------------------------------------------
   # BrowZer and Ziti (Optional - enable with --profile ziti)
+  #
+  # Long-running Ziti data/control-plane services restart automatically in
+  # production — the overlay carries live network sessions, so a crashed
+  # controller/router must come back without operator action. Only the
+  # one-shot init jobs (cert/enrollment bootstrap) stay restart: "no".
   #---------------------------------------------------------------------------
 
   browzer-cert-init:
-    restart: "no"
+    restart: "no" # one-shot init job
     profiles:
       - ziti
 
   browzer-bootstrapper:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   browzer-router:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   ziti-controller:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   ziti-router-init:
-    restart: "no"
+    restart: "no" # one-shot init job
     profiles:
       - ziti
 
   ziti-router:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   tls-proxy:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   guacd:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   guacamole:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 
   guacamole-zbr-proxy:
-    restart: "no"
+    restart: unless-stopped
     profiles:
       - ziti
 

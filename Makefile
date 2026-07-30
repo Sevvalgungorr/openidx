@@ -231,11 +231,12 @@ dev-clean:
 	@echo "🧹 Cleaning development environment..."
 	$(DOCKER_COMPOSE) -f deployments/docker/docker-compose.yml down -v --remove-orphans
 
+# HA=1 adds a second edge router (redundant data plane): make ziti-quickstart HA=1
 ziti-quickstart:
-	@./scripts/ziti-quickstart.sh
+	@HA=$(HA) ./scripts/ziti-quickstart.sh
 
 ziti-down:
-	@./scripts/ziti-quickstart.sh down
+	@HA=$(HA) ./scripts/ziti-quickstart.sh down
 
 #---------------------------------------------------------------------------
 # Profiling

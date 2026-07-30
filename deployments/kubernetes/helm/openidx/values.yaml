@@ -354,8 +354,14 @@ pamBroker:
 zitiFabric:
   enabled: false
   controller:
-    image: openziti/ziti-controller:latest
+    # Pinned to the version the embedded sdk-golang is verified against — the
+    # same discipline as the compose stack (docs/OPENIDX_ZITI_ARCHITECTURE.md
+    # §9 on version skew). Bump together with the SDK, never to :latest.
+    image: openziti/ziti-controller:1.6.12
     # Set to 3 (or any odd number) for a Raft HA quorum. 1 = single controller.
+    # With >1 replicas the chart also adds a PDB (maxUnavailable: 1) and soft
+    # node anti-affinity; point the app at every member for management-API
+    # failover: ZITI_CTRL_URLS=https://<pod-0-dns>:1280,https://<pod-1-dns>:1280,...
     replicas: 1
     advertisedAddress: ziti-controller
     port: 1280
@@ -374,7 +380,11 @@ zitiFabric:
         cpu: "1"
         memory: 1Gi
   router:
-    image: openziti/ziti-router:latest
+    # Pinned with the controller (see note above).
+    image: openziti/ziti-router:1.6.12
+    # 2+ gives a redundant data plane (PDB minAvailable:1 + anti-affinity are
+    # added automatically); the #all edge-router policies mean new routers
+    # serve traffic with zero policy changes.
     replicas: 1
     advertisedAddress: ziti-router
     port: 3022

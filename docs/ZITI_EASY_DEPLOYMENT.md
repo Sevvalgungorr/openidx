@@ -11,7 +11,11 @@
 
 ```bash
 make ziti-quickstart        # controller + ZAC console + edge router
+make ziti-quickstart HA=1   # …plus a second router (redundant data plane)
 ```
+
+> For full redundancy (controller quorum, failover, runbook) see
+> [ZITI_HA_DEPLOYMENT.md](./ZITI_HA_DEPLOYMENT.md).
 
 This starts the Ziti controller (with the **bundled ZAC admin console**) and a
 self-enrolling WSS-capable edge router from the dev compose stack, waits for

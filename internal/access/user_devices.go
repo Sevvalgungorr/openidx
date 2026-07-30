@@ -325,6 +325,16 @@ func (s *Service) handleRevokeUserDevice(c *gin.Context) {
 
 	res := s.executeDeviceRevoke(ctx, org.ID, agentID, zitiIdentityID, knownDeviceID)
 
+	// Recompute the user's #device-trusted overlay attribute right away: if
+	// this was their last trusted device, dial policies keyed on device trust
+	// must stop matching now, not on the next 5-minute staleness pass.
+	if zm := s.ziti(); zm != nil {
+		if err := zm.SyncDeviceTrustForUser(ctx, userID); err != nil {
+			s.logger.Warn("device revoke: device-trust attribute resync failed",
+				zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
+		}
+	}
+
 	actorID, _ := c.Get("user_id")
 	actorIDStr, _ := actorID.(string)
 	if s.auditService != nil {

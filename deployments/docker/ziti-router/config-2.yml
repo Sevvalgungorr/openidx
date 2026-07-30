@@ -1,0 +1,69 @@
+# OpenZiti edge router config for the SECOND router in the HA overlay
+# (docker-compose.ziti-ha.yml). Same shape as config.yml with three
+# deliberate differences:
+#   - advertises ziti-router-2 (its own service name)
+#   - no WSS listener / alt_server_certs: BrowZer needs exactly one
+#     browser-facing WSS entry point and that stays on the primary router;
+#     this router provides data-plane redundancy for SDK/tunnel traffic
+#   - CSR SANs cover only this router's names
+#
+# Like config.yml, it is mounted read-only and copied into the router's data
+# volume on first start; the volume copy is then authoritative.
+v: 3
+
+identity:
+  cert:        "/ziti-router/router.cert"
+  server_cert: "/ziti-router/router.server.chain.cert"
+  key:         "/ziti-router/router.key"
+  ca:          "/ziti-router/router.cas"
+
+ctrl:
+  endpoint:      tls:ziti-controller.localtest.me:1280
+  endpointsFile: /ziti-router/endpoints.yml
+
+link:
+  dialers:
+    - binding: transport
+  listeners:
+    - binding:   transport
+      bind:      tls:0.0.0.0:3022
+      advertise: tls:ziti-router-2:3022
+      options:
+        outQueueSize: 4
+
+listeners:
+  - binding: edge
+    address: tls:0.0.0.0:3022
+    options:
+      advertise: ziti-router-2:3022
+      connectTimeoutMs: 5000
+      getSessionTimeout: 60
+  - binding: tunnel
+    options:
+      mode: host
+
+edge:
+  csr:
+    country: US
+    province: NC
+    locality: Charlotte
+    organization: NetFoundry
+    organizationalUnit: Ziti
+    sans:
+      dns:
+        - localhost
+        - ziti-router-2
+      ip:
+        - "127.0.0.1"
+        - "::1"
+
+forwarder:
+  latencyProbeInterval: 0
+  xgressDialQueueLength: 1000
+  xgressDialWorkerCount: 128
+  linkDialQueueLength: 1000
+  linkDialWorkerCount: 32
+
+metrics:
+  reportInterval: 1m
+  messageQueueSize: 10

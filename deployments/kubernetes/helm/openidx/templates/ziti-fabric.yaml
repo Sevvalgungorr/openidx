@@ -43,6 +43,20 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if gt (int (.Values.zitiFabric.controller.replicas | default 1)) 1 }}
+      # Spread quorum members across nodes so one node loss can't take the
+      # Raft majority down (soft: still schedules on small clusters).
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "openidx.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: ziti-controller
+      {{- end }}
       containers:
         - name: ziti-controller
           image: {{ .Values.zitiFabric.controller.image | quote }}
@@ -73,6 +87,22 @@ spec:
           ports:
             - name: client
               containerPort: {{ .Values.zitiFabric.controller.port | default 1280 }}
+          # Same IPC agent probe the compose stack uses: proves the controller
+          # process is responsive, not just that the port accepts TCP.
+          readinessProbe:
+            exec:
+              command: ["ziti", "agent", "stats"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["ziti", "agent", "stats"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: ctrl-data
               mountPath: /persistent
@@ -137,6 +167,20 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if gt (int (.Values.zitiFabric.router.replicas | default 1)) 1 }}
+      # Spread routers across nodes — they ARE the data plane; two on one node
+      # is not redundancy (soft: still schedules on small clusters).
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "openidx.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: ziti-router
+      {{- end }}
       containers:
         - name: ziti-router
           image: {{ .Values.zitiFabric.router.image | quote }}
@@ -158,6 +202,20 @@ spec:
             - name: browzer
               containerPort: {{ .Values.zitiFabric.router.browzer.port | default 3023 }}
             {{- end }}
+          readinessProbe:
+            exec:
+              command: ["ziti", "agent", "stats"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["ziti", "agent", "stats"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.zitiFabric.router.resources | nindent 12 }}
 ---
@@ -183,4 +241,40 @@ spec:
       port: {{ .Values.zitiFabric.router.browzer.port | default 3023 }}
       targetPort: browzer
     {{- end }}
+{{- if gt (int (.Values.zitiFabric.controller.replicas | default 1)) 1 }}
+---
+# ---- Controller PDB: never let a voluntary drain break the Raft quorum ----
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "openidx.fullname" . }}-ziti-controller
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-controller
+spec:
+  # Quorum of N is floor(N/2)+1 — with the odd replica counts the values file
+  # recommends, allowing exactly 1 voluntary disruption preserves the majority.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "openidx.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ziti-controller
+{{- end }}
+{{- if gt (int (.Values.zitiFabric.router.replicas | default 1)) 1 }}
+---
+# ---- Router PDB: keep at least one data-plane router through node drains ----
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "openidx.fullname" . }}-ziti-router
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ziti-router
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "openidx.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ziti-router
+{{- end }}
 {{- end }}

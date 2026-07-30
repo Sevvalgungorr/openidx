@@ -408,6 +408,18 @@ func (s *Service) trustDevice(ctx context.Context, userID, fingerprint string) {
 		"UPDATE known_devices SET trusted = true WHERE user_id = $1 AND fingerprint = $2 AND org_id = $3",
 		userID, fingerprint, org.ID,
 	)
+	// Nudge the Ziti mirror: identity-service has no controller access, but
+	// marking the user's Ziti identity attributes stale makes the
+	// access-service sync poller (30s tick; IS NULL qualifies immediately)
+	// recompute #device-trusted on its next pass — instead of waiting for the
+	// 5-minute staleness window or a console-driven manual sync. Same shared
+	// Postgres, no cross-service call (IAM_PAM_ZITI_INTERRELATION: "one
+	// store, JOINs not integrations").
+	if _, err := s.db.Pool.Exec(ctx,
+		"UPDATE ziti_identities SET group_attrs_synced_at = NULL WHERE user_id = $1 AND org_id = $2",
+		userID, org.ID); err != nil {
+		s.logger.Warn("device trust: failed to mark ziti identity attrs stale", zap.Error(err))
+	}
 }
 
 func (s *Service) isKnownIP(ctx context.Context, userID, ipAddress string) bool {
