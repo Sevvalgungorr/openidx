@@ -246,6 +246,135 @@ func (i *intune) listWithToken(ctx context.Context, tok string) ([]Device, error
 }
 
 // ---------------------------------------------------------------------------
+// Wazuh (open-source EDR/XDR)
+//
+// Endpoints run the Wazuh agent (Linux/Windows/macOS); agents enroll against a
+// self-hosted Wazuh manager, and this connector reads agent health from the
+// manager's REST API (default port 55000). Auth is basic api_user:api_token →
+// short-lived JWT (POST /security/user/authenticate), then GET /agents pages
+// through the fleet.
+//
+// Compliance mapping: an agent that is actively reporting ("active") passes;
+// "disconnected" fails at high risk (the endpoint dropped off EDR coverage —
+// exactly what a zero-trust posture check must catch); "never_connected" /
+// "pending" fail as unknown (enrolled but not yet protected). Wazuh agents
+// have no serial/email, so the natural match strategy is hostname (the agent
+// name defaults to the endpoint's hostname).
+//
+// TLS: the manager API must present a certificate the access-service trusts —
+// mount the Wazuh CA into the container trust store; verification is never
+// skipped (consistent with the platform's production TLS posture).
+// ---------------------------------------------------------------------------
+
+type wazuh struct {
+	cfg    Config
+	base   string
+	client *http.Client
+}
+
+func newWazuh(cfg Config) *wazuh {
+	return &wazuh{cfg: cfg, base: strings.TrimRight(cfg.BaseURL, "/"), client: defaultClient()}
+}
+
+func (w *wazuh) Provider() string { return ProviderWazuh }
+
+// token exchanges basic credentials for a Wazuh API JWT.
+func (w *wazuh) token(ctx context.Context) (string, error) {
+	if w.base == "" {
+		return "", fmt.Errorf("wazuh base_url is required (e.g. https://wazuh-manager:55000)")
+	}
+	basic := base64.StdEncoding.EncodeToString([]byte(w.cfg.APIUser + ":" + w.cfg.APIToken))
+	h := http.Header{"Authorization": {"Basic " + basic}, "Accept": {"application/json"}}
+	var out struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := httpDo(ctx, w.client, http.MethodPost, w.base+"/security/user/authenticate", h, nil, &out); err != nil {
+		return "", fmt.Errorf("wazuh token: %w", err)
+	}
+	if out.Data.Token == "" {
+		return "", fmt.Errorf("wazuh token: empty token")
+	}
+	return out.Data.Token, nil
+}
+
+func (w *wazuh) TestConnection(ctx context.Context) error {
+	_, err := w.token(ctx)
+	return err
+}
+
+func (w *wazuh) ListDevices(ctx context.Context) ([]Device, error) {
+	tok, err := w.token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	auth := http.Header{"Authorization": {"Bearer " + tok}, "Accept": {"application/json"}}
+
+	const pageSize = 500
+	var devices []Device
+	offset := 0
+	for {
+		endpoint := fmt.Sprintf(
+			"%s/agents?offset=%d&limit=%d&select=id,name,ip,status,lastKeepAlive,os.name,os.version",
+			w.base, offset, pageSize)
+		var resp struct {
+			Data struct {
+				AffectedItems []struct {
+					ID            string `json:"id"`
+					Name          string `json:"name"`
+					IP            string `json:"ip"`
+					Status        string `json:"status"`
+					LastKeepAlive string `json:"lastKeepAlive"`
+					OS            struct {
+						Name    string `json:"name"`
+						Version string `json:"version"`
+					} `json:"os"`
+				} `json:"affected_items"`
+				TotalAffectedItems int `json:"total_affected_items"`
+			} `json:"data"`
+		}
+		if err := httpDo(ctx, w.client, http.MethodGet, endpoint, auth, nil, &resp); err != nil {
+			return nil, err
+		}
+		for _, a := range resp.Data.AffectedItems {
+			// Agent 000 is the Wazuh manager itself, not an endpoint.
+			if a.ID == "000" {
+				continue
+			}
+			var compliant bool
+			var risk string
+			switch strings.ToLower(a.Status) {
+			case "active":
+				compliant, risk = true, RiskLow
+			case "disconnected":
+				// EDR coverage dropped — fail hard so continuous-verify severs.
+				compliant, risk = false, RiskHigh
+			default: // never_connected, pending
+				compliant, risk = false, RiskUnknown
+			}
+			devices = append(devices, Device{
+				ExternalID: a.ID,
+				Hostname:   a.Name, // agent name defaults to the endpoint hostname
+				Compliant:  compliant,
+				Risk:       risk,
+				LastSeen:   a.LastKeepAlive,
+				Raw: map[string]interface{}{
+					"status": a.Status,
+					"ip":     a.IP,
+					"os":     strings.TrimSpace(a.OS.Name + " " + a.OS.Version),
+				},
+			})
+		}
+		offset += len(resp.Data.AffectedItems)
+		if len(resp.Data.AffectedItems) < pageSize || offset >= resp.Data.TotalAffectedItems {
+			break
+		}
+	}
+	return devices, nil
+}
+
+// ---------------------------------------------------------------------------
 // Jamf Pro (macOS/iOS MDM)
 // ---------------------------------------------------------------------------
 

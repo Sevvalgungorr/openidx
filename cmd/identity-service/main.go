@@ -260,6 +260,9 @@ func main() {
 
 	// Initialize notification service
 	notifService := notifications.NewService(db, log)
+	notifService.SetNtfy(notifications.NtfyConfig{
+		BaseURL: cfg.NtfyBaseURL, Token: cfg.NtfyToken, TopicSecret: cfg.NtfyTopicSecret,
+	})
 
 	// Register routes
 	identity.RegisterRoutes(router, identityService)

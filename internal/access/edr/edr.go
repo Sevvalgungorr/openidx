@@ -1,6 +1,7 @@
 // Package edr provides connectors that pull device-compliance/posture signals
-// from external EDR/MDM systems (CrowdStrike Falcon, Microsoft Intune, Jamf) so
-// OpenIDX can feed them into its Ziti-bound posture pipeline. A non-compliant or
+// from external EDR/MDM systems (CrowdStrike Falcon, Microsoft Intune, Jamf,
+// and the open-source Wazuh) so OpenIDX can feed them into its Ziti-bound
+// posture pipeline. A non-compliant or
 // high-risk device becomes a failing posture result, which the proxy /
 // continuous-verify enforcement uses to revoke the session and sever the
 // overlay circuit.
@@ -20,6 +21,11 @@ const (
 	ProviderCrowdStrike = "crowdstrike"
 	ProviderIntune      = "intune"
 	ProviderJamf        = "jamf"
+	// ProviderWazuh is the open-source EDR/XDR (self-hosted Wazuh manager).
+	// Endpoints run the Wazuh agent; OpenIDX pulls agent health from the
+	// manager's REST API — a fully open-source posture source, no commercial
+	// license required.
+	ProviderWazuh = "wazuh"
 )
 
 // Risk levels, normalized across providers.
@@ -93,6 +99,8 @@ func New(cfg Config) (Connector, error) {
 		return newIntune(cfg), nil
 	case ProviderJamf:
 		return newJamf(cfg), nil
+	case ProviderWazuh:
+		return newWazuh(cfg), nil
 	default:
 		return nil, &unsupportedProviderError{cfg.Provider}
 	}

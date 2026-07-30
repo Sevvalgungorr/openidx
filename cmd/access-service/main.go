@@ -195,6 +195,8 @@ func main() {
 	vaultRing, err := vault.KeyringFromConfig(vault.KeyConfig{
 		KEK: cfg.VaultKEK, KEKs: cfg.VaultKEKs, ActiveKEKID: cfg.VaultActiveKEKID,
 		EncryptionKey: cfg.EncryptionKey,
+		Bao: vault.BaoConfig{Addr: cfg.BaoAddr, Token: cfg.BaoToken,
+			SecretPath: cfg.BaoKEKPath, CACertFile: cfg.BaoCACert},
 	})
 	if err != nil {
 		log.Fatal("vault keyring unavailable (fail-closed)", zap.Error(err))

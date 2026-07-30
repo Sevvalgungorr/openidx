@@ -44,6 +44,9 @@ type NotificationPreference struct {
 type Service struct {
 	db     *database.PostgresDB
 	logger *zap.Logger
+	// ntfy, when set via SetNtfy, delivers the "push" channel to a
+	// self-hosted ntfy server. Nil = push channel disabled.
+	ntfy *ntfySender
 }
 
 // NewService creates a new notification service.
@@ -111,7 +114,15 @@ func (s *Service) CreateMultiChannelNotification(ctx context.Context, userID, or
 		Metadata: metadata,
 	}
 
-	return s.CreateNotification(ctx, notif)
+	err := s.CreateNotification(ctx, notif)
+
+	// Push (ntfy) rides alongside in_app: asynchronous and best-effort, so a
+	// down push server never blocks or fails the notification write.
+	if err == nil && s.ntfy != nil {
+		go s.maybePush(userID, notifType, title, body, link)
+	}
+
+	return err
 }
 
 // isNotificationEnabled checks whether a user has enabled notifications for the given channel and event type.
@@ -596,6 +607,8 @@ func RegisterRoutes(router *gin.RouterGroup, svc *Service) {
 	router.POST("/notifications/mark-all-read", svc.handleMarkAllAsRead)
 	router.GET("/notifications/preferences", svc.handleGetPreferences)
 	router.PUT("/notifications/preferences", svc.handleUpdatePreferences)
+	// Push (ntfy) subscription details for the calling user.
+	router.GET("/notifications/push-config", svc.handleGetPushConfig)
 
 	// Phase 17D: Notification Center extensions
 	router.GET("/notifications/history", svc.handleGetNotificationHistory)

@@ -274,6 +274,9 @@ func main() {
 
 	// Initialize notification service
 	notifService := notifications.NewService(db, log)
+	notifService.SetNtfy(notifications.NtfyConfig{
+		BaseURL: cfg.NtfyBaseURL, Token: cfg.NtfyToken, TopicSecret: cfg.NtfyTopicSecret,
+	})
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")
@@ -328,6 +331,8 @@ func main() {
 			KEKs:          cfg.VaultKEKs,
 			ActiveKEKID:   cfg.VaultActiveKEKID,
 			EncryptionKey: cfg.EncryptionKey,
+			Bao: vault.BaoConfig{Addr: cfg.BaoAddr, Token: cfg.BaoToken,
+				SecretPath: cfg.BaoKEKPath, CACertFile: cfg.BaoCACert},
 		})
 		if err != nil {
 			log.Fatal("vault keyring unavailable (fail-closed)", zap.Error(err))

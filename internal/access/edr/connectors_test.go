@@ -2,6 +2,7 @@ package edr
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,7 +32,7 @@ func TestNewUnsupportedProvider(t *testing.T) {
 	if _, err := New(Config{Provider: "sentinelone"}); err == nil {
 		t.Fatal("expected error for unsupported provider")
 	}
-	for _, p := range []string{ProviderCrowdStrike, ProviderIntune, ProviderJamf} {
+	for _, p := range []string{ProviderCrowdStrike, ProviderIntune, ProviderJamf, ProviderWazuh} {
 		if _, err := New(Config{Provider: p}); err != nil {
 			t.Errorf("expected %s supported, got %v", p, err)
 		}
@@ -190,5 +191,121 @@ func TestJamfListDevices(t *testing.T) {
 	}
 	if !devices[0].Passing() {
 		t.Error("managed jamf device should pass")
+	}
+}
+
+// --- Wazuh ---
+
+func TestWazuhListDevices(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/security/user/authenticate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasPrefix(r.Header.Get("Authorization"), "Basic ") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Write([]byte(`{"data":{"token":"wztok"}}`))
+	})
+	mux.HandleFunc("/agents", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer wztok" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		// Agent 000 (the manager itself) must be skipped.
+		w.Write([]byte(`{"data":{"affected_items":[
+          {"id":"000","name":"wazuh-manager","status":"active"},
+          {"id":"001","name":"laptop-1","ip":"10.0.0.5","status":"active","lastKeepAlive":"2026-07-30T00:00:00Z","os":{"name":"Ubuntu","version":"24.04"}},
+          {"id":"002","name":"laptop-2","ip":"10.0.0.6","status":"disconnected","lastKeepAlive":"2026-07-28T00:00:00Z","os":{"name":"Windows","version":"11"}},
+          {"id":"003","name":"laptop-3","status":"never_connected"}
+        ],"total_affected_items":4}}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := newWazuh(Config{Provider: ProviderWazuh, BaseURL: srv.URL, APIUser: "wazuh", APIToken: "secret"})
+	c.client = srv.Client()
+
+	if err := c.TestConnection(context.Background()); err != nil {
+		t.Fatalf("TestConnection: %v", err)
+	}
+	devices, err := c.ListDevices(context.Background())
+	if err != nil {
+		t.Fatalf("ListDevices: %v", err)
+	}
+	if len(devices) != 3 {
+		t.Fatalf("expected 3 devices (manager 000 skipped), got %d", len(devices))
+	}
+	byID := map[string]Device{}
+	for _, d := range devices {
+		byID[d.ExternalID] = d
+	}
+	if !byID["001"].Passing() {
+		t.Error("active agent should pass")
+	}
+	if byID["001"].Hostname != "laptop-1" {
+		t.Errorf("agent name should map to hostname, got %+v", byID["001"])
+	}
+	if byID["002"].Passing() || byID["002"].Risk != RiskHigh {
+		t.Errorf("disconnected agent should fail at high risk: %+v", byID["002"])
+	}
+	if byID["003"].Passing() || byID["003"].Risk != RiskUnknown {
+		t.Errorf("never_connected agent should fail as unknown: %+v", byID["003"])
+	}
+}
+
+func TestWazuhPagination(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/security/user/authenticate", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":{"token":"wztok"}}`))
+	})
+	pages := 0
+	mux.HandleFunc("/agents", func(w http.ResponseWriter, r *http.Request) {
+		pages++
+		offset := r.URL.Query().Get("offset")
+		if offset == "0" {
+			// A full page (500 items) forces a second request.
+			items := make([]string, 0, 500)
+			for i := 1; i <= 500; i++ {
+				items = append(items, fmt.Sprintf(`{"id":"%03d","name":"host-%d","status":"active"}`, i, i))
+			}
+			w.Write([]byte(`{"data":{"affected_items":[` + strings.Join(items, ",") + `],"total_affected_items":501}}`))
+			return
+		}
+		w.Write([]byte(`{"data":{"affected_items":[{"id":"501","name":"host-501","status":"active"}],"total_affected_items":501}}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := newWazuh(Config{BaseURL: srv.URL, APIUser: "wazuh", APIToken: "secret"})
+	c.client = srv.Client()
+	devices, err := c.ListDevices(context.Background())
+	if err != nil {
+		t.Fatalf("ListDevices: %v", err)
+	}
+	// 501 agents minus the skipped manager 000... "000" is id 0; ids here start
+	// at 001, so all 501 are endpoints.
+	if len(devices) != 501 {
+		t.Fatalf("expected 501 devices across pages, got %d", len(devices))
+	}
+	if pages != 2 {
+		t.Fatalf("expected 2 pages fetched, got %d", pages)
+	}
+}
+
+func TestWazuhBadCreds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := newWazuh(Config{BaseURL: srv.URL, APIUser: "wazuh", APIToken: "bad"})
+	c.client = srv.Client()
+	if err := c.TestConnection(context.Background()); err == nil {
+		t.Fatal("expected auth failure")
+	}
+}
+
+func TestWazuhRequiresBaseURL(t *testing.T) {
+	c := newWazuh(Config{APIUser: "wazuh", APIToken: "secret"})
+	if err := c.TestConnection(context.Background()); err == nil {
+		t.Fatal("expected error for missing base_url")
 	}
 }

@@ -59,7 +59,8 @@ type EDRSourceInput struct {
 }
 
 func validEDRProvider(p string) bool {
-	return p == edr.ProviderCrowdStrike || p == edr.ProviderIntune || p == edr.ProviderJamf
+	return p == edr.ProviderCrowdStrike || p == edr.ProviderIntune ||
+		p == edr.ProviderJamf || p == edr.ProviderWazuh
 }
 
 func validMatchStrategy(m string) bool {
@@ -86,10 +87,16 @@ func (s *Service) CreateEDRSource(ctx context.Context, orgID string, in *EDRSour
 		return nil, fmt.Errorf("name and provider are required")
 	}
 	if !validEDRProvider(in.Provider) {
-		return nil, fmt.Errorf("unsupported provider %q (want crowdstrike|intune|jamf)", in.Provider)
+		return nil, fmt.Errorf("unsupported provider %q (want crowdstrike|intune|jamf|wazuh)", in.Provider)
 	}
 	if in.MatchStrategy == "" {
-		in.MatchStrategy = "serial"
+		// Wazuh agents report no serial/email; the agent name is the endpoint
+		// hostname, so hostname is the only strategy that can ever match.
+		if in.Provider == edr.ProviderWazuh {
+			in.MatchStrategy = "hostname"
+		} else {
+			in.MatchStrategy = "serial"
+		}
 	}
 	if !validMatchStrategy(in.MatchStrategy) {
 		return nil, fmt.Errorf("unsupported match_strategy %q (want serial|hostname|email)", in.MatchStrategy)
