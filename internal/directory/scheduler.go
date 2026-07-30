@@ -74,7 +74,10 @@ func (s *Scheduler) TriggerSync(ctx context.Context, directoryID string, fullSyn
 		}()
 
 		// Use a background context — the triggering HTTP request context may be canceled
-		bgCtx := context.Background()
+		// mid-sync. directory_integrations (and the user/group tables the sync writes)
+		// are FORCE-RLS under the non-owner app role, so the sweep must run under
+		// bypass RLS; RunSync re-scopes each write to the integration's own org.
+		bgCtx := orgctx.WithBypassRLS(context.Background())
 
 		dirType, configBytes, err := s.loadDirectoryConfig(bgCtx, directoryID)
 		if err != nil {

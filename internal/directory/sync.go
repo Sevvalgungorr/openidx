@@ -406,7 +406,7 @@ func (e *SyncEngine) syncGroups(ctx context.Context, connector *LDAPConnector, d
 			_, err := e.db.Pool.Exec(ctx,
 				`INSERT INTO groups (name, description, source, directory_id, ldap_dn, external_id, org_id)
 				 VALUES ($1, $2, 'ldap', $3, $4, $5, $6)
-				 ON CONFLICT (name) DO NOTHING`,
+				 ON CONFLICT (org_id, name) DO NOTHING`,
 				record.Name, record.Description, directoryID, record.DN, record.DN, orgID)
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("failed to create group %s: %v", record.Name, err))
@@ -686,7 +686,7 @@ func (e *SyncEngine) syncAzureADGroups(ctx context.Context, connector *AzureADCo
 			_, err := e.db.Pool.Exec(ctx,
 				`INSERT INTO groups (name, description, source, directory_id, external_id, org_id)
 				 VALUES ($1, $2, 'azure_ad', $3, $4, $5)
-				 ON CONFLICT (name) DO NOTHING`,
+				 ON CONFLICT (org_id, name) DO NOTHING`,
 				group.Name, group.Description, directoryID, group.DN, orgID)
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("failed to create group %s: %v", group.Name, err))
