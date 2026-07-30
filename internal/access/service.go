@@ -678,6 +678,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.POST("/pam/ssh-ca/init", svc.requireAdminRole(), svc.handleInitSSHCA)
 		api.GET("/pam/ssh-ca", svc.handleGetSSHCA)
 		api.POST("/pam/connect/ssh", svc.handleSSHConnect)
+		// PAM B4: cloud console/CLI JIT elevation. STS AssumeRole → short-lived
+		// credentials + optional federated console URL, recorded in
+		// brokered_sessions (auto-expiring; no standing privilege).
+		api.POST("/pam/connect/cloud", svc.handleCloudConnect)
 		api.POST("/pam/brokered-sessions", svc.handleBrokerSession)
 		api.GET("/pam/brokered-sessions", svc.requireAdminRole(), svc.handleListBrokeredSessions)
 		api.POST("/pam/brokered-sessions/:id/end", svc.handleEndBrokeredSession)
