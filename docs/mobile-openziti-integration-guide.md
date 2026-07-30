@@ -70,7 +70,7 @@ The phone must resolve and reach, on its current network:
 | `ctrl.tdv.org` | 1280 | Ziti controller (enroll + control plane) |
 | `browzer.tdv.org` | 3022 | Edge router (data plane; the router is registered under this name) |
 
-Today these resolve via **corporate DNS (10.10.12.30)**, so the phone must be on
+Today these resolve via **corporate DNS (<DNS_IP>)**, so the phone must be on
 corporate Wi-Fi or VPN. Quick check from the phone browser:
 `https://ctrl.tdv.org:1280/edge/client/v1/version` should return JSON.
 

@@ -3827,7 +3827,7 @@ function TempAccessLinksSection() {
                 <Input
                   value={form.target_host}
                   onChange={(e) => setForm({ ...form, target_host: e.target.value })}
-                  placeholder="192.168.31.76"
+                  placeholder="10.0.0.10"
                   required
                 />
               </div>

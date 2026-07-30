@@ -25,7 +25,7 @@ NET=pam-broker-net
 ZITI_ID_DIR=/home/cmit/oidx-runtime/oidx-ziti/pam-broker-identity
 GUAC_ZITI_PORT=10091
 DB_PASS="$(podman inspect pam-guac-db --format '{{range .Config.Env}}{{println .}}{{end}}' | grep POSTGRES_PASSWORD | cut -d= -f2)"
-GUAC_ZITI_ADMIN_PASSWORD="${GUAC_ZITI_ADMIN_PASSWORD:-xdYrAtPmWpPGoiQhvbLBCpeHWuuF}"
+GUAC_ZITI_ADMIN_PASSWORD="${GUAC_ZITI_ADMIN_PASSWORD:?set GUAC_ZITI_ADMIN_PASSWORD in the environment (do not hardcode secrets)}"
 
 echo "== removing any existing ziti broker containers =="
 podman rm -f pam-guacamole-ziti pam-ziti-tunnel pam-guacd-ziti 2>/dev/null || true

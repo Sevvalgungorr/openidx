@@ -102,7 +102,7 @@ func (tm *BrowZerTargetManager) detectDNSResolvers() string {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		// Docker adds: # ExtServers: [8.8.8.8 8.8.4.4 10.10.12.30]
+		// Docker adds: # ExtServers: [8.8.8.8 8.8.4.4 10.0.0.53]
 		if strings.Contains(line, "ExtServers:") {
 			start := strings.Index(line, "[")
 			end := strings.Index(line, "]")

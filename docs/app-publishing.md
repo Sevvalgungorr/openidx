@@ -328,7 +328,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout key.pem -out cert.pe
 ### Notes
 
 - **DNS/hosts is still per-app.** `/etc/hosts` has no wildcard — add a line per
-  app (`192.168.31.76 netgraph.apps.tdv.org`) or run a wildcard DNS / dnsmasq.
+  app (`<SERVER_IP> netgraph.apps.tdv.org`) or run a wildcard DNS / dnsmasq.
   The wildcard *cert* removes per-app trust friction, not per-app name
   resolution.
 - **`landing_path`** handles apps whose UI isn't at `/` (e.g. netgraph at

@@ -58,7 +58,7 @@ test.describe('Temporary Access Links', () => {
                 name: 'Support Access - Server 1',
                 description: 'Temp access for vendor support',
                 protocol: 'ssh',
-                target_host: '192.168.31.76',
+                target_host: '10.0.0.10',
                 target_port: 22,
                 created_by_email: 'admin@openidx.local',
                 expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours
@@ -124,7 +124,7 @@ test.describe('Temporary Access Links', () => {
             token: 'abc12345...',
             name: 'Support Access - Server 1',
             protocol: 'ssh',
-            target_host: '192.168.31.76',
+            target_host: '10.0.0.10',
             target_port: 22,
             status: 'active',
           }),
@@ -154,7 +154,7 @@ test.describe('Temporary Access Links', () => {
     }
   });
 
-  test('should create SSH temp access link for 192.168.31.76', async ({ page }) => {
+  test('should create SSH temp access link for 10.0.0.10', async ({ page }) => {
     // Mock the create endpoint with verification
     await page.route('**/api/v1/access/temp-access', async (route) => {
       if (route.request().method() === 'POST') {
@@ -168,7 +168,7 @@ test.describe('Temporary Access Links', () => {
             token: 'secure-token-abc123',
             name: body.name,
             protocol: body.protocol || 'ssh',
-            target_host: body.target_host || '192.168.31.76',
+            target_host: body.target_host || '10.0.0.10',
             target_port: body.target_port || 22,
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             status: 'active',
@@ -203,7 +203,7 @@ test.describe('Temporary Access Links', () => {
 
       // Fill the form using actual placeholders
       await page.getByPlaceholder('Vendor SSH Access').fill('Vendor SSH Access');
-      await page.getByPlaceholder('192.168.31.76').fill('192.168.31.76');
+      await page.getByPlaceholder('10.0.0.10').fill('10.0.0.10');
 
       // Protocol is already SSH by default
 
@@ -393,9 +393,9 @@ test.describe('Temp Access URL Format', () => {
           links: [
             {
               id: 'ssh-link',
-              name: 'SSH to 192.168.31.76',
+              name: 'SSH to 10.0.0.10',
               protocol: 'ssh',
-              target_host: '192.168.31.76',
+              target_host: '10.0.0.10',
               target_port: 22,
               status: 'active',
               access_url: 'https://browzer.localtest.me/temp-access/abc123token',

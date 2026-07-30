@@ -22,7 +22,7 @@ A throwaway access-service was started on `127.0.0.1:18077` with
 | Check | Result |
 |---|---|
 | `127.0.0.1:18077/access/health` (on-box / overlay) | **200** |
-| `192.168.31.76:18077` (public IP, off-box) | **connection refused** |
+| `<SERVER_IP>:18077` (public IP, off-box) | **connection refused** |
 | `no-token /api/v1/access/pam/entries` | **401** |
 | `with-token /api/v1/access/pam/entries` | **200** |
 | `POST /api/v1/access/enroll` | **401** (needs a credential, reachable) |

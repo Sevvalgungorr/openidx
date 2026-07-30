@@ -334,14 +334,14 @@ test.describe('Ziti Services Tab', () => {
     await expect(page.locator('text=10.0.0.1').or(page.locator('text=443'))).toBeVisible();
   });
 
-  test('should create internal SSH server service with IP 192.168.31.76', async ({ page }) => {
+  test('should create internal SSH server service with IP 10.0.0.10', async ({ page }) => {
     // Override POST mock to capture and verify SSH service creation
     await page.route('**/api/v1/access/ziti/services', async (route) => {
       if (route.request().method() === 'POST') {
         const body = route.request().postDataJSON();
         // Verify the request body contains expected SSH service data
         expect(body.name).toBe('internal-ssh-server');
-        expect(body.host).toBe('192.168.31.76');
+        expect(body.host).toBe('10.0.0.10');
         expect(body.port).toBe(22);
         expect(body.protocol).toBe('tcp');
 
@@ -354,7 +354,7 @@ test.describe('Ziti Services Tab', () => {
             name: 'internal-ssh-server',
             description: 'Internal SSH Server',
             protocol: 'tcp',
-            host: '192.168.31.76',
+            host: '10.0.0.10',
             port: 22,
             enabled: true,
             created_at: new Date().toISOString(),
@@ -394,7 +394,7 @@ test.describe('Ziti Services Tab', () => {
 
     await nameInput.fill('internal-ssh-server');
     await descInput.fill('Internal SSH Server');
-    await hostInput.fill('192.168.31.76');
+    await hostInput.fill('10.0.0.10');
     await portInput.fill('22');
 
     // Protocol is already set to TCP by default
@@ -422,7 +422,7 @@ test.describe('Ziti Services Tab', () => {
 
     // Fill with SSH standard port
     await nameInput.fill('ssh-test-service');
-    await hostInput.fill('192.168.31.76');
+    await hostInput.fill('10.0.0.10');
     await portInput.fill('22');
 
     // Verify port field accepts value 22
@@ -440,7 +440,7 @@ test.describe('Ziti Services Tab', () => {
             services: [
               { id: '1', ziti_id: 'svc-001', name: 'web-service', description: 'Web frontend', protocol: 'tcp', host: '10.0.0.1', port: 443, enabled: true, created_at: '2024-01-01T00:00:00Z' },
               { id: '2', ziti_id: 'svc-002', name: 'api-service', description: 'Backend API', protocol: 'tcp', host: '10.0.0.2', port: 8080, enabled: true, created_at: '2024-01-05T00:00:00Z' },
-              { id: '3', ziti_id: 'svc-ssh-001', name: 'internal-ssh-server', description: 'Internal SSH Server', protocol: 'tcp', host: '192.168.31.76', port: 22, enabled: true, created_at: '2024-01-15T00:00:00Z' },
+              { id: '3', ziti_id: 'svc-ssh-001', name: 'internal-ssh-server', description: 'Internal SSH Server', protocol: 'tcp', host: '10.0.0.10', port: 22, enabled: true, created_at: '2024-01-15T00:00:00Z' },
             ],
           }),
         });
@@ -453,7 +453,7 @@ test.describe('Ziti Services Tab', () => {
 
     // Verify SSH service is displayed
     await expect(page.locator('text=internal-ssh-server')).toBeVisible();
-    await expect(page.locator('text=192.168.31.76')).toBeVisible();
+    await expect(page.locator('text=10.0.0.10')).toBeVisible();
   });
 });
 
@@ -1009,7 +1009,7 @@ test.describe('Ziti Remote Access Tab', () => {
     await expect(page.locator('h3:has-text("BrowZer")').first()).toBeVisible();
   });
 
-  test('should display external SSH connection for 192.168.31.76', async ({ page }) => {
+  test('should display external SSH connection for 10.0.0.10', async ({ page }) => {
     // Mock Guacamole connections with SSH to internal server
     await page.route('**/api/v1/access/guacamole/connections*', async (route) => {
       await route.fulfill({
@@ -1022,7 +1022,7 @@ test.describe('Ziti Remote Access Tab', () => {
               route_id: 'route-ssh-internal',
               guacamole_connection_id: 'guac-ssh-001',
               protocol: 'ssh',
-              hostname: '192.168.31.76',
+              hostname: '10.0.0.10',
               port: 22,
               parameters: { username: 'admin' },
               created_at: '2024-01-15T00:00:00Z',
@@ -1038,11 +1038,11 @@ test.describe('Ziti Remote Access Tab', () => {
     await page.getByRole('tab', { name: /remote access/i }).click();
 
     // Verify SSH connection to internal server is displayed
-    await expect(page.locator('text=192.168.31.76:22')).toBeVisible();
+    await expect(page.locator('text=10.0.0.10:22')).toBeVisible();
     await expect(page.locator('td:has-text("ssh")').first()).toBeVisible();
   });
 
-  test('should display Guacamole SSH access URL for 192.168.31.76', async ({ page }) => {
+  test('should display Guacamole SSH access URL for 10.0.0.10', async ({ page }) => {
     // Mock BrowZer status - base URL only
     await page.route('**/api/v1/access/ziti/browzer/status', async (route) => {
       await route.fulfill({
@@ -1072,7 +1072,7 @@ test.describe('Ziti Remote Access Tab', () => {
               route_id: 'route-ssh-internal',
               guacamole_connection_id: 'c/internal-ssh-server',
               protocol: 'ssh',
-              hostname: '192.168.31.76',
+              hostname: '10.0.0.10',
               port: 22,
               // Full Guacamole URL with path
               connect_url: 'https://browzer.localtest.me/guacamole/#/client/c/internal-ssh-server',
@@ -1098,7 +1098,7 @@ test.describe('Ziti Remote Access Tab', () => {
               name: 'internal-ssh-server',
               description: 'Internal SSH Server',
               protocol: 'tcp',
-              host: '192.168.31.76',
+              host: '10.0.0.10',
               port: 22,
               enabled: true,
               created_at: '2024-01-15T00:00:00Z',
@@ -1129,7 +1129,7 @@ test.describe('Ziti Remote Access Tab', () => {
     await expect(page.locator('text=Enabled').first()).toBeVisible();
 
     // Verify SSH connection details
-    await expect(page.locator('text=192.168.31.76').first()).toBeVisible();
+    await expect(page.locator('text=10.0.0.10').first()).toBeVisible();
     await expect(page.getByText(':22').first()).toBeVisible();
 
     // Verify Connect button exists for Guacamole access
@@ -1148,7 +1148,7 @@ test.describe('Ziti Remote Access Tab', () => {
               route_id: 'route-ssh-internal',
               guacamole_connection_id: 'guac-ssh-001',
               protocol: 'ssh',
-              hostname: '192.168.31.76',
+              hostname: '10.0.0.10',
               port: 22,
               parameters: {},
               created_at: '2024-01-15T00:00:00Z',

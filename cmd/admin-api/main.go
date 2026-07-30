@@ -189,7 +189,6 @@ func main() {
 	} else {
 		merged := append([]string{
 			"http://localhost:3000", "http://localhost:5173",
-			"http://192.168.31.76:3000", "http://192.168.31.76:5173",
 		}, configuredOrigins...)
 		seenOrigin := make(map[string]bool, len(merged))
 		for _, o := range merged {

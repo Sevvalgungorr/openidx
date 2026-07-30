@@ -76,7 +76,7 @@ Also available (dark-platform / token path): `POST /api/v1/access/enroll` return
 `{ identity_name, ziti_enrollment_jwt }`.
 
 **Controller address:** the JWT's `iss`/`ctrls` now carry the *public* controller
-address `ctrl.tdv.org:1280` (reachable from the phone; DNS → 192.168.31.76). This
+address `ctrl.tdv.org:1280` (reachable from the phone; DNS → <SERVER_IP>). This
 was previously `ziti-controller.localtest.me:1280` which resolves to 127.0.0.1 on
 a phone and caused `connection refused`. If you ever see a JWT with a
 `localtest.me` (or otherwise unreachable) `ctrls`, treat it as stale and re-fetch

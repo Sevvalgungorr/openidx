@@ -2,7 +2,7 @@
 
 > A full view of how OpenIDX and OpenZiti fit together, how to use them, and
 > where the "Ziti client" actually lives. Reflects the running deployment on
-> this box (`192.168.31.76`, podman, native Go services) as of 2026-06-23.
+> this box (`<SERVER_IP>`, podman, native Go services) as of 2026-06-23.
 >
 > Just want to get the fabric running? See
 > [ZITI_EASY_DEPLOYMENT.md](./ZITI_EASY_DEPLOYMENT.md) — `make ziti-quickstart`
@@ -50,7 +50,7 @@ Three things cooperate:
                                              │ terminator forwards to upstream
                                  ┌───────────▼───────────┐
                                  │  Target app (netgraph │
-                                 │  192.168.31.76:8088)  │  ◄── never directly exposed
+                                 │  <SERVER_IP>:8088)  │  ◄── never directly exposed
                                  └───────────────────────┘
 ```
 
@@ -109,10 +109,10 @@ Backing stores: **PostgreSQL** `oidx-pg` (`:55432`), **Redis** `oidx-redis` (`:5
 | `*.tdv.org` | `http://:8007` | Wildcard → access-proxy (default reverse-proxy path) |
 
 > **DNS / hosts requirement:** `*.tdv.org` is **private LAN only**. Any machine
-> using this stack (incl. the browser) must map these names to `192.168.31.76`
+> using this stack (incl. the browser) must map these names to `<SERVER_IP>`
 > in its hosts file:
 > ```
-> 192.168.31.76  openidx.tdv.org netgraph.tdv.org browzer.tdv.org ctrl.tdv.org
+> <SERVER_IP>  openidx.tdv.org netgraph.tdv.org browzer.tdv.org ctrl.tdv.org
 > ```
 
 ---
@@ -141,7 +141,7 @@ starts the health, certificate, and user-sync monitors.
 
 ### 4.2 Feature toggles — what "enable Ziti / BrowZer on a route" does
 
-A **proxy route** (e.g. `netgraph.tdv.org` → `192.168.31.76:8088`) is the unit
+A **proxy route** (e.g. `netgraph.tdv.org` → `<SERVER_IP>:8088`) is the unit
 of publishing. Each route has independent features, stored in the
 `service_features` table and orchestrated by `FeatureManager`:
 
@@ -197,7 +197,7 @@ Browser ──TLS──► nginx (netgraph.tdv.org:443)
         ──────► bootstrapper :8445   (injects ziti-browzer-runtime JS, bounces to OIDC login)
 Browser ──WSS──► edge router :3023   (the injected runtime now speaks Ziti)
         ──────► overlay ──► access-proxy terminator ──► browzer-router :8094 (vhost demux)
-        ──────► target app 192.168.31.76:8088
+        ──────► target app <SERVER_IP>:8088
 ```
 **No client install.** The browser authenticates to OpenIDX (OIDC), gets a JWT,
 and the BrowZer runtime uses it as the overlay identity (matched via `externalId`).
@@ -360,13 +360,13 @@ The steps that made it dark on this box:
 1. **Bind the app to host loopback only** — in `/home/cmit/infra/compose.yaml`,
    change the port from `"8088:8088"` (all interfaces) to `"127.0.0.1:8088:8088"`,
    then `podman-compose -p infra_team ... up -d --force-recreate api`. Now the LAN
-   gets connection-refused on `192.168.31.76:8088`; only the host can reach it.
+   gets connection-refused on `<SERVER_IP>:8088`; only the host can reach it.
 2. **Point the Ziti service target at loopback** — set the route's `to_url` to
    `http://127.0.0.1:8088`. The native access-proxy (a host process) hosts
    `openidx-Netgraph` and dials `127.0.0.1:8088`, so the dark app is reachable
    over the overlay.
 
-**Verify dark:** `curl http://192.168.31.76:8088/` → connection refused (000);
+**Verify dark:** `curl http://<SERVER_IP>:8088/` → connection refused (000);
 `curl http://127.0.0.1:8088/` → responds. The app is now overlay-only.
 
 ### 12.2 The rootless-topology wrinkle (why the BrowZer router needs an alias)
@@ -463,7 +463,7 @@ and reloaded within ~5 s.)
 ---
 
 *Generated from the live deployment and source on 2026-06-23. Identity files,
-ports, and hostnames are specific to this box (`192.168.31.76`).*
+ports, and hostnames are specific to this box (`<SERVER_IP>`).*
 
 ---
 
