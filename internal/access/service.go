@@ -616,6 +616,16 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		// configured.
 		api.GET("/guacamole/sessions/:id/recording", svc.requireAdminRole(), svc.handleGetGuacRecording)
 
+		// Moderated privileged sessions (PAM C3). A require_moderator connection
+		// blocks the requester's connect until a moderator joins to watch live
+		// (four-eyes / SOX-PCI). Requester opens + polls; moderator lists the
+		// queue, joins (→ active, unblocking connect), or ends (kill switch).
+		api.POST("/pam/moderation/request", svc.handleRequestModeration)
+		api.GET("/pam/moderation/pending", svc.requireAdminRole(), svc.handleListPendingModeration)
+		api.GET("/pam/moderation/:id", svc.handleGetModerationStatus)
+		api.POST("/pam/moderation/:id/join", svc.requireAdminRole(), svc.handleJoinModeration)
+		api.POST("/pam/moderation/:id/end", svc.handleEndModeration)
+
 		// Guacamole live monitor — read-only connection sharing (Task 4 — PAM M4)
 		api.POST("/guacamole/sessions/:id/share", svc.requireAdminRole(), svc.handleShareGuacSession)
 

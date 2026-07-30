@@ -824,5 +824,12 @@ func allMigrations() []*Migration {
 			UpSQL:       guacRecordingSealUp,
 			DownSQL:     guacRecordingSealDown,
 		},
+		{
+			Version:     117,
+			Name:        "moderated_sessions",
+			Description: "Add moderated privileged sessions (PAM C3): guacamole_connections.require_moderator flag + guacamole_moderation_sessions state machine (pending→active→ended/expired). Teleport-style four-eyes control — a flagged session does not start until a second authorized user (moderator) joins to watch it live, distinct from require_approval which is decided before the session. New table is org-scoped (FORCE RLS, bypass_rls-aware policy) with hot-path partial index on pending rows. Additive; require_moderator defaults false so existing connections are unchanged.",
+			UpSQL:       moderatedSessionsUp,
+			DownSQL:     moderatedSessionsDown,
+		},
 	}
 }

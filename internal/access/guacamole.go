@@ -586,14 +586,14 @@ func (s *Service) handleGuacamoleConnect(c *gin.Context) {
 	// Load the connection row including PAM config columns.
 	var connectionPK, connID, protocol, hostname, secretID, injectUser string
 	var port int
-	var requireApproval, recordSession bool
+	var requireApproval, recordSession, requireModerator bool
 	err := s.db.Pool.QueryRow(ctx,
 		`SELECT id, guacamole_connection_id, protocol, hostname, port,
 		        COALESCE(vault_secret_id::text,''), COALESCE(inject_username,''),
-		        require_approval, record_session
+		        require_approval, record_session, require_moderator
 		 FROM guacamole_connections WHERE route_id=$1`, routeID).
 		Scan(&connectionPK, &connID, &protocol, &hostname, &port,
-			&secretID, &injectUser, &requireApproval, &recordSession)
+			&secretID, &injectUser, &requireApproval, &recordSession, &requireModerator)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no Guacamole connection found for this route"})
 		return
@@ -610,6 +610,31 @@ func (s *Service) handleGuacamoleConnect(c *gin.Context) {
 		}
 		if !ok {
 			c.JSON(http.StatusForbidden, gin.H{"error": "session requires approval"})
+			return
+		}
+	}
+
+	// Moderation gate (PAM C3) — the session must not start until a moderator
+	// has joined to watch it live (Teleport-style four-eyes). Unlike the
+	// approval gate (decided before the session and consumed here), moderation
+	// is a live-presence requirement: block the connect until a moderator has
+	// claimed the pending moderation row for this (connection, requester).
+	if requireModerator {
+		ok, err := s.checkModerationActive(ctx, connectionPK, userID)
+		if err != nil {
+			s.logger.Error("handleGuacamoleConnect: checkModerationActive failed",
+				zap.String("connection_id", connectionPK), zap.Error(err))
+			c.JSON(http.StatusForbidden, gin.H{"error": "session requires an active moderator"})
+			return
+		}
+		if !ok {
+			// No moderator has joined yet. Signal the client to request
+			// moderation (POST .../moderation) and poll until active.
+			c.Header("X-Moderation-Required", "true")
+			c.JSON(http.StatusPreconditionRequired, gin.H{
+				"error":               "session requires a moderator to join before it can start",
+				"moderation_required": true,
+			})
 			return
 		}
 	}
