@@ -23,6 +23,7 @@ import (
 	"github.com/openidx/openidx/internal/common/secretcrypt"
 	"github.com/openidx/openidx/internal/common/tlsutil"
 	"github.com/openidx/openidx/internal/common/tracing"
+	"github.com/openidx/openidx/internal/directory"
 	"github.com/openidx/openidx/internal/email"
 	newhealth "github.com/openidx/openidx/internal/health"
 	"github.com/openidx/openidx/internal/identity"
@@ -178,6 +179,16 @@ func main() {
 	// on another service being up.
 	emailService := email.NewService(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom, redis, log)
 	identityService.SetEmailService(emailService)
+
+	// Wire the directory service so LDAP / Active Directory users can log in
+	// against their directory (bind check) at /oauth/login. Without this,
+	// directory-sourced users fall through to a local bcrypt check against the
+	// sync-time placeholder hash and can never authenticate ("invalid username
+	// or password"). We construct the directory service for auth only and do NOT
+	// call Start() — the sync scheduler is owned by identity-service; here we
+	// just need the per-directory bind (AuthenticateUser).
+	dirService := directory.NewService(db, log)
+	identityService.SetDirectoryService(dirService)
 
 	// Initialize risk service (conditional access)
 	riskService := risk.NewService(db, redis, log)

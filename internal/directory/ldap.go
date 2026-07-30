@@ -288,6 +288,25 @@ func (c *LDAPConnector) ResetPassword(username, newPassword string) error {
 	return nil
 }
 
+// buildUserSearchFilter constructs the LDAP search filter used to resolve a
+// login user's DN. It matches the supplied identifier against the configured
+// username attribute AND userPrincipalName when the identifier looks like a UPN
+// (contains '@') or the directory is Active Directory — so operators can log in
+// with either their sAMAccountName (jdoe) or their UPN (jdoe@corp.local). The
+// extra clause is harmless on OpenLDAP (userPrincipalName never matches there).
+// Falls back to (objectClass=inetOrgPerson) when no user filter is configured.
+func buildUserSearchFilter(userFilter, usernameAttr, username string, isAD bool) string {
+	idClause := fmt.Sprintf("(%s=%s)", ldap.EscapeFilter(usernameAttr), ldap.EscapeFilter(username))
+	if (isAD || strings.Contains(username, "@")) && usernameAttr != "userPrincipalName" {
+		idClause = fmt.Sprintf("(|(%s=%s)(userPrincipalName=%s))",
+			ldap.EscapeFilter(usernameAttr), ldap.EscapeFilter(username), ldap.EscapeFilter(username))
+	}
+	if userFilter == "" {
+		return fmt.Sprintf("(&(objectClass=inetOrgPerson)%s)", idClause)
+	}
+	return fmt.Sprintf("(&%s%s)", userFilter, idClause)
+}
+
 // findUserDN looks up a user's DN by username
 func (c *LDAPConnector) findUserDN(conn *ldap.Conn, username string) (string, error) {
 	baseDN := c.cfg.UserBaseDN
@@ -300,17 +319,7 @@ func (c *LDAPConnector) findUserDN(conn *ldap.Conn, username string) (string, er
 		usernameAttr = "uid"
 	}
 
-	filter := fmt.Sprintf("(&%s(%s=%s))",
-		c.cfg.UserFilter,
-		ldap.EscapeFilter(usernameAttr),
-		ldap.EscapeFilter(username),
-	)
-	if c.cfg.UserFilter == "" {
-		filter = fmt.Sprintf("(&(objectClass=inetOrgPerson)(%s=%s))",
-			ldap.EscapeFilter(usernameAttr),
-			ldap.EscapeFilter(username),
-		)
-	}
+	filter := buildUserSearchFilter(c.cfg.UserFilter, usernameAttr, username, c.isActiveDirectory())
 
 	searchReq := ldap.NewSearchRequest(
 		baseDN,
