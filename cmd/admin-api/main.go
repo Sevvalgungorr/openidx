@@ -426,6 +426,10 @@ func (a *directorySyncAdapter) GetSyncState(ctx context.Context, directoryID str
 	return a.dirService.GetSyncState(ctx, directoryID)
 }
 
+func (a *directorySyncAdapter) Diagnose(ctx context.Context, dirType string, configBytes []byte) (interface{}, error) {
+	return a.dirService.Diagnose(ctx, dirType, configBytes)
+}
+
 // riskServiceAdapter adapts risk.Service to admin.RiskAssessor interface
 type riskServiceAdapter struct {
 	riskService *risk.Service

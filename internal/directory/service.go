@@ -104,6 +104,30 @@ func (s *Service) TriggerSync(ctx context.Context, directoryID string, fullSync 
 	return s.scheduler.TriggerSync(ctx, directoryID, fullSync)
 }
 
+// Diagnose runs live LDAP/AD probes against the supplied config and returns a
+// DiagnoseResult with findings + suggested config fixes. Only meaningful for
+// LDAP/Active Directory; other directory types return a single info finding.
+func (s *Service) Diagnose(ctx context.Context, dirType string, configBytes []byte) (interface{}, error) {
+	switch dirType {
+	case "ldap", "active_directory":
+		var cfg LDAPConfig
+		if err := json.Unmarshal(configBytes, &cfg); err != nil {
+			return nil, fmt.Errorf("invalid LDAP config: %w", err)
+		}
+		return Diagnose(ctx, cfg), nil
+	default:
+		return &DiagnoseResult{
+			OK:      true,
+			Summary: "Automated diagnostics are available for LDAP / Active Directory directories.",
+			Findings: []Finding{{
+				Stage: "server", Severity: SeverityInfo,
+				Title:  "Diagnostics not applicable",
+				Detail: fmt.Sprintf("Live LDAP/AD probing does not apply to directory type %q. Use the connection test instead.", dirType),
+			}},
+		}, nil
+	}
+}
+
 // AuthenticateUser authenticates a user against their directory
 func (s *Service) AuthenticateUser(ctx context.Context, directoryID, username, password string) error {
 	dirType, configBytes, err := s.loadDirectoryTypeAndConfig(ctx, directoryID)

@@ -198,6 +198,9 @@ type DirectorySyncer interface {
 	TriggerSync(ctx context.Context, directoryID string, fullSync bool) error
 	GetSyncLogs(ctx context.Context, directoryID string, limit int) (interface{}, error)
 	GetSyncState(ctx context.Context, directoryID string) (interface{}, error)
+	// Diagnose runs live LDAP/AD probes and returns findings + suggested config
+	// fixes (nil dirType/config errors are surfaced in the result, not returned).
+	Diagnose(ctx context.Context, dirType string, configBytes []byte) (interface{}, error)
 }
 
 // Service provides admin operations
@@ -974,6 +977,11 @@ func RegisterRoutes(router *gin.RouterGroup, svc *Service) {
 	admin.DELETE("/directories/:id", svc.handleDeleteDirectory)
 	admin.POST("/directories/:id/sync", svc.handleSyncDirectory)
 	admin.POST("/directories/:id/test", svc.handleTestConnection)
+	// Live LDAP/AD diagnostics with suggested fixes. The :id form diagnoses a
+	// saved integration; the wizard (pre-save) form posts {type, config} to
+	// /directory-diagnose so it does not collide with the :id wildcard.
+	admin.POST("/directories/:id/diagnose", svc.handleDiagnoseDirectory)
+	admin.POST("/directory-diagnose", svc.handleDiagnoseDirectory)
 	admin.GET("/directories/:id/sync-logs", svc.handleGetSyncLogs)
 	admin.GET("/directories/:id/sync-state", svc.handleGetSyncState)
 
@@ -1534,6 +1542,89 @@ func (s *Service) handleListDirectories(c *gin.Context) {
 	c.JSON(200, dirs)
 }
 
+// validateDirectoryIntegration checks required fields per directory type and
+// returns a field->message map (empty when valid). This is the authoritative
+// guard: the UI mirrors it, but the API must not persist a directory that can
+// never sync (e.g. a blank name, or an LDAP/AD config with no host, no bind, no
+// search base, or empty username/email mapping).
+func validateDirectoryIntegration(dir DirectoryIntegration) map[string]string {
+	errs := map[string]string{}
+	cfgStr := func(key string) string {
+		if dir.Config == nil {
+			return ""
+		}
+		if v, ok := dir.Config[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+	mappingStr := func(key string) string {
+		if dir.Config == nil {
+			return ""
+		}
+		m, ok := dir.Config["attribute_mapping"].(map[string]interface{})
+		if !ok {
+			return ""
+		}
+		if v, ok := m[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+
+	if strings.TrimSpace(dir.Name) == "" {
+		errs["name"] = "Name is required."
+	}
+	if strings.TrimSpace(dir.Type) == "" {
+		errs["type"] = "Directory type is required."
+		return errs // can't validate config without a type
+	}
+
+	switch dir.Type {
+	case "ldap", "active_directory":
+		if cfgStr("host") == "" {
+			errs["config.host"] = "Host is required."
+		}
+		if cfgStr("bind_dn") == "" {
+			errs["config.bind_dn"] = "Bind DN is required (e.g. user@domain for Active Directory)."
+		}
+		if cfgStr("bind_password") == "" {
+			errs["config.bind_password"] = "Bind password is required."
+		}
+		// A search base is required somewhere: base_dn, or both user+group base DNs.
+		if cfgStr("base_dn") == "" && cfgStr("user_base_dn") == "" {
+			errs["config.base_dn"] = "Base DN is required (e.g. DC=corp,DC=local). Use \"Diagnose & Auto-Fix\" to detect it."
+		}
+		if cfgStr("user_filter") == "" {
+			errs["config.user_filter"] = "User filter is required."
+		}
+		if mappingStr("username") == "" {
+			errs["config.attribute_mapping.username"] = "Username attribute mapping is required (e.g. sAMAccountName for AD)."
+		}
+		if mappingStr("email") == "" {
+			errs["config.attribute_mapping.email"] = "Email attribute mapping is required (e.g. userPrincipalName for AD)."
+		}
+	case "azure_ad":
+		if cfgStr("tenant_id") == "" {
+			errs["config.tenant_id"] = "Tenant ID is required."
+		}
+		if cfgStr("client_id") == "" {
+			errs["config.client_id"] = "Client ID is required."
+		}
+		if cfgStr("client_secret") == "" {
+			errs["config.client_secret"] = "Client secret is required."
+		}
+	case "hris", "bamboohr":
+		if cfgStr("subdomain") == "" && cfgStr("host") == "" {
+			errs["config.subdomain"] = "Subdomain (or host) is required."
+		}
+		if cfgStr("api_key") == "" {
+			errs["config.api_key"] = "API key is required."
+		}
+	}
+	return errs
+}
+
 func (s *Service) handleCreateDirectory(c *gin.Context) {
 	org, err := orgctx.From(c.Request.Context())
 	if err != nil {
@@ -1543,6 +1634,11 @@ func (s *Service) handleCreateDirectory(c *gin.Context) {
 	var dir DirectoryIntegration
 	if err := c.ShouldBindJSON(&dir); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	if verrs := validateDirectoryIntegration(dir); len(verrs) > 0 {
+		c.JSON(400, gin.H{"error": "validation failed", "fields": verrs})
 		return
 	}
 
@@ -1598,6 +1694,11 @@ func (s *Service) handleUpdateDirectory(c *gin.Context) {
 	var dir DirectoryIntegration
 	if err := c.ShouldBindJSON(&dir); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	if verrs := validateDirectoryIntegration(dir); len(verrs) > 0 {
+		c.JSON(400, gin.H{"error": "validation failed", "fields": verrs})
 		return
 	}
 
@@ -1701,6 +1802,58 @@ func (s *Service) handleTestConnection(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"success": true, "message": "Connection test successful"})
+}
+
+// handleDiagnoseDirectory runs live LDAP/AD diagnostics and returns findings +
+// suggested config fixes. It diagnoses either a saved integration (:id) or, when
+// a JSON body {type, config} is supplied, an inline config — so the setup wizard
+// can diagnose BEFORE the integration is saved.
+func (s *Service) handleDiagnoseDirectory(c *gin.Context) {
+	org, err := orgctx.From(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "organization context required"})
+		return
+	}
+	if s.directoryService == nil {
+		c.JSON(503, gin.H{"error": "directory service unavailable"})
+		return
+	}
+
+	// Inline config from the body takes precedence (wizard, pre-save).
+	var body struct {
+		Type   string          `json:"type"`
+		Config json.RawMessage `json:"config"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	var dirType string
+	var configBytes []byte
+	if len(body.Config) > 0 {
+		dirType = body.Type
+		if dirType == "" {
+			dirType = "ldap"
+		}
+		configBytes = body.Config
+	} else {
+		id := c.Param("id")
+		if id == "" {
+			c.JSON(400, gin.H{"error": "provide a saved directory id or a {type, config} body"})
+			return
+		}
+		if err := s.db.Pool.QueryRow(c.Request.Context(),
+			`SELECT type, config FROM directory_integrations WHERE id = $1 AND org_id = $2`,
+			id, org.ID).Scan(&dirType, &configBytes); err != nil {
+			c.JSON(404, gin.H{"error": "Directory not found"})
+			return
+		}
+	}
+
+	result, err := s.directoryService.Diagnose(c.Request.Context(), dirType, configBytes)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, result)
 }
 
 func (s *Service) handleGetSyncLogs(c *gin.Context) {
