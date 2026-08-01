@@ -852,5 +852,12 @@ func allMigrations() []*Migration {
 			UpSQL:       agentWindowsAppHostUp,
 			DownSQL:     agentWindowsAppHostDown,
 		},
+		{
+			Version:     121,
+			Name:        "rls_belt_gap",
+			Description: "Close the FORCE-RLS belt gaps. Six org-scoped tables were added after the v37/v81/v94 belt without a row-level-security policy: ssf_streams, ssf_stream_delivery, ssf_received_events (v99 — its own comment claims they are org-scoped for RLS, but no policy was created), plus session_risks, risk_factors (v77) and recording_retention_policies (v78). Each now gets the standard pol_<table>_org_scope policy keyed on the app.org_id GUC with ENABLE + FORCE, so a missing org predicate in application code can no longer leak across tenants. Ships with the SSF route/query fixes that this backstops.",
+			UpSQL:       rlsBeltGapUp,
+			DownSQL:     rlsBeltGapDown,
+		},
 	}
 }

@@ -462,10 +462,26 @@ func TestTokenRevocation(t *testing.T) {
 		status, _ := apiRequest(t, "GET", oauthURL+"/oauth/userinfo", "", token)
 		assert.Equal(t, http.StatusOK, status)
 
-		// Revoke the token
+		// An unauthenticated revocation must be refused (RFC 7009 §2.1) —
+		// otherwise anyone holding a token string could revoke it. This runs
+		// before the real revocation to prove the refusal does not take effect.
+		status, _ = formRequest(t, oauthURL+"/oauth/revoke", url.Values{
+			"token":           {token},
+			"token_type_hint": {"access_token"},
+		})
+		assert.Equal(t, http.StatusUnauthorized, status,
+			"revocation without client authentication must be refused")
+
+		status, _ = apiRequest(t, "GET", oauthURL+"/oauth/userinfo", "", token)
+		assert.Equal(t, http.StatusOK, status, "a refused revocation must leave the token usable")
+
+		// Revoke the token. RFC 7009 §2.1 requires client authentication on
+		// the revocation endpoint; admin-console is a public client, so
+		// client_id alone identifies it (there is no secret to present).
 		revokeData := url.Values{
 			"token":           {token},
 			"token_type_hint": {"access_token"},
+			"client_id":       {clientID},
 		}
 
 		status, revokeResp := formRequest(t, oauthURL+"/oauth/revoke", revokeData)
@@ -490,10 +506,11 @@ func TestTokenRevocation(t *testing.T) {
 			t.Skip("Skipping - no refresh token returned")
 		}
 
-		// Revoke the refresh token
+		// Revoke the refresh token (client-authenticated, see above).
 		revokeData := url.Values{
 			"token":           {refreshToken},
 			"token_type_hint": {"refresh_token"},
+			"client_id":       {clientID},
 		}
 
 		status, _ = formRequest(t, oauthURL+"/oauth/revoke", revokeData)

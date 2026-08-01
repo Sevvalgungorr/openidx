@@ -177,12 +177,24 @@ func (h *AuthorizeHandler) validateResponseType(client *OAuthClient, responseTyp
 
 // validateScope validates that the requested scopes are allowed for the client
 func (h *AuthorizeHandler) validateScope(client *OAuthClient, scope string) bool {
+	return scopeAllowedForClient(client, scope)
+}
+
+// scopeAllowedForClient reports whether every space-delimited scope in the
+// request is registered for the client. An empty request is allowed (the
+// client is asking for no scope in particular).
+//
+// Package-level so every grant can enforce the same rule — client_credentials
+// previously minted the caller-supplied scope verbatim with no check at all,
+// letting any confidential client self-escalate to arbitrary scopes.
+func scopeAllowedForClient(client *OAuthClient, scope string) bool {
 	if scope == "" {
 		return true
 	}
-
-	requestedScopes := strings.Split(scope, " ")
-	for _, requested := range requestedScopes {
+	if client == nil {
+		return false
+	}
+	for _, requested := range strings.Split(scope, " ") {
 		if requested == "" {
 			continue
 		}

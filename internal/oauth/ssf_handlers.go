@@ -12,12 +12,22 @@ import (
 // metadata document, and the receiver push endpoint. Registered in
 // RegisterRoutes.
 
-func ssfOrgID(c *gin.Context) string {
+// ssfRequireOrg resolves the caller's tenant for a stream-management request
+// and FAILS CLOSED: when no org can be resolved it aborts with 403 instead of
+// returning "".
+//
+// This used to return an empty string on failure, which was then fed into
+// ssf.go's org predicates. Those carried an OR-escape that treated an empty
+// org as "match every row", so an unscoped caller could read, create and
+// delete every tenant's streams. Both halves are fixed: the predicates are now
+// strict equality, and this helper never yields an empty org.
+func (s *Service) ssfRequireOrg(c *gin.Context) (string, bool) {
 	org, err := orgctx.From(c.Request.Context())
-	if err != nil {
-		return ""
+	if err != nil || org.ID == "" {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "organization context required"})
+		return "", false
 	}
-	return org.ID
+	return org.ID, true
 }
 
 // handleSSFConfiguration serves /.well-known/ssf-configuration (the transmitter
@@ -47,7 +57,11 @@ func (s *Service) handleSSFConfiguration(c *gin.Context) {
 }
 
 func (s *Service) handleListSSFStreams(c *gin.Context) {
-	streams, err := s.ListSSFStreams(c.Request.Context(), ssfOrgID(c))
+	orgID, ok := s.ssfRequireOrg(c)
+	if !ok {
+		return
+	}
+	streams, err := s.ListSSFStreams(c.Request.Context(), orgID)
 	if err != nil {
 		s.logger.Error("list ssf streams failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
@@ -60,12 +74,16 @@ func (s *Service) handleListSSFStreams(c *gin.Context) {
 }
 
 func (s *Service) handleCreateSSFStream(c *gin.Context) {
+	orgID, ok := s.ssfRequireOrg(c)
+	if !ok {
+		return
+	}
 	var in SSFStreamInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	stream, err := s.CreateSSFStream(c.Request.Context(), ssfOrgID(c), &in)
+	stream, err := s.CreateSSFStream(c.Request.Context(), orgID, &in)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -75,7 +93,11 @@ func (s *Service) handleCreateSSFStream(c *gin.Context) {
 }
 
 func (s *Service) handleGetSSFStream(c *gin.Context) {
-	stream, err := s.GetSSFStream(c.Request.Context(), ssfOrgID(c), c.Param("id"))
+	orgID, ok := s.ssfRequireOrg(c)
+	if !ok {
+		return
+	}
+	stream, err := s.GetSSFStream(c.Request.Context(), orgID, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "stream not found"})
 		return
@@ -84,7 +106,11 @@ func (s *Service) handleGetSSFStream(c *gin.Context) {
 }
 
 func (s *Service) handleDeleteSSFStream(c *gin.Context) {
-	if err := s.DeleteSSFStream(c.Request.Context(), ssfOrgID(c), c.Param("id")); err != nil {
+	orgID, ok := s.ssfRequireOrg(c)
+	if !ok {
+		return
+	}
+	if err := s.DeleteSSFStream(c.Request.Context(), orgID, c.Param("id")); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
@@ -94,8 +120,12 @@ func (s *Service) handleDeleteSSFStream(c *gin.Context) {
 // handleSSFVerify implements the SSF verification event: emit a test SET to the
 // stream so the receiver can confirm end-to-end delivery.
 func (s *Service) handleSSFVerify(c *gin.Context) {
+	orgID, ok := s.ssfRequireOrg(c)
+	if !ok {
+		return
+	}
 	id := c.Param("id")
-	stream, err := s.GetSSFStream(c.Request.Context(), ssfOrgID(c), id)
+	stream, err := s.GetSSFStream(c.Request.Context(), orgID, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "stream not found"})
 		return
@@ -110,7 +140,7 @@ func (s *Service) handleSSFVerify(c *gin.Context) {
 	_, err = s.db.Pool.Exec(c.Request.Context(), `
         INSERT INTO ssf_stream_delivery (org_id, stream_id, event_type, subject, set_jwt)
         VALUES ($1,$2,$3,$4,$5)`,
-		ssfNullIfEmpty(ssfOrgID(c)), id,
+		orgID, id,
 		"https://schemas.openid.net/secevent/ssf/event-type/verification", "verification", setJWT)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not enqueue verification"})

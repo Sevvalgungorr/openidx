@@ -1080,17 +1080,23 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 	// SSF/CAEP (Shared Signals): transmitter metadata + stream management +
 	// receiver push endpoint.
 	router.GET("/.well-known/ssf-configuration", svc.handleSSFConfiguration)
-	ssf := router.Group("/ssf")
+	// Stream management is tenant-scoped administration: a stream carries a
+	// delivery_endpoint that receives this org's security events (session
+	// revoked, credential change), so an unauthenticated caller must never be
+	// able to enumerate, create or delete one. Gated with the same middleware
+	// as the client-management API.
+	ssfAdmin := router.Group("/ssf")
+	ssfAdmin.Use(clientMgmtAuth)
 	{
-		ssf.GET("/streams", svc.handleListSSFStreams)
-		ssf.POST("/streams", svc.handleCreateSSFStream)
-		ssf.GET("/streams/:id", svc.handleGetSSFStream)
-		ssf.DELETE("/streams/:id", svc.handleDeleteSSFStream)
-		ssf.POST("/streams/:id/verify", svc.handleSSFVerify)
-		// Receiver push delivery (RFC 8935). Public: SETs are authenticated by
-		// signature, not a session.
-		ssf.POST("/events", svc.handleSSFReceive)
+		ssfAdmin.GET("/streams", svc.handleListSSFStreams)
+		ssfAdmin.POST("/streams", svc.handleCreateSSFStream)
+		ssfAdmin.GET("/streams/:id", svc.handleGetSSFStream)
+		ssfAdmin.DELETE("/streams/:id", svc.handleDeleteSSFStream)
+		ssfAdmin.POST("/streams/:id/verify", svc.handleSSFVerify)
 	}
+	// Receiver push delivery (RFC 8935) stays public: inbound SETs are
+	// authenticated by their signature, not by a session.
+	router.POST("/ssf/events", svc.handleSSFReceive)
 
 	oauth := router.Group("/oauth")
 	{
@@ -1161,8 +1167,11 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 		oauth.OPTIONS("/token", svc.handleToken)
 
 		// Token introspection & revocation
-		oauth.POST("/introspect", svc.handleIntrospect)
-		oauth.POST("/revoke", svc.handleRevoke)
+		// RFC 7662 §2.1 / RFC 7009 §2.1: both endpoints require client
+		// authentication. They were previously reachable unauthenticated, so
+		// anyone holding a token string could read its metadata or revoke it.
+		oauth.POST("/introspect", svc.requireTokenEndpointClientAuth(), svc.handleIntrospect)
+		oauth.POST("/revoke", svc.requireTokenEndpointClientAuth(), svc.handleRevoke)
 
 		// Dynamic Client Registration (RFC 7591) + management (RFC 7592).
 		oauth.POST("/register", svc.handleRegisterClient)
@@ -1339,27 +1348,33 @@ func (s *Service) handleAuthorize(c *gin.Context) {
 		"code_challenge":        c.Query("code_challenge"),
 		"code_challenge_method": c.Query("code_challenge_method"),
 	}
-	// Validate redirect_uri against registered client
+	// Validate redirect_uri against the registered client.
+	//
+	// SECURITY: client_id is REQUIRED (RFC 6749 §4.1.1) and is now enforced as
+	// such. This block used to be wrapped in `if clientID != ""`, so a request
+	// that simply omitted client_id skipped redirect_uri validation entirely
+	// and still reached the redirect below — an open redirect from the IdP's
+	// own trusted origin (and one that leaked a freshly minted login_session).
 	clientID := oauthParams["client_id"]
-	var client *OAuthClient
-	if clientID != "" {
-		var err error
-		client, err = s.GetClient(c.Request.Context(), clientID)
-		if err != nil {
-			c.JSON(400, gin.H{"error": "invalid_client"})
-			return
+	if clientID == "" {
+		c.JSON(400, gin.H{"error": "invalid_request", "error_description": "client_id is required"})
+		return
+	}
+	client, err := s.GetClient(c.Request.Context(), clientID)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid_client"})
+		return
+	}
+	validRedirect := false
+	for _, uri := range client.RedirectURIs {
+		if uri == oauthParams["redirect_uri"] {
+			validRedirect = true
+			break
 		}
-		validRedirect := false
-		for _, uri := range client.RedirectURIs {
-			if uri == oauthParams["redirect_uri"] {
-				validRedirect = true
-				break
-			}
-		}
-		if !validRedirect {
-			c.JSON(400, gin.H{"error": "invalid_request", "error_description": "redirect_uri not registered for client"})
-			return
-		}
+	}
+	if !validRedirect {
+		c.JSON(400, gin.H{"error": "invalid_request", "error_description": "redirect_uri not registered for client"})
+		return
 	}
 
 	paramsJSON, _ := json.Marshal(oauthParams)
@@ -3168,6 +3183,18 @@ func (s *Service) handleClientCredentialsGrant(c *gin.Context) {
 		return
 	}
 
+	// SECURITY: the requested scope must be registered for this client
+	// (RFC 6749 §3.3). Without this the caller-supplied scope was minted into
+	// the access token verbatim, so any confidential client could grant itself
+	// any scope it liked regardless of what it was provisioned for.
+	if !scopeAllowedForClient(client, scope) {
+		c.JSON(400, gin.H{
+			"error":             "invalid_scope",
+			"error_description": "requested scope exceeds the scopes registered for this client",
+		})
+		return
+	}
+
 	// Generate access token (no user context)
 	accessToken, _ := s.GenerateJWT(c.Request.Context(), "", clientID, scope, client.AccessTokenLifetime)
 
@@ -3177,6 +3204,45 @@ func (s *Service) handleClientCredentialsGrant(c *gin.Context) {
 		ExpiresIn:   client.AccessTokenLifetime,
 		Scope:       scope,
 	})
+}
+
+// requireTokenEndpointClientAuth authenticates the caller of a token-adjacent
+// endpoint. RFC 7662 §2.1 requires the introspection endpoint to be protected,
+// and RFC 7009 §2.1 requires client authentication on revocation — both were
+// previously wide open, so anyone who obtained (or guessed) a token string
+// could read its full metadata or revoke arbitrary tokens.
+//
+// Confidential clients authenticate with client_id + client_secret; public
+// clients (which have no secret to present) authenticate with client_id alone,
+// as RFC 7009 §2.1 allows. Credentials are read from the POST body
+// (client_secret_post); HTTP Basic support is a separate follow-up.
+// It is applied as route middleware (like the /ssf and /clients groups) rather
+// than inline, so the endpoint is protected at its only real entry point while
+// the handlers stay independently unit-testable.
+func (s *Service) requireTokenEndpointClientAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		clientID := c.PostForm("client_id")
+		if clientID == "" {
+			c.Header("WWW-Authenticate", `Basic realm="oauth"`)
+			c.AbortWithStatusJSON(401, gin.H{
+				"error":             "invalid_client",
+				"error_description": "client authentication required",
+			})
+			return
+		}
+		client, err := s.GetClient(c.Request.Context(), clientID)
+		if err != nil || client == nil {
+			c.AbortWithStatusJSON(401, gin.H{"error": "invalid_client"})
+			return
+		}
+		if client.Type != "public" {
+			if subtle.ConstantTimeCompare([]byte(client.ClientSecret), []byte(c.PostForm("client_secret"))) != 1 {
+				c.AbortWithStatusJSON(401, gin.H{"error": "invalid_client"})
+				return
+			}
+		}
+		c.Next()
+	}
 }
 
 func (s *Service) handleIntrospect(c *gin.Context) {
@@ -3667,6 +3733,62 @@ func (s *Service) revokeAllUserRefreshTokens(ctx context.Context, userID string)
 }
 
 // handleLogout handles POST/GET /oauth/logout — OIDC RP-initiated logout
+// postLogoutRedirectAllowed reports whether uri is a safe destination to send
+// the browser to after an RP-initiated logout.
+//
+// SECURITY: handleLogout used to redirect to any caller-supplied
+// post_logout_redirect_uri with no validation at all — an open redirect from
+// the IdP's own origin (OIDC RP-Initiated Logout §2 requires the OP to verify
+// it against values registered for the client).
+//
+// The client model has no dedicated post_logout_redirect_uris list yet, so the
+// allowlist is derived from the client's registered redirect_uris by comparing
+// ORIGIN (scheme + host + port) rather than the full URI. Matching on origin
+// keeps legitimate deployments working — the post-logout landing page is very
+// often a different path on the same site than the OAuth callback — while
+// still refusing to send the user to an attacker-controlled domain. A
+// first-class post_logout_redirect_uris column can tighten this to exact-match
+// later.
+func (s *Service) postLogoutRedirectAllowed(ctx context.Context, clientID, uri string) bool {
+	if clientID == "" || uri == "" {
+		return false
+	}
+	target, err := url.Parse(uri)
+	if err != nil || target.Scheme == "" || target.Host == "" {
+		return false
+	}
+	client, err := s.GetClient(ctx, clientID)
+	if err != nil || client == nil {
+		return false
+	}
+	for _, registered := range client.RedirectURIs {
+		ru, err := url.Parse(registered)
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(ru.Scheme, target.Scheme) && strings.EqualFold(ru.Host, target.Host) {
+			return true
+		}
+	}
+	return false
+}
+
+// audienceClientID extracts the client_id from an ID token's `aud` claim,
+// which may be encoded as a bare string or as an array.
+func audienceClientID(claims map[string]interface{}) string {
+	switch aud := claims["aud"].(type) {
+	case string:
+		return aud
+	case []interface{}:
+		if len(aud) > 0 {
+			if first, ok := aud[0].(string); ok {
+				return first
+			}
+		}
+	}
+	return ""
+}
+
 func (s *Service) handleLogout(c *gin.Context) {
 	// Try to identify user from id_token_hint or Bearer token
 	idTokenHint := c.Query("id_token_hint")
@@ -3680,6 +3802,9 @@ func (s *Service) handleLogout(c *gin.Context) {
 
 	var userID string
 	var bearerToken string
+	// Client identified by the id_token_hint's audience — the only trustworthy
+	// way to know which client's registered URIs may be redirected to below.
+	var hintClientID string
 
 	if idTokenHint != "" {
 		// Parse the ID token (don't validate expiry since it may be expired per OIDC spec,
@@ -3688,6 +3813,7 @@ func (s *Service) handleLogout(c *gin.Context) {
 			if sub, ok := hintClaims["sub"].(string); ok {
 				userID = sub
 			}
+			hintClientID = audienceClientID(hintClaims)
 		}
 	}
 
@@ -3748,8 +3874,20 @@ func (s *Service) handleLogout(c *gin.Context) {
 		}()
 	}
 
+	// Only redirect to a destination registered for the client that issued the
+	// id_token_hint. An unverifiable or unregistered target is refused (the
+	// logout itself has already happened) rather than followed.
 	if postLogoutRedirectURI != "" {
-		c.Redirect(302, postLogoutRedirectURI)
+		if s.postLogoutRedirectAllowed(c.Request.Context(), hintClientID, postLogoutRedirectURI) {
+			c.Redirect(302, postLogoutRedirectURI)
+			return
+		}
+		s.logger.Warn("refusing unregistered post_logout_redirect_uri",
+			zap.String("client_id", sanitizeForLog(hintClientID)))
+		c.JSON(400, gin.H{
+			"error":             "invalid_request",
+			"error_description": "post_logout_redirect_uri is not registered for the client identified by id_token_hint",
+		})
 		return
 	}
 

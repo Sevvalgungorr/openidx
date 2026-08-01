@@ -24,10 +24,22 @@ const ssfMaxAttempts = 8
 // per stream and enqueuing it for delivery. Best-effort: called from revocation
 // paths, it never fails the caller. Returns the number of SETs enqueued.
 func (s *Service) EmitCAEPEvent(ctx context.Context, orgID, eventType, subjectEmail, subjectID string, eventClaims map[string]interface{}) int {
+	// SECURITY: fan out only to the affected tenant's streams. This predicate
+	// used to carry an `OR $1=''` escape, so an empty org would have enqueued
+	// the event to EVERY tenant's receivers — leaking one tenant's security
+	// events (session revoked, credential change) to all the others. The sole
+	// production caller passes a real org; an empty one is a bug, so emit
+	// nothing rather than broadcasting. Best-effort by contract: callers treat
+	// a 0 return as "nothing subscribed" and never fail on it.
+	if orgID == "" {
+		s.logger.Warn("SSF: refusing to emit a CAEP event without a tenant",
+			zap.String("event_type", eventType))
+		return 0
+	}
 	rows, err := s.db.Pool.Query(ctx, `
         SELECT id::text, audience, COALESCE(events_requested,'[]'::jsonb)
           FROM ssf_streams
-         WHERE status='enabled' AND (org_id::text=$1 OR $1='')`, orgID)
+         WHERE status='enabled' AND org_id::text=$1`, orgID)
 	if err != nil {
 		s.logger.Warn("SSF: query streams failed", zap.Error(err))
 		return 0
@@ -193,6 +205,7 @@ func (s *Service) pushSSFItem(ctx context.Context, it ssfDeliveryItem) {
 func (s *Service) ssfDeliveryTarget(ctx context.Context, streamID string) (endpoint, auth string, err error) {
 	var authEnc *string
 	if err = s.db.Pool.QueryRow(ctx,
+		//orgscope:ignore background push worker (runs under bypass_rls) resolving the delivery target of an outbox row it already claimed; addressed by stream primary key, no request/tenant context
 		`SELECT delivery_endpoint, delivery_auth_enc FROM ssf_streams WHERE id=$1`, streamID).
 		Scan(&endpoint, &authEnc); err != nil {
 		return "", "", err

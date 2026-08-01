@@ -431,6 +431,17 @@ func isIdentitySelfService(path string) bool {
 	switch {
 	case rest == "/users/me" || strings.HasPrefix(rest, "/users/me/"):
 		return true // profile, password, PATs, consents, privacy, identity-links
+	// MFA bypass codes are break-glass overrides minted FOR ANOTHER USER
+	// (GenerateBypassCodeRequest carries a target user_id), so generating,
+	// listing, revoking and auditing them are ADMINISTRATIVE actions — they
+	// only sit under /mfa/ for URL tidiness. These two cases must precede the
+	// general /mfa/ rule below, which would otherwise exempt them from the
+	// admin gate and let any authenticated user mint a bypass code for any
+	// account in the org (including an admin's).
+	case rest == "/mfa/bypass-codes/verify":
+		return true // redemption only: the caller verifies a code against their OWN account
+	case rest == "/mfa/bypass-codes" || strings.HasPrefix(rest, "/mfa/bypass-codes/"):
+		return false // generate / list / revoke / audit — admin only
 	case strings.HasPrefix(rest, "/mfa/"):
 		return true // the caller's own MFA enrollment/verification
 	case rest == "/trusted-browsers" || strings.HasPrefix(rest, "/trusted-browsers/"):
@@ -716,8 +727,14 @@ const revokedSessionTTL = 30 * 24 * time.Hour
 // scrubLogValue strips CR/LF from a value before it is placed in a log field,
 // so a caller-supplied identifier can't forge extra log lines (defense in depth
 // on top of the JSON encoder, and it clears CodeQL's log-injection sink).
+//
+// Uses chained strings.ReplaceAll rather than strings.NewReplacer deliberately:
+// ReplaceAll on "\n"/"\r" is the sanitizer shape CodeQL's go/log-injection
+// query recognizes, so flows through this helper are provably cut. Behavior is
+// identical; only the shape matters. Mirrors the helper of the same name in
+// internal/access and internal/provisioning.
 func scrubLogValue(s string) string {
-	return strings.NewReplacer("\n", "", "\r", "").Replace(s)
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", ""), "\r", "")
 }
 
 // deprovisionUser revokes everything that keeps a user's access alive after
@@ -4600,11 +4617,12 @@ func (s *Service) handleForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// In dev mode, log the token so it can be used for testing
-	s.logger.Info("Password reset token created",
-		zap.String("email", req.Email),
-		zap.String("token", token),
-		zap.String("reset_url", fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)))
+	// SECURITY: never log the token or the reset URL. A password-reset token is
+	// a single-use account-takeover credential for its 1h lifetime, so writing
+	// it to the application log hands anyone with log access (or anything that
+	// ships logs onward) the ability to take over the account. Log only that a
+	// reset was requested, for rate-limit/abuse investigation.
+	s.logger.Info("Password reset token created", zap.String("email", scrubLogValue(req.Email)))
 
 	// Send password reset email
 	if s.emailService != nil {

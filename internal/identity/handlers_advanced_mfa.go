@@ -12,6 +12,25 @@ import (
 	apperrors "github.com/openidx/openidx/internal/common/errors"
 )
 
+// identityCallerIsAdmin reports whether the authenticated caller holds an
+// administrative role, for handlers that need their own authorization check
+// on top of (or instead of) the route-level gate.
+//
+// It accepts both spellings of the elevated role deliberately: the shared
+// middleware (requireAdminUnlessSelfService) matches "super_admin" while the
+// inline checks in this file historically matched "superadmin". Accepting
+// either avoids locking a legitimate super admin out of a route that the
+// middleware already let through. Unifying the two spellings repo-wide is a
+// separate cleanup.
+func identityCallerIsAdmin(c *gin.Context) bool {
+	for _, role := range c.GetStringSlice("roles") {
+		if role == "admin" || role == "superadmin" || role == "super_admin" {
+			return true
+		}
+	}
+	return false
+}
+
 // ========================================
 // Hardware Token Handlers
 // ========================================
@@ -415,6 +434,16 @@ func (s *Service) handleGetPendingTrustCount(c *gin.Context) {
 
 func (s *Service) handleGenerateBypassCode(c *gin.Context) {
 	adminID := c.GetString("user_id")
+
+	// SECURITY: a bypass code is a break-glass MFA override for an arbitrary
+	// target user (req.UserID), so only an admin may mint one. The route is
+	// also excluded from isIdentitySelfService so the shared admin gate
+	// applies; this in-handler check is defense in depth, matching the
+	// pattern already used by the sibling read handlers below.
+	if !identityCallerIsAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required to generate MFA bypass codes"})
+		return
+	}
 
 	var req GenerateBypassCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

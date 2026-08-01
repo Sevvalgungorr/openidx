@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -213,7 +214,12 @@ func TestSSFStreamCRUDAndEnqueue(t *testing.T) {
 	svc := tctx.Service
 	svc.db = db
 
-	stream, err := svc.CreateSSFStream(dbctx, "", &SSFStreamInput{
+	// Stream operations are tenant-scoped: an empty org is refused rather than
+	// silently matching every tenant's rows.
+	const orgID = "00000000-0000-0000-0000-0000000000aa"
+	const otherOrgID = "00000000-0000-0000-0000-0000000000cc"
+
+	stream, err := svc.CreateSSFStream(dbctx, orgID, &SSFStreamInput{
 		Audience: "https://rp.example.com", DeliveryEndpoint: "https://rp.example.com/ssf",
 		DeliveryAuth: "shh", EventsRequested: []string{EventSessionRevoked},
 	})
@@ -224,15 +230,37 @@ func TestSSFStreamCRUDAndEnqueue(t *testing.T) {
 		t.Error("expected delivery endpoint")
 	}
 
+	// An unscoped create must be refused outright.
+	if _, err := svc.CreateSSFStream(dbctx, "", &SSFStreamInput{
+		Audience: "https://evil.example.com", DeliveryEndpoint: "https://evil.example.com/collect",
+	}); !errors.Is(err, errSSFNoOrg) {
+		t.Fatalf("CreateSSFStream with no tenant: want errSSFNoOrg, got %v", err)
+	}
+
 	// Matching event -> one SET enqueued.
-	n := svc.EmitCAEPEvent(dbctx, "", EventSessionRevoked, "alice@corp.com", "u1", nil)
+	n := svc.EmitCAEPEvent(dbctx, orgID, EventSessionRevoked, "alice@corp.com", "u1", nil)
 	if n != 1 {
 		t.Fatalf("expected 1 SET enqueued to matching stream, got %d", n)
 	}
 	// Non-matching event -> nothing (stream didn't request it).
-	n = svc.EmitCAEPEvent(dbctx, "", EventTokenClaimsChange, "alice@corp.com", "u1", nil)
+	n = svc.EmitCAEPEvent(dbctx, orgID, EventTokenClaimsChange, "alice@corp.com", "u1", nil)
 	if n != 0 {
 		t.Errorf("expected 0 enqueued for unrequested event, got %d", n)
+	}
+	// Another tenant's event must never reach this org's stream.
+	n = svc.EmitCAEPEvent(dbctx, otherOrgID, EventSessionRevoked, "bob@other.com", "u2", nil)
+	if n != 0 {
+		t.Errorf("expected 0 enqueued for a different tenant, got %d", n)
+	}
+	// An unscoped emit must not broadcast to every tenant.
+	n = svc.EmitCAEPEvent(dbctx, "", EventSessionRevoked, "alice@corp.com", "u1", nil)
+	if n != 0 {
+		t.Errorf("expected 0 enqueued without a tenant, got %d", n)
+	}
+
+	// A delete scoped to another tenant must not touch this org's stream.
+	if err := svc.DeleteSSFStream(dbctx, otherOrgID, stream.ID); err == nil {
+		t.Error("expected cross-tenant DeleteSSFStream to fail")
 	}
 
 	var pending int
@@ -241,7 +269,7 @@ func TestSSFStreamCRUDAndEnqueue(t *testing.T) {
 		t.Errorf("expected 1 pending delivery, got %d", pending)
 	}
 
-	if err := svc.DeleteSSFStream(dbctx, "", stream.ID); err != nil {
+	if err := svc.DeleteSSFStream(dbctx, orgID, stream.ID); err != nil {
 		t.Fatalf("DeleteSSFStream: %v", err)
 	}
 	db.Pool.QueryRow(dbctx, `SELECT COUNT(*) FROM ssf_stream_delivery`).Scan(&pending)

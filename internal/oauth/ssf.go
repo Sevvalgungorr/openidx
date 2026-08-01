@@ -126,8 +126,17 @@ func validSSFStatus(st string) bool {
 	return st == "enabled" || st == "paused" || st == "disabled"
 }
 
+// errSSFNoOrg is returned when a stream operation is attempted without a
+// resolved tenant. SSF streams carry a delivery_endpoint that receives this
+// tenant's security events, so an unscoped operation is never legitimate —
+// these helpers fail closed rather than falling back to a global scope.
+var errSSFNoOrg = fmt.Errorf("organization context required")
+
 // CreateSSFStream persists a transmitter stream.
 func (s *Service) CreateSSFStream(ctx context.Context, orgID string, in *SSFStreamInput) (*SSFStream, error) {
+	if orgID == "" {
+		return nil, errSSFNoOrg
+	}
 	if in.Audience == "" || in.DeliveryEndpoint == "" {
 		return nil, fmt.Errorf("aud and delivery_endpoint are required")
 	}
@@ -151,7 +160,7 @@ func (s *Service) CreateSSFStream(ctx context.Context, orgID string, in *SSFStre
         INSERT INTO ssf_streams
             (id, org_id, description, audience, delivery_endpoint, delivery_auth_enc, events_requested, status)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		id, ssfNullIfEmpty(orgID), ssfNullIfEmpty(in.Description), in.Audience,
+		id, orgID, ssfNullIfEmpty(in.Description), in.Audience,
 		in.DeliveryEndpoint, authEnc, string(eventsJSON), in.Status)
 	if err != nil {
 		return nil, fmt.Errorf("insert ssf stream: %w", err)
@@ -161,21 +170,27 @@ func (s *Service) CreateSSFStream(ctx context.Context, orgID string, in *SSFStre
 
 // GetSSFStream loads a stream (delivery auth never returned).
 func (s *Service) GetSSFStream(ctx context.Context, orgID, id string) (*SSFStream, error) {
+	if orgID == "" {
+		return nil, errSSFNoOrg
+	}
 	row := s.db.Pool.QueryRow(ctx, `
         SELECT id, COALESCE(org_id::text,''), COALESCE(description,''), audience,
                delivery_endpoint, COALESCE(events_requested,'[]'::jsonb), status,
                created_at, updated_at
-          FROM ssf_streams WHERE id=$1 AND (org_id::text=$2 OR $2='')`, id, orgID)
+          FROM ssf_streams WHERE id=$1 AND org_id::text=$2`, id, orgID)
 	return scanSSFStream(row)
 }
 
 // ListSSFStreams lists streams for an org.
 func (s *Service) ListSSFStreams(ctx context.Context, orgID string) ([]SSFStream, error) {
+	if orgID == "" {
+		return nil, errSSFNoOrg
+	}
 	rows, err := s.db.Pool.Query(ctx, `
         SELECT id, COALESCE(org_id::text,''), COALESCE(description,''), audience,
                delivery_endpoint, COALESCE(events_requested,'[]'::jsonb), status,
                created_at, updated_at
-          FROM ssf_streams WHERE (org_id::text=$1 OR $1='') ORDER BY created_at DESC`, orgID)
+          FROM ssf_streams WHERE org_id::text=$1 ORDER BY created_at DESC`, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -193,8 +208,11 @@ func (s *Service) ListSSFStreams(ctx context.Context, orgID string) ([]SSFStream
 
 // DeleteSSFStream removes a stream (+ its outbox via CASCADE).
 func (s *Service) DeleteSSFStream(ctx context.Context, orgID, id string) error {
+	if orgID == "" {
+		return errSSFNoOrg
+	}
 	ct, err := s.db.Pool.Exec(ctx,
-		`DELETE FROM ssf_streams WHERE id=$1 AND (org_id::text=$2 OR $2='')`, id, orgID)
+		`DELETE FROM ssf_streams WHERE id=$1 AND org_id::text=$2`, id, orgID)
 	if err != nil {
 		return err
 	}
