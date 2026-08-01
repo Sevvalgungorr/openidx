@@ -19,8 +19,9 @@
 //     statement run through the broker is centrally recorded.
 //
 // This is the P0 "native psql just works, zero standing credentials, full
-// query audit" cut. Column-level masking / policy rejection of individual
-// statements are follow-ups that hook the same audit decode point.
+// query audit" cut, plus statement policy enforcement (StatementPolicy:
+// read-only sessions and per-class deny lists, rejected at the same decode
+// point before reaching the upstream). Column-level masking is a follow-up.
 package dbproxy
 
 import (
@@ -48,6 +49,9 @@ type UpstreamTarget struct {
 	Database  string
 	Username  string // real DB user (from vault)
 	Password  string // real DB password (from vault)
+	// Policy, when non-nil, is enforced on every Query/Parse before it is
+	// forwarded upstream (see StatementPolicy). Nil = audit-only.
+	Policy *StatementPolicy
 }
 
 // TokenAuthenticator validates the broker token the client presented as its
@@ -64,7 +68,7 @@ type AuditEvent struct {
 	SessionID string
 	OrgID     string
 	UserID    string
-	Kind      string // "query" | "parse" | "connect" | "disconnect"
+	Kind      string // "query" | "parse" | "blocked" | "connect" | "disconnect"
 	Statement string // the SQL text (query/parse); empty for lifecycle events
 	At        time.Time
 }
@@ -218,28 +222,98 @@ func (p *Proxy) sendFatal(be *pgproto3.Backend, code, msg string) {
 
 // relay pipes messages between client and upstream. The client→server
 // direction is decoded (via the client Backend) so Query/Parse statements can
-// be audited, then forwarded to the upstream (via an upstream Frontend); the
-// server→client direction is a straight byte copy.
+// be audited and policy-checked, then forwarded to the upstream (via an
+// upstream Frontend). The server→client direction is a straight byte copy
+// when no policy is set; with a policy it is decoded too, so policy
+// rejections can be interleaved into the client stream on message boundaries
+// (a raw copy could split an upstream message around our ErrorResponse).
 func (p *Proxy) relay(be *pgproto3.Backend, client net.Conn, upstream net.Conn, target *UpstreamTarget) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// server → client (straight copy)
+	pol := target.Policy
+
+	// clientMu serializes writes to the client between the server→client
+	// pump and policy rejections written from the client→server side. Only
+	// needed (and only used) on the policied path.
+	var clientMu sync.Mutex
+	// txStatus mirrors the last ReadyForQuery status seen from the upstream,
+	// so rejections report the connection's real transaction state.
+	txStatus := byte('I')
+
+	// server → client
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(client, upstream)
-		_ = client.Close()
+		if pol == nil {
+			_, _ = io.Copy(client, upstream)
+			_ = client.Close()
+			return
+		}
+		fe := pgproto3.NewFrontend(upstream, upstream)
+		for {
+			msg, err := fe.Receive()
+			if err != nil {
+				_ = client.Close()
+				return
+			}
+			clientMu.Lock()
+			if r, ok := msg.(*pgproto3.ReadyForQuery); ok {
+				txStatus = r.TxStatus
+			}
+			be.Send(msg)
+			err = be.Flush()
+			clientMu.Unlock()
+			if err != nil {
+				_ = client.Close()
+				return
+			}
+		}
 	}()
 
-	// client → server (decode + audit, then forward)
+	// reject writes a policy ErrorResponse to the client without forwarding
+	// anything upstream. followWithReady is set for simple-protocol Query
+	// rejections (the server would normally answer with ReadyForQuery);
+	// extended-protocol Parse rejections send it later, on Sync.
+	reject := func(stmt string, perr error, followWithReady bool) {
+		p.audit.Record(AuditEvent{
+			SessionID: target.SessionID, OrgID: target.OrgID, UserID: target.UserID,
+			Kind: "blocked", Statement: stmt, At: time.Now(),
+		})
+		clientMu.Lock()
+		defer clientMu.Unlock()
+		be.Send(&pgproto3.ErrorResponse{
+			Severity: "ERROR", Code: "42501", // insufficient_privilege
+			Message: "OpenIDX session policy: " + perr.Error(),
+		})
+		if followWithReady {
+			be.Send(&pgproto3.ReadyForQuery{TxStatus: txStatus})
+		}
+		_ = be.Flush()
+	}
+
+	// client → server (decode + audit + policy, then forward)
 	go func() {
 		defer wg.Done()
 		up := pgproto3.NewFrontend(upstream, upstream)
+		// After a rejected Parse, swallow the rest of the extended-protocol
+		// pipeline (Bind/Describe/Execute) until the client's Sync, then
+		// answer ReadyForQuery ourselves — nothing was sent upstream.
+		discardUntilSync := false
 		for {
 			msg, err := be.Receive()
 			if err != nil {
 				_ = upstream.Close()
 				return
+			}
+			if discardUntilSync {
+				if _, ok := msg.(*pgproto3.Sync); ok {
+					discardUntilSync = false
+					clientMu.Lock()
+					be.Send(&pgproto3.ReadyForQuery{TxStatus: txStatus})
+					_ = be.Flush()
+					clientMu.Unlock()
+				}
+				continue
 			}
 			switch m := msg.(type) {
 			case *pgproto3.Query:
@@ -247,11 +321,20 @@ func (p *Proxy) relay(be *pgproto3.Backend, client net.Conn, upstream net.Conn, 
 					SessionID: target.SessionID, OrgID: target.OrgID, UserID: target.UserID,
 					Kind: "query", Statement: m.String, At: time.Now(),
 				})
+				if err := pol.Check(m.String); err != nil {
+					reject(m.String, err, true)
+					continue
+				}
 			case *pgproto3.Parse:
 				p.audit.Record(AuditEvent{
 					SessionID: target.SessionID, OrgID: target.OrgID, UserID: target.UserID,
 					Kind: "parse", Statement: m.Query, At: time.Now(),
 				})
+				if err := pol.Check(m.Query); err != nil {
+					reject(m.Query, err, false)
+					discardUntilSync = true
+					continue
+				}
 			}
 			// Forward the decoded frontend message to the upstream unchanged.
 			up.Send(msg)

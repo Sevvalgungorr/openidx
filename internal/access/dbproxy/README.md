@@ -35,6 +35,15 @@ statement is decoded and emitted to the audit sink.
   (the default for modern PostgreSQL), so the proxy authenticates to real
   managed databases.
 - Bidirectional relay with client→server `Query`/`Parse` decoding for audit.
+- **Statement policy enforcement** (`StatementPolicy` on `UpstreamTarget`):
+  read-only sessions and per-class deny lists, enforced server-side at the
+  decode point before anything reaches the upstream. The lexical classifier
+  understands quoting/dollar-quoting/comments, resolves CTEs (a `WITH ...
+  (DELETE ...)` is a write), `EXPLAIN ANALYZE` (executes what it explains) and
+  `COPY` direction, and **fails closed** on anything it cannot positively
+  classify as a read. Rejections answer SQLSTATE `42501` and are audited as
+  `blocked` events; extended-protocol rejections discard the pipeline until
+  `Sync`. Nil policy = audit-only (unchanged behavior and hot path).
 - Integration test: a fake upstream Postgres + the proxy + a real `pgproto3`
   client proving native-protocol auth, relay, query audit, and bad-token
   rejection — plus SCRAM client-flow unit tests. **Live-proven** against real
@@ -50,8 +59,9 @@ statement is decoded and emitted to the audit sink.
   `cmd/access-service` on a configurable port (feature-flagged, default off).
 - **TLS termination** at the proxy (client side) and upstream TLS +
   SCRAM-SHA-256-PLUS channel binding.
-- **Policy enforcement / masking:** the same decode point that audits `Query`
-  can reject or rewrite statements against OPA policy.
+- **Column-level masking / OPA integration:** statement rejection ships (see
+  above); rewriting results and delegating decisions to OPA policy remain
+  follow-ups on the same decode point.
 
 ## Why a wire proxy (not a query API)
 
