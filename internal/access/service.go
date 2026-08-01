@@ -732,6 +732,11 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.DELETE("/pam/app-pools/:id", svc.requireAdminRole(), svc.handleWindowsAppPoolDelete)
 		api.POST("/pam/app-pools/:id/members", svc.requireAdminRole(), svc.handleWindowsAppPoolAddMember)
 		api.DELETE("/pam/app-pools/:id/members/:memberId", svc.requireAdminRole(), svc.handleWindowsAppPoolRemoveMember)
+		// Bind an enrolled agent to a windows_app_host so its discovery reports
+		// route to that host. Distinct /pam/app-hosts prefix so the static
+		// segment can't collide with the /pam/apps/:id wildcard in gin's tree.
+		api.POST("/pam/app-hosts/:entryId/agent", svc.requireAdminRole(), svc.handleWindowsAppHostLinkAgent)
+		api.DELETE("/pam/app-hosts/:entryId/agent", svc.requireAdminRole(), svc.handleWindowsAppHostUnlinkAgent)
 
 		// Temporary access links for support/vendor access
 		// PAM vendor access to internal SSH/RDP/VNC hosts is a privileged
@@ -971,6 +976,11 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		if svc.remoteSupportHandler != nil {
 			svc.remoteSupportHandler.RegisterRemoteSupportPublicRoutes(publicAgent)
 		}
+		// Windows-app discovery report — an agent bound to a windows_app_host
+		// posts the Prepare-OpenIDXAppHost.ps1 -Report JSON here. Same
+		// X-Agent-ID + X-Auth-Token auth as /agent/report; the tenant is
+		// resolved from the agent→host binding, so it sits outside JWT auth too.
+		publicAgent.POST("/agent/windows-apps/report", svc.handleAgentWindowsAppReport)
 	}
 
 	// Tier-0 "dark platform" enroll door: the ONLY access-service route that

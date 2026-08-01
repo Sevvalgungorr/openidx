@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   AppWindow, Play, Plus, Trash2, Pencil, ShieldAlert, ShieldCheck, Server,
-  Layers, Download, AlertTriangle, CheckCircle2, HelpCircle,
+  Layers, Download, AlertTriangle, CheckCircle2, HelpCircle, Rss, Link2, Unlink,
 } from 'lucide-react'
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -20,7 +20,7 @@ import {
 } from '../components/ui/select'
 import {
   api, WindowsApp, WindowsAppInput, WindowsAppPool, WindowsAppHostState,
-  WindowsAppLaunchConflict, PamEntry,
+  WindowsAppHostAgent, WindowsAppLaunchConflict, PamEntry,
 } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
@@ -53,6 +53,7 @@ export function WindowsAppsPage() {
   const apps: WindowsApp[] = useMemo(() => data?.apps ?? [], [data])
   const pools: WindowsAppPool[] = useMemo(() => data?.pools ?? [], [data])
   const hostState: WindowsAppHostState[] = useMemo(() => data?.host_state ?? [], [data])
+  const hostAgents: WindowsAppHostAgent[] = useMemo(() => data?.host_agents ?? [], [data])
 
   // Candidate hosts for the "add app" form: RDP-capable PAM entries. We fetch
   // the connections list and filter to app hosts + plain rdp entries.
@@ -73,7 +74,36 @@ export function WindowsAppsPage() {
     [hostState],
   )
 
+  // Dedicated app hosts (not plain rdp) — the discovery section binds an agent
+  // to each so its published apps auto-sync.
+  const appHosts: PamEntry[] = useMemo(
+    () => hostEntries.filter((e) => e.entry_type === 'windows_app_host'),
+    [hostEntries],
+  )
+  const agentByHost = useMemo(() => {
+    const m = new Map<string, WindowsAppHostAgent>()
+    for (const a of hostAgents) m.set(a.host_entry_id, a)
+    return m
+  }, [hostAgents])
+  // Per-host agent_id being typed into the link field (keyed by host id).
+  const [linkInputs, setLinkInputs] = useState<Record<string, string>>({})
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['windows-apps'] })
+
+  const linkAgent = useMutation({
+    mutationFn: (v: { hostId: string; agentId: string }) => api.windowsApps.linkAgent(v.hostId, v.agentId),
+    onSuccess: (_r, v) => {
+      invalidate()
+      setLinkInputs((s) => ({ ...s, [v.hostId]: '' }))
+      toast({ title: 'Agent linked', description: 'Discovery will auto-sync this host.' })
+    },
+    onError: (e: Error) => toast({ title: 'Link failed', description: e.message, variant: 'destructive' }),
+  })
+  const unlinkAgent = useMutation({
+    mutationFn: (hostId: string) => api.windowsApps.unlinkAgent(hostId),
+    onSuccess: () => { invalidate(); toast({ title: 'Agent unlinked' }) },
+    onError: (e: Error) => toast({ title: 'Unlink failed', description: e.message, variant: 'destructive' }),
+  })
 
   const saveApp = useMutation({
     mutationFn: () => {
@@ -234,6 +264,68 @@ export function WindowsAppsPage() {
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {pool.members.length} host{pool.members.length !== 1 ? 's' : ''} · placement: {pool.placement.replace('_', ' ')}
+                    </p>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Discovery sources — bind an agent per host for auto-sync, or fall back
+          to the paste import. Only dedicated app hosts appear here. */}
+      {appHosts.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+            <Rss className="h-4 w-4" /> Discovery
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {appHosts.map((host) => {
+              const bound = agentByHost.get(host.id)
+              return (
+                <Card key={host.id}>
+                  <CardContent className="py-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium flex items-center gap-1.5 min-w-0 truncate">
+                        <Server className="h-4 w-4 shrink-0" /> {host.name}
+                      </span>
+                      {bound ? (
+                        <Badge variant="outline" className="text-emerald-700 border-emerald-300 shrink-0">
+                          <Link2 className="h-3 w-3 mr-1" /> agent linked
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground shrink-0">manual paste</Badge>
+                      )}
+                    </div>
+                    {bound ? (
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span className="truncate">
+                          {bound.agent_id}{bound.last_seen_at ? ` · seen ${new Date(bound.last_seen_at).toLocaleString()}` : ''}
+                        </span>
+                        <Button size="sm" variant="ghost" disabled={unlinkAgent.isPending}
+                          onClick={() => unlinkAgent.mutate(host.id)} title="Unlink agent">
+                          <Unlink className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          className="h-8 text-sm"
+                          placeholder="Enrolled agent ID (e.g. agent-1a2b3c4d)"
+                          value={linkInputs[host.id] ?? ''}
+                          onChange={(e) => setLinkInputs((s) => ({ ...s, [host.id]: e.target.value }))}
+                        />
+                        <Button size="sm" variant="outline" disabled={linkAgent.isPending || !(linkInputs[host.id] ?? '').trim()}
+                          onClick={() => linkAgent.mutate({ hostId: host.id, agentId: (linkInputs[host.id] ?? '').trim() })}>
+                          <Link2 className="h-3.5 w-3.5 mr-1" /> Link
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      {bound
+                        ? 'The agent runs the host-prep report on a schedule and posts the catalog automatically.'
+                        : 'Link the enrolled agent on this host for automatic sync, or use “Import from host” to paste once.'}
                     </p>
                   </CardContent>
                 </Card>

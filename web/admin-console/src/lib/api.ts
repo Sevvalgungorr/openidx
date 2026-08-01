@@ -511,6 +511,7 @@ export const api = {
         apps: WindowsApp[]
         pools: WindowsAppPool[]
         host_state: WindowsAppHostState[]
+        host_agents: WindowsAppHostAgent[]
       }>('/api/v1/access/pam/apps'),
     create: (body: WindowsAppInput) =>
       api.post<{ id: string }>('/api/v1/access/pam/apps', body),
@@ -542,6 +543,14 @@ export const api = {
       api.post<{ apps_created: number; apps_updated: number; host_updated: boolean }>(
         `/api/v1/access/pam/app-import`, { host_entry_id: hostEntryId, data },
       ),
+    // Bind / unbind an enrolled agent to a windows_app_host so its discovery
+    // reports auto-sync the catalog (the alternative to pasting the JSON).
+    linkAgent: (hostEntryId: string, agentId: string) =>
+      api.post<{ host_entry_id: string; agent_id: string }>(
+        `/api/v1/access/pam/app-hosts/${hostEntryId}/agent`, { agent_id: agentId },
+      ),
+    unlinkAgent: (hostEntryId: string) =>
+      api.delete<void>(`/api/v1/access/pam/app-hosts/${hostEntryId}/agent`),
   },
   quickLinks: {
     listMine: () => api.get<{ quick_links: QuickLink[] }>('/api/v1/access/quick-links/my'),
@@ -776,6 +785,15 @@ export interface WindowsAppHostState {
   allowlist_enforced?: boolean
   published_app_count?: number
   checked_at?: string
+}
+
+// Which enrolled agent (if any) is bound to a host entry, so the console can
+// show whether discovery auto-syncs from an agent vs. needs a manual paste.
+export interface WindowsAppHostAgent {
+  host_entry_id: string
+  agent_id: string
+  agent_status?: string
+  last_seen_at?: string
 }
 
 // A launch either succeeds (guacamole) or reports a placement conflict the

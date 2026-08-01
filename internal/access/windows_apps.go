@@ -114,7 +114,13 @@ func (s *Service) handleWindowsAppList(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load host state"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"apps": apps, "pools": pools, "host_state": hostState})
+	hostAgents, err := s.listWindowsAppHostAgents(ctx, org.ID)
+	if err != nil {
+		s.logger.Error("handleWindowsAppList: host agents query failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load host agents"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"apps": apps, "pools": pools, "host_state": hostState, "host_agents": hostAgents})
 }
 
 func (s *Service) listWindowsApps(ctx context.Context, orgID string) ([]windowsApp, error) {

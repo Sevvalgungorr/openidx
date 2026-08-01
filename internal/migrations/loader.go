@@ -845,5 +845,12 @@ func allMigrations() []*Migration {
 			UpSQL:       windowsAppsUp,
 			DownSQL:     windowsAppsDown,
 		},
+		{
+			Version:     120,
+			Name:        "agent_windows_app_host",
+			Description: "Bind an enrolled agent to a windows_app_host pam_entry (nullable windows_app_host_entry_id FK on enrolled_agents, ON DELETE SET NULL) so agent-based discovery can route a posted discoveryReport to the right host and tenant. enrolled_agents is a global fleet table; the org is derived from the linked entry. Additive — agents stay unlinked until an admin binds them.",
+			UpSQL:       agentWindowsAppHostUp,
+			DownSQL:     agentWindowsAppHostDown,
+		},
 	}
 }

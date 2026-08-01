@@ -13,6 +13,8 @@ vi.mock('../lib/api', () => ({
       remove: vi.fn(),
       launch: vi.fn(),
       importDiscovery: vi.fn(),
+      linkAgent: vi.fn(),
+      unlinkAgent: vi.fn(),
       iconURL: (id: string) => `/icon/${id}`,
     },
     pam: { listEntries: vi.fn() },
@@ -46,9 +48,11 @@ function renderPage() {
 describe('WindowsAppsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    wa.list.mockResolvedValue({ apps: [app], pools: [], host_state: [] })
+    wa.list.mockResolvedValue({ apps: [app], pools: [], host_state: [], host_agents: [] })
     pam.listEntries.mockResolvedValue({ entries: [] })
     wa.launch.mockResolvedValue({ launch_type: 'guacamole', connect_url: 'https://guac/x', app_id: 'a1', host_entry_id: 'h1', host_name: 'RDS01', recorded: true })
+    wa.linkAgent.mockResolvedValue({ host_entry_id: 'h1', agent_id: 'agent-1a2b3c4d' })
+    wa.unlinkAgent.mockResolvedValue(undefined)
     window.open = vi.fn()
   })
 
@@ -100,5 +104,33 @@ describe('WindowsAppsPage', () => {
     // Choosing the session retries the launch with the replace id.
     fireEvent.click(screen.getByRole('button', { name: /disconnect & launch here/i }))
     await waitFor(() => expect(wa.launch).toHaveBeenCalledWith('a1', 's1'))
+  })
+
+  it('links an agent to an app host for auto-discovery', async () => {
+    pam.listEntries.mockResolvedValue({
+      entries: [{ id: 'h1', name: 'RDS01', entry_type: 'windows_app_host' }],
+    })
+    renderPage()
+    // The unbound host shows the manual-paste state and a link field.
+    expect(await screen.findByText('manual paste')).toBeInTheDocument()
+    const input = screen.getByPlaceholderText(/enrolled agent id/i)
+    fireEvent.change(input, { target: { value: 'agent-1a2b3c4d' } })
+    fireEvent.click(screen.getByRole('button', { name: /^link$/i }))
+    await waitFor(() => expect(wa.linkAgent).toHaveBeenCalledWith('h1', 'agent-1a2b3c4d'))
+  })
+
+  it('shows a bound agent and allows unlinking it', async () => {
+    pam.listEntries.mockResolvedValue({
+      entries: [{ id: 'h1', name: 'RDS01', entry_type: 'windows_app_host' }],
+    })
+    wa.list.mockResolvedValue({
+      apps: [app], pools: [], host_state: [],
+      host_agents: [{ host_entry_id: 'h1', agent_id: 'agent-1a2b3c4d', agent_status: 'active' }],
+    })
+    renderPage()
+    expect(await screen.findByText('agent linked')).toBeInTheDocument()
+    expect(screen.getByText(/agent-1a2b3c4d/)).toBeInTheDocument()
+    fireEvent.click(screen.getByTitle(/unlink agent/i))
+    await waitFor(() => expect(wa.unlinkAgent).toHaveBeenCalledWith('h1'))
   })
 })

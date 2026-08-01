@@ -66,11 +66,31 @@ a pool to scale those.
    ```
 
    Paste the JSON into **Windows Apps → Import from host** (or let the OpenIDX
-   agent post it). Verified apps become launchable immediately.
+   agent post it — see *Automatic discovery* below). Verified apps become
+   launchable immediately.
 
 3. In OpenIDX, add the host as a **Windows App Host** connection (credential
    vaulted), then group hosts into a **pool** and set each host's
    `max_sessions`.
+
+### Automatic discovery (agent-linked)
+
+If the OpenIDX agent is installed on the host, bind it to the host so discovery
+runs itself instead of pasting JSON by hand:
+
+- In **Windows Apps → Discovery**, find the host and **Link** its enrolled agent
+  (paste the agent's id, e.g. `agent-1a2b3c4d`).
+- The agent's `/agent/config` then carries a `windows_app_discovery` block; the
+  agent runs `Prepare-OpenIDXAppHost.ps1 -Report` on that cadence and POSTs the
+  identical JSON to `POST /api/v1/access/agent/windows-apps/report`, authenticated
+  with its own `X-Agent-ID` + `X-Auth-Token` (the same credentials as posture
+  reporting — **no tenant token**). The server resolves the host **and its
+  tenant** from the binding (`enrolled_agents.windows_app_host_entry_id`,
+  migration v120) and upserts apps + posture through the same
+  `importDiscoveredApps` / `upsertHostState` the paste path uses.
+- One agent binds to one host (binding a second agent moves the link); a host
+  with no agent falls back to the manual paste. Deleting the host entry unlinks
+  the agent automatically (`ON DELETE SET NULL`).
 
 ## Security & containment
 
@@ -119,7 +139,8 @@ launch because RemoteApp windows don't repaint with the GFX pipeline on, which
 | --- | --- |
 | Launch core (shared with PAM connect) | `internal/access/pam_launch.go` (`launchPamSession`, `ensureGuacConnection`) |
 | App catalog, placement, pools, import | `internal/access/windows_apps.go`, `internal/access/windows_apps_launch.go` |
-| Schema | `internal/migrations/sql_v119.go` |
+| Agent discovery (report endpoint, agent binding, config hint) | `internal/access/windows_apps_discovery.go`, `internal/access/agent_api.go` |
+| Schema | `internal/migrations/sql_v119.go`, `internal/migrations/sql_v120.go` |
 | Host prep / discovery script | `scripts/windows/Prepare-OpenIDXAppHost.ps1` |
 | Console | `web/admin-console/src/pages/windows-apps.tsx` |
 

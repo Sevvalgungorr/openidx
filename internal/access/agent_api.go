@@ -1115,6 +1115,40 @@ type agentConfigResponse struct {
 	EnforcementPolicy string                  `json:"enforcement_policy,omitempty"`
 	KioskPolicy       *kioskPolicyRow         `json:"kiosk_policy,omitempty"`
 	RemoteSupport     *agentRemoteSupportInfo `json:"remote_support,omitempty"`
+	// WindowsAppDiscovery is present only when this agent is bound to a
+	// windows_app_host (migration v120). It tells the agent to run the host-prep
+	// script's -Report and POST the JSON back, so the app catalog auto-syncs.
+	WindowsAppDiscovery *windowsAppDiscoveryJob `json:"windows_app_discovery,omitempty"`
+}
+
+// windowsAppDiscoveryJob is the discovery hint handed to an agent bound to a
+// Windows app host. The agent runs Prepare-OpenIDXAppHost.ps1 -Report and POSTs
+// the emitted discoveryReport JSON to ReportPath (using its X-Agent-ID +
+// X-Auth-Token), no more often than Interval.
+type windowsAppDiscoveryJob struct {
+	Enabled    bool   `json:"enabled"`
+	ReportPath string `json:"report_path"`
+	Interval   string `json:"interval"`
+}
+
+// windowsAppDiscoveryForAgent returns a discovery job when the agent is bound to
+// a windows_app_host, or nil otherwise. Best-effort: any lookup error yields nil
+// so config delivery is never blocked by it.
+func (h *AgentAPIHandler) windowsAppDiscoveryForAgent(ctx context.Context, agentID string) *windowsAppDiscoveryJob {
+	if h.db == nil || h.db.Pool == nil {
+		return nil
+	}
+	var bound bool
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT windows_app_host_entry_id IS NOT NULL FROM enrolled_agents WHERE agent_id = $1`,
+		agentID).Scan(&bound); err != nil || !bound {
+		return nil
+	}
+	return &windowsAppDiscoveryJob{
+		Enabled:    true,
+		ReportPath: "/api/v1/access/agent/windows-apps/report",
+		Interval:   "1h",
+	}
 }
 
 // agentRemoteSupportInfo tells an agent how to join an in-flight session.
@@ -1438,6 +1472,10 @@ func (h *AgentAPIHandler) HandleConfig(c *gin.Context) {
 			// instead of waiting out the normal posture interval.
 			cfg.ReportInterval = remoteSupportPollInterval
 		}
+
+		// Windows-app discovery job — present only for an agent bound to a
+		// windows_app_host, telling it to -Report and POST the catalog JSON back.
+		cfg.WindowsAppDiscovery = h.windowsAppDiscoveryForAgent(ctx, agentID)
 
 		c.JSON(http.StatusOK, cfg)
 		return
