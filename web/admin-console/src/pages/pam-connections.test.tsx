@@ -130,4 +130,27 @@ describe('PamConnectionsPage', () => {
     fireEvent.click(within(card).getByTitle(/disable ziti reach/i))
     await waitFor(() => expect(pam.disableZiti).toHaveBeenCalledWith('e1'))
   })
+
+  it('shows a RemoteApp badge for entries publishing a single app', async () => {
+    pam.listEntries.mockResolvedValue({
+      entries: [{ ...rdpEntry, name: 'SQL01 SSMS', settings: { 'remote-app': '||SSMS' } }],
+    })
+    renderPage()
+    await screen.findByText('SQL01 SSMS')
+    // Badge shows the alias without Guacamole's "||" prefix.
+    expect(screen.getByText('app: SSMS')).toBeInTheDocument()
+  })
+
+  it('saves RemoteApp fields into entry settings with the || alias prefix', async () => {
+    pam.createEntry.mockResolvedValue({ id: 'e9' })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /new entry/i }))
+    fireEvent.change(screen.getByPlaceholderText('DC01 – Domain Controller'), { target: { value: 'SSMS' } })
+    fireEvent.change(screen.getByPlaceholderText('SSMS'), { target: { value: 'SSMS' } })
+    fireEvent.change(screen.getByPlaceholderText('-S sql01.corp.local -E'), { target: { value: '-E' } })
+    fireEvent.click(screen.getByRole('button', { name: /create/i }))
+    await waitFor(() => expect(pam.createEntry).toHaveBeenCalled())
+    const body = pam.createEntry.mock.calls[0][0]
+    expect(body.settings).toMatchObject({ 'remote-app': '||SSMS', 'remote-app-args': '-E' })
+  })
 })

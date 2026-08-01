@@ -54,7 +54,7 @@ const kindBadge: Record<string, string> = {
 const emptyForm: PamEntryInput = {
   name: '', entry_type: 'rdp', description: '', tags: [],
   hostname: '', port: 0, username: '', domain: '', url: '',
-  secret: '', credential_entry_id: '',
+  settings: {}, secret: '', credential_entry_id: '',
   allow_reveal: false, require_approval: false, record_session: false,
 }
 
@@ -118,6 +118,28 @@ export function PamConnectionsPage() {
   )
 
   const selectedType = entryTypes.find((t) => t.type === form.entry_type)
+
+  // RemoteApp (single published Windows app instead of a full desktop). These
+  // are plain Guacamole RDP parameters carried in the entry's settings JSON —
+  // the backend already forwards non-reserved settings to guacd, so SSMS &co
+  // launch passwordless through the existing vault-injected flow.
+  const settingStr = (key: string): string => {
+    const v = form.settings?.[key]
+    return typeof v === 'string' ? v : ''
+  }
+  const setSetting = (key: string, value: string) =>
+    setForm((f) => {
+      const next: Record<string, unknown> = { ...(f.settings || {}) }
+      if (value) next[key] = value
+      else delete next[key]
+      return { ...f, settings: next }
+    })
+  // Guacamole expects RemoteApp aliases in the "||alias" form the RDS host
+  // registers them under; prefix automatically so admins can type "SSMS".
+  const setRemoteAppAlias = (raw: string) => {
+    const trimmed = raw.trim()
+    setSetting('remote-app', trimmed && !trimmed.startsWith('||') ? `||${trimmed}` : trimmed)
+  }
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['pam-entries'] })
@@ -266,6 +288,7 @@ export function PamConnectionsPage() {
       folder_id: entry.folder_id, name: entry.name, entry_type: entry.entry_type,
       description: entry.description, tags: entry.tags, hostname: entry.hostname,
       port: entry.port, username: entry.username, domain: entry.domain, url: entry.url,
+      settings: entry.settings || {},
       secret: '', credential_entry_id: entry.credential_entry_id,
       allow_reveal: entry.allow_reveal, require_approval: entry.require_approval,
       record_session: entry.record_session, renderer: entry.renderer,
@@ -367,6 +390,11 @@ export function PamConnectionsPage() {
                           <Badge className={kindBadge[entry.kind] || ''}>{entry.entry_type}</Badge>
                           {entry.require_approval && <Badge variant="outline" title="Requires approval"><Lock className="h-3 w-3" /></Badge>}
                           {entry.record_session && <Badge variant="outline">rec</Badge>}
+                          {typeof entry.settings['remote-app'] === 'string' && entry.settings['remote-app'] !== '' && (
+                            <Badge variant="outline" title="Launches a single published RemoteApp instead of the full desktop">
+                              app: {String(entry.settings['remote-app']).replace(/^\|\|/, '')}
+                            </Badge>
+                          )}
                           {entry.has_secret && <Badge variant="outline" title="Vaulted secret"><KeyRound className="h-3 w-3" /></Badge>}
                           {entry.ziti_enabled && <Badge className="bg-emerald-100 text-emerald-800" title="Reaches target over the OpenZiti overlay (zero-trust)"><Shield className="h-3 w-3 mr-1" />via Ziti</Badge>}
                         </div>
@@ -474,6 +502,45 @@ export function PamConnectionsPage() {
                 </div>
               )}
             </div>
+
+            {form.entry_type === 'rdp' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">RemoteApp (optional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Publish a single application (e.g. SSMS) instead of the full desktop.
+                    Requires the program to be published as a RemoteApp on the RDS host.
+                    Credentials stay vault-injected; recording and approval work as usual.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Program alias</label>
+                    <Input
+                      value={settingStr('remote-app').replace(/^\|\|/, '')}
+                      onChange={(e) => setRemoteAppAlias(e.target.value)}
+                      placeholder="SSMS"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Working directory</label>
+                    <Input
+                      value={settingStr('remote-app-dir')}
+                      onChange={(e) => setSetting('remote-app-dir', e.target.value)}
+                      placeholder="C:\Users\Public"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Command-line arguments</label>
+                  <Input
+                    value={settingStr('remote-app-args')}
+                    onChange={(e) => setSetting('remote-app-args', e.target.value)}
+                    placeholder="-S sql01.corp.local -E"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Credential: own secret or linked credential entry */}
             {selectedType?.kind === 'session' && credentialEntries.length > 0 && (
