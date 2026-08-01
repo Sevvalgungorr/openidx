@@ -113,13 +113,11 @@ func buildDiscoveryDocument(issuer string) *DiscoveryDocument {
 		TokenEndpoint:         issuer + "/oauth/token",
 		JWKSURI:               issuer + "/.well-known/jwks.json",
 		RegistrationEndpoint:  issuer + "/oauth/register",
+		// Authorization Code Flow only. The implicit and hybrid entries that
+		// used to be listed here were never implemented — the comments calling
+		// them "deprecated but supported" were half right.
 		ResponseTypesSupported: []string{
-			"code",                // Authorization Code Flow
-			"id_token",            // Implicit Flow (deprecated but supported)
-			"token id_token",      // Implicit Flow (deprecated but supported)
-			"code id_token",       // Hybrid Flow
-			"code token",          // Hybrid Flow
-			"code id_token token", // Hybrid Flow
+			"code",
 		},
 		SubjectTypesSupported: []string{
 			"public", // Same subject for all clients (default). "pairwise" is

@@ -949,7 +949,9 @@ func (s *Service) GenerateIDToken(ctx context.Context, userID, clientID, nonce s
 	}
 
 	claims := jwt.MapClaims{
-		"sub":         userID,
+		// Pairwise when OIDCPairwiseSubjects is on (OIDC Core §8.1); the raw
+		// user id otherwise. UserInfo derives the same value so the two agree.
+		"sub":         s.subjectFor(userID, clientID),
 		"aud":         clientID,
 		"iss":         s.issuerForOrg(org),
 		"iat":         now.Unix(),
@@ -1266,14 +1268,20 @@ func (s *Service) handleDiscovery(c *gin.Context) {
 	}
 
 	discovery := OIDCDiscovery{
-		Issuer:                            base,
-		AuthorizationEndpoint:             base + "/oauth/authorize",
-		TokenEndpoint:                     base + "/oauth/token",
-		UserInfoEndpoint:                  base + "/oauth/userinfo",
-		JwksURI:                           base + "/.well-known/jwks.json",
-		RegistrationEndpoint:              base + "/oauth/register",
-		ScopesSupported:                   []string{"openid", "profile", "email", "offline_access"},
-		ResponseTypesSupported:            []string{"code", "id_token", "token id_token", "code id_token"},
+		Issuer:                base,
+		AuthorizationEndpoint: base + "/oauth/authorize",
+		TokenEndpoint:         base + "/oauth/token",
+		UserInfoEndpoint:      base + "/oauth/userinfo",
+		JwksURI:               base + "/.well-known/jwks.json",
+		RegistrationEndpoint:  base + "/oauth/register",
+		ScopesSupported:       []string{"openid", "profile", "email", "offline_access"},
+		// Only the authorization code flow is implemented: the authorize path
+		// always issues a code (see the response_type it sets on the consent
+		// redirect), and no handler produces an implicit or hybrid response.
+		// Advertising id_token / token id_token / code id_token sent conforming
+		// clients down a flow that silently returns a code instead. Implicit is
+		// also removed outright by OAuth 2.1, so narrowing is the right direction.
+		ResponseTypesSupported:            []string{"code"},
 		GrantTypesSupported:               []string{"authorization_code", "refresh_token", "client_credentials", grantTypeTokenExchange},
 		SubjectTypesSupported:             s.discoverySubjectTypes(),
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
@@ -2896,8 +2904,11 @@ func (s *Service) handleToken(c *gin.Context) {
 
 func (s *Service) handleAuthorizationCodeGrant(c *gin.Context) {
 	code := c.PostForm("code")
-	clientID := c.PostForm("client_id")
-	clientSecret := c.PostForm("client_secret")
+	clientID, clientSecret, credsOK := clientCredentials(c)
+	if !credsOK {
+		c.JSON(400, gin.H{"error": "invalid_request", "error_description": "use only one client authentication method"})
+		return
+	}
 	redirectURI := c.PostForm("redirect_uri")
 	codeVerifier := c.PostForm("code_verifier")
 
@@ -3062,8 +3073,11 @@ func (s *Service) userIsActive(ctx context.Context, userID string) (bool, error)
 
 func (s *Service) handleRefreshTokenGrant(c *gin.Context) {
 	refreshToken := c.PostForm("refresh_token")
-	clientID := c.PostForm("client_id")
-	clientSecret := c.PostForm("client_secret")
+	clientID, clientSecret, credsOK := clientCredentials(c)
+	if !credsOK {
+		c.JSON(400, gin.H{"error": "invalid_request", "error_description": "use only one client authentication method"})
+		return
+	}
 
 	// Verify client
 	client, err := s.GetClient(c.Request.Context(), clientID)
@@ -3172,8 +3186,11 @@ func (s *Service) handleRefreshTokenGrant(c *gin.Context) {
 }
 
 func (s *Service) handleClientCredentialsGrant(c *gin.Context) {
-	clientID := c.PostForm("client_id")
-	clientSecret := c.PostForm("client_secret")
+	clientID, clientSecret, credsOK := clientCredentials(c)
+	if !credsOK {
+		c.JSON(400, gin.H{"error": "invalid_request", "error_description": "use only one client authentication method"})
+		return
+	}
 	scope := c.PostForm("scope")
 
 	// Verify client
@@ -3221,7 +3238,14 @@ func (s *Service) handleClientCredentialsGrant(c *gin.Context) {
 // the handlers stay independently unit-testable.
 func (s *Service) requireTokenEndpointClientAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		clientID := c.PostForm("client_id")
+		clientID, clientSecret, credsOK := clientCredentials(c)
+		if !credsOK {
+			c.AbortWithStatusJSON(400, gin.H{
+				"error":             "invalid_request",
+				"error_description": "use only one client authentication method",
+			})
+			return
+		}
 		if clientID == "" {
 			c.Header("WWW-Authenticate", `Basic realm="oauth"`)
 			c.AbortWithStatusJSON(401, gin.H{
@@ -3236,7 +3260,7 @@ func (s *Service) requireTokenEndpointClientAuth() gin.HandlerFunc {
 			return
 		}
 		if client.Type != "public" {
-			if subtle.ConstantTimeCompare([]byte(client.ClientSecret), []byte(c.PostForm("client_secret"))) != 1 {
+			if subtle.ConstantTimeCompare([]byte(client.ClientSecret), []byte(clientSecret)) != 1 {
 				c.AbortWithStatusJSON(401, gin.H{"error": "invalid_client"})
 				return
 			}
@@ -3439,6 +3463,13 @@ func (s *Service) handleUserInfo(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "server_error"})
 		return
 	}
+
+	// OIDC Core §5.3.2: the UserInfo `sub` MUST match the one in the ID token.
+	// The access token carries the raw user id (that is what the lookup above
+	// needs), so the client-facing subject is derived here from the token's
+	// audience rather than stored.
+	aud, _ := claims["aud"].(string)
+	userInfo.Sub = s.subjectFor(userID, aud)
 
 	c.JSON(200, userInfo)
 }
@@ -4026,7 +4057,7 @@ func (s *Service) generateTokensForUser(ctx context.Context, user *SAMLUser, cli
 	if containsScope(scopes, "openid") {
 		idClaims := jwt.MapClaims{
 			"iss":            s.issuerForOrg(org),
-			"sub":            user.ID,
+			"sub":            s.subjectFor(user.ID, clientID),
 			"aud":            clientID,
 			"exp":            accessExpiry.Unix(),
 			"iat":            now.Unix(),

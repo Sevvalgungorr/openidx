@@ -70,7 +70,14 @@ func (s *Service) HandleSCIMListUsers(c *gin.Context) {
 		},
 	}
 
-	// Parse SCIM filter if provided
+	// Parse the SCIM filter and convert it to a SQL predicate.
+	//
+	// Placeholders start at $2 because the query below spends $1 on the tenant
+	// id. An unsupported attribute fails here and becomes a 400 rather than
+	// being dropped — the old code logged the clause and discarded it, so every
+	// filtered request returned the tenant's whole user list while
+	// ServiceProviderConfig advertised filter support.
+	var sqlFilter *SQLFilter
 	if filterStr != "" {
 		scimFilter, err := ParseFilter(filterStr)
 		if err != nil {
@@ -79,18 +86,12 @@ func (s *Service) HandleSCIMListUsers(c *gin.Context) {
 			return
 		}
 
-		// Convert SCIM filter to SQL
-		sqlFilter, err := FilterToSQL(scimFilter, GetUserFieldMapping())
+		sqlFilter, err = FilterToSQLFrom(scimFilter, GetUserFieldMapping(), 2)
 		if err != nil {
 			s.logger.Debug("Failed to convert SCIM filter to SQL", zap.Error(err))
 			c.JSON(http.StatusBadRequest, SCIMErrorBadRequest(fmt.Sprintf("Unsupported filter: %s", err)))
 			return
 		}
-
-		// Apply filter to query (simplified - in production, integrate with repository)
-		s.logger.Debug("SCIM filter converted to SQL",
-			zap.String("filter", filterStr),
-			zap.String("sql", sqlFilter.WhereClause))
 	}
 
 	// Enforce tenant isolation from Bearer token
@@ -99,24 +100,16 @@ func (s *Service) HandleSCIMListUsers(c *gin.Context) {
 		baseFilter.OrganizationID = &tenantIDStr
 	}
 
-	// Query users using existing service method
-	listResp, err := s.ListUsersWithFilter(c.Request.Context(), baseFilter)
+	users, total, err := s.listUsersForSCIM(c.Request.Context(), baseFilter.Offset, baseFilter.Limit, sqlFilter)
 	if err != nil {
 		s.logger.Error("Failed to list users", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, SCIMErrorInternal("Failed to retrieve users"))
 		return
 	}
-
 	// Get base URL for meta.location
 	baseURL := s.getSCIMBaseURL(c)
 
-	// Convert to SCIM format
-	users, ok := listResp.Resources.([]User)
-	if !ok {
-		users = []User{}
-	}
-
-	scimResp, err := SCIMListResponseForUsers(users, listResp.TotalResults, startIndex, count, baseURL)
+	scimResp, err := SCIMListResponseForUsers(users, total, startIndex, count, baseURL)
 	if err != nil {
 		s.logger.Error("Failed to create SCIM response", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, SCIMErrorInternal("Failed to format response"))
@@ -378,7 +371,9 @@ func (s *Service) HandleSCIMListGroups(c *gin.Context) {
 		},
 	}
 
-	// Parse SCIM filter if provided
+	// Same as the Users handler: the converted predicate is applied, not logged
+	// and dropped. Placeholders start at $2 because $1 is the tenant id.
+	var sqlFilter *SQLFilter
 	if filterStr != "" {
 		scimFilter, err := ParseFilter(filterStr)
 		if err != nil {
@@ -386,8 +381,7 @@ func (s *Service) HandleSCIMListGroups(c *gin.Context) {
 			return
 		}
 
-		// Convert SCIM filter to SQL
-		_, err = FilterToSQL(scimFilter, GetGroupFieldMapping())
+		sqlFilter, err = FilterToSQLFrom(scimFilter, GetGroupFieldMapping(), 2)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, SCIMErrorBadRequest(fmt.Sprintf("Unsupported filter: %s", err)))
 			return
@@ -400,22 +394,15 @@ func (s *Service) HandleSCIMListGroups(c *gin.Context) {
 		baseFilter.OrganizationID = &tenantIDStr
 	}
 
-	// Query groups
-	listResp, err := s.ListGroupsWithFilter(c.Request.Context(), baseFilter)
+	groups, total, err := s.listGroupsForSCIM(c.Request.Context(), baseFilter.Offset, baseFilter.Limit, sqlFilter)
 	if err != nil {
 		s.logger.Error("Failed to list groups", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, SCIMErrorInternal("Failed to retrieve groups"))
 		return
 	}
 
-	// Convert to SCIM format
-	groups, ok := listResp.Resources.([]Group)
-	if !ok {
-		groups = []Group{}
-	}
-
 	baseURL := s.getSCIMBaseURL(c)
-	scimResp, err := SCIMListResponseForGroups(groups, listResp.TotalResults, startIndex, count, baseURL+"/scim/v2")
+	scimResp, err := SCIMListResponseForGroups(groups, total, startIndex, count, baseURL+"/scim/v2")
 	if err != nil {
 		s.logger.Error("Failed to create SCIM response", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, SCIMErrorInternal("Failed to format response"))
@@ -806,7 +793,7 @@ func (s *Service) HandleSCIMResourceTypes(c *gin.Context) {
 		"totalResults": len(resourceTypes),
 		"itemsPerPage": len(resourceTypes),
 		"startIndex":   1,
-		"resources":    resourceTypes,
+		"Resources":    resourceTypes, // RFC 7644 §3.4.2 capitalizes this member
 	})
 }
 
@@ -832,7 +819,7 @@ func (s *Service) HandleSCIMSchemas(c *gin.Context) {
 		"totalResults": len(schemas),
 		"itemsPerPage": len(schemas),
 		"startIndex":   1,
-		"resources":    schemas,
+		"Resources":    schemas, // RFC 7644 §3.4.2 capitalizes this member
 	})
 }
 

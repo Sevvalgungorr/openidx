@@ -270,15 +270,33 @@ func (p *OIDCProvider) GenerateIDToken(ctx context.Context, req *IDTokenRequest)
 // user id, same for all clients. An empty clientID always yields the public
 // subject so callers without client context never emit an unstable value.
 func (p *OIDCProvider) generateSubject(userID, clientID string) string {
-	if clientID == "" || p.service == nil || p.service.config == nil || !p.service.config.OIDCPairwiseSubjects {
+	if p.service == nil {
 		return userID
 	}
-	// Pairwise = base64url(HMAC-SHA256(salt, clientID + "|" + userID)). The salt is
-	// the install's EncryptionKey so the mapping is stable across restarts and not
-	// guessable by a relying party. Sector = clientID (we don't support
-	// sector_identifier_uri grouping yet; per-client is the privacy-preserving
-	// default and still spec-valid).
-	mac := hmac.New(sha256.New, []byte(p.service.config.EncryptionKey))
+	return p.service.subjectFor(userID, clientID)
+}
+
+// subjectFor returns the OIDC `sub` for a user as seen by one client.
+//
+// This lives on Service, not on OIDCProvider, because OIDCProvider is
+// constructed only by the test helper — it has no production caller. The live
+// token path hardcoded `sub: userID`, so enabling OIDCPairwiseSubjects
+// advertised "pairwise" in discovery and then issued public subjects anyway:
+// an operator who turned the flag on to get pseudonymous subjects silently got
+// none. Routing both the provider and the live path through one function is
+// what makes the advertised capability true.
+//
+// Pairwise = base64url(HMAC-SHA256(salt, clientID + "|" + userID)). The salt is
+// the install's EncryptionKey so the mapping is stable across restarts and not
+// guessable by a relying party. Sector = clientID (sector_identifier_uri
+// grouping is not supported; per-client is the privacy-preserving default and
+// still spec-valid). An empty clientID always yields the public subject, so a
+// caller without client context never emits an unstable value.
+func (s *Service) subjectFor(userID, clientID string) string {
+	if clientID == "" || s == nil || s.config == nil || !s.config.OIDCPairwiseSubjects {
+		return userID
+	}
+	mac := hmac.New(sha256.New, []byte(s.config.EncryptionKey))
 	mac.Write([]byte(clientID + "|" + userID))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }

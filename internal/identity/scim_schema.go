@@ -166,12 +166,18 @@ type SCIMMember struct {
 }
 
 // SCIMListResponse represents a SCIM query response with pagination
+//
+// The Resources member is capitalized because RFC 7644 §3.4.2 defines it that
+// way — it is the one attribute name in the ListResponse that is not
+// lowerCamelCase. Emitting "resources" makes strict clients (Okta, Entra ID)
+// read an empty page while totalResults says otherwise, which looks like the
+// server returning nothing rather than a naming mismatch.
 type SCIMListResponse struct {
 	Schemas      []string        `json:"schemas"`
 	TotalResults int             `json:"totalResults"`
 	ItemsPerPage int             `json:"itemsPerPage"`
 	StartIndex   int             `json:"startIndex"`
-	Resources    json.RawMessage `json:"resources"`
+	Resources    json.RawMessage `json:"Resources"`
 }
 
 // GetSchemas returns the schemas for the list response

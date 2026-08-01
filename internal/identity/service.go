@@ -1570,6 +1570,27 @@ func (s *Service) IsAccountLocked(ctx context.Context, username string) (bool, e
 	return false, nil
 }
 
+// publicBaseURL returns the externally reachable origin of the end-user web
+// app, for links mailed to users (password reset, verification, invitation).
+//
+// These links used to be built as "http://localhost:3000" or
+// "http://localhost:<this service's port>". Both are wrong outside a developer
+// laptop, and the second is wrong even there: it points at the API listener
+// rather than the browser app, so the recipient lands on a JSON 404. Password
+// reset, email verification and invitations were therefore non-functional in
+// any real deployment.
+//
+// The trailing slash is trimmed so callers can concatenate a rooted path
+// without producing a double slash.
+func (s *Service) publicBaseURL() string {
+	if s.cfg != nil && s.cfg.PublicBaseURL != "" {
+		return strings.TrimRight(s.cfg.PublicBaseURL, "/")
+	}
+	// Only reachable when a Service is built with a zero config (tests); the
+	// real default comes from config.Load.
+	return "http://localhost:3000"
+}
+
 // ValidatePasswordPolicy validates a password against policy requirements
 func (s *Service) ValidatePasswordPolicy(password string) error {
 	// Basic password policy: minimum 8 characters, at least one uppercase, one lowercase, one digit
@@ -3393,7 +3414,7 @@ func (s *Service) handleCreateUser(c *gin.Context) {
 				user.ID, token, org.ID)
 		}
 		if err == nil {
-			baseURL := fmt.Sprintf("http://localhost:%d", s.cfg.Port)
+			baseURL := s.publicBaseURL()
 			s.emailService.SendVerificationEmail(c.Request.Context(), user.GetEmail(), user.GetFirstName(), token, baseURL)
 		}
 	}
@@ -4629,7 +4650,7 @@ func (s *Service) handleForgotPassword(c *gin.Context) {
 		var firstName string
 		s.db.Pool.QueryRow(ctx,
 			"SELECT first_name FROM users WHERE id = $1 AND org_id = $2", userID, org.ID).Scan(&firstName)
-		baseURL := "http://localhost:3000"
+		baseURL := s.publicBaseURL()
 		if err := s.emailService.SendPasswordResetEmail(ctx, req.Email, firstName, token, baseURL); err != nil {
 			s.logger.Error("Failed to send password reset email", zap.Error(err))
 		}
@@ -4785,7 +4806,7 @@ func (s *Service) handleAdminResetPassword(c *gin.Context) {
 		zap.String("target_email", email))
 
 	if s.emailService != nil {
-		baseURL := "http://localhost:3000"
+		baseURL := s.publicBaseURL()
 		if err := s.emailService.SendPasswordResetEmail(ctx, email, firstName, token, baseURL); err != nil {
 			s.logger.Error("Failed to send password reset email", zap.Error(err))
 			c.JSON(500, gin.H{"error": "Failed to send reset email"})
@@ -5163,7 +5184,7 @@ func (s *Service) handleResendVerification(c *gin.Context) {
 	}
 
 	if s.emailService != nil {
-		baseURL := fmt.Sprintf("http://localhost:%d", s.cfg.Port)
+		baseURL := s.publicBaseURL()
 		s.emailService.SendVerificationEmail(c.Request.Context(), email, firstName, token, baseURL)
 	}
 
@@ -5255,7 +5276,7 @@ func (s *Service) handleCreateInvitation(c *gin.Context) {
 		if name == "" {
 			name = "An administrator"
 		}
-		baseURL := fmt.Sprintf("http://localhost:%d", s.cfg.Port)
+		baseURL := s.publicBaseURL()
 		s.emailService.SendInvitationEmail(c.Request.Context(), req.Email, name, token, baseURL)
 	}
 

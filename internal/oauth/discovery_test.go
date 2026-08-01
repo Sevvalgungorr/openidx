@@ -400,8 +400,16 @@ func TestDiscoveryDocumentResponseTypes(t *testing.T) {
 		assert.Contains(t, doc.ResponseTypesSupported, "code")
 	})
 
-	t.Run("Hybrid flows are supported", func(t *testing.T) {
-		assert.Contains(t, doc.ResponseTypesSupported, "code id_token")
-		assert.Contains(t, doc.ResponseTypesSupported, "code token")
+	t.Run("Unimplemented flows are not advertised", func(t *testing.T) {
+		// This used to assert the opposite. Nothing implements implicit or
+		// hybrid — the authorize path always issues a code — so advertising
+		// them sent conforming clients down a flow that silently returned
+		// something else. Discovery must describe what the server actually
+		// does; if hybrid is implemented later, add it back here and in
+		// buildDiscoveryDocument together.
+		for _, unimplemented := range []string{"id_token", "token id_token", "code id_token", "code token", "code id_token token"} {
+			assert.NotContains(t, doc.ResponseTypesSupported, unimplemented,
+				"advertised %q but no handler implements it", unimplemented)
+		}
 	})
 }

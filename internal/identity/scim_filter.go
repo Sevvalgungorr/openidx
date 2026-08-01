@@ -408,14 +408,26 @@ type SQLFilter struct {
 // FilterToSQL converts a SCIM filter expression to a SQL WHERE clause
 // Returns the WHERE clause and the parameter values
 func FilterToSQL(expr *FilterExpression, validFields map[string]string) (*SQLFilter, error) {
+	return FilterToSQLFrom(expr, validFields, 1)
+}
+
+// FilterToSQLFrom is FilterToSQL with control over the first placeholder number.
+//
+// A caller that has already spent $1..$n on its own parameters (tenant id,
+// offset, limit) needs the filter's placeholders to continue from there rather
+// than restart at $1 and collide.
+func FilterToSQLFrom(expr *FilterExpression, validFields map[string]string, startIndex int) (*SQLFilter, error) {
 	if expr == nil {
 		return &SQLFilter{WhereClause: "", Args: nil}, nil
+	}
+	if startIndex < 1 {
+		startIndex = 1
 	}
 
 	builder := &sqlFilterBuilder{
 		validFields: validFields,
 		args:        make([]interface{}, 0),
-		paramIndex:  1,
+		paramIndex:  startIndex,
 	}
 
 	where, err := builder.buildFilter(expr)
@@ -575,26 +587,20 @@ func (b *sqlFilterBuilder) getColumnName(field string) (string, bool) {
 	return "", false
 }
 
-// isArrayField returns true if the field maps to a JSON array column
+// jsonArrayColumns lists columns that genuinely hold a JSON array, for which a
+// comparison must use containment (`?`) rather than equality.
+//
+// It is empty: no column reachable from the SCIM field mappings is jsonb. It
+// used to name emails/groups/roles/photos/addresses, which produced SQL like
+// `emails::jsonb ? $1` against a plain VARCHAR `email` column — a runtime error
+// that never surfaced because the clause was never executed. Kept as the single
+// place to declare such a column if one is ever added.
+var jsonArrayColumns = map[string]bool{}
+
+// isArrayField reports whether the field maps to a JSON array column.
 func (b *sqlFilterBuilder) isArrayField(field string) bool {
-	arrayFields := []string{"emails", "phoneNumbers", "groups", "roles", "entitlements", "photos", "addresses"}
-	for _, af := range arrayFields {
-		if field == af {
-			return true
-		}
-	}
-
-	// Check if the mapped column is a JSON array type
-	if column, ok := b.validFields[field]; ok {
-		arrayColumns := []string{"emails", "phone_numbers", "groups", "roles", "entitlements", "photos", "addresses"}
-		for _, ac := range arrayColumns {
-			if column == ac {
-				return true
-			}
-		}
-	}
-
-	return false
+	column, ok := b.validFields[field]
+	return ok && jsonArrayColumns[column]
 }
 
 // addArg adds a parameter and returns the updated parameter index
@@ -609,37 +615,65 @@ func (b *sqlFilterBuilder) addArg(arg interface{}) (string, error) {
 // Predefined Field Mappings
 // ============================================================
 
-// GetUserFieldMapping returns the standard SCIM to SQL field mapping for users
+// GetUserFieldMapping returns the SCIM-to-SQL field mapping for users.
+//
+// Every entry here names a column that actually exists on the users table.
+// The previous version did not: it mapped displayName to display_name and
+// emails/groups/roles/photos to JSON array columns, none of which this schema
+// has (see migrations — users is id, username, email, first_name, last_name,
+// enabled, email_verified, external_id, org_id, timestamps). That went
+// unnoticed because the generated WHERE clause was never attached to a query,
+// so the invalid SQL was never sent to Postgres and the unit tests asserted
+// the fictional column names right back.
+//
+// Attributes that cannot be expressed against this schema are deliberately
+// absent rather than mapped to something invented: an unmapped attribute makes
+// FilterToSQL fail, which the handlers turn into a 400 invalidFilter. Per
+// RFC 7644 §3.4.2.2 that is the correct answer for a filter the server cannot
+// honor — and it is far better than the previous behavior of silently ignoring
+// the filter and returning every user in the tenant.
 func GetUserFieldMapping() map[string]string {
 	return map[string]string{
-		"id":           "id",
-		"userName":     "username",
-		"username":     "username",
-		"displayName":  "display_name",
-		"name":         "name",
-		"active":       "active",
-		"emails":       "emails",
-		"phoneNumbers": "phone_numbers",
-		"addresses":    "addresses",
-		"groups":       "groups",
-		"roles":        "roles",
-		"entitlements": "entitlements",
-		"photos":       "photos",
-		"externalId":   "external_id",
+		"id":       "id",
+		"userName": "username",
+		"username": "username",
+		// SCIM models emails as a multi-valued attribute; this schema stores a
+		// single address, so both the bare attribute and its .value
+		// sub-attribute resolve to that column. Okta and Entra send
+		// `emails.value eq "..."` and `emails eq "..."` interchangeably.
+		"emails":          "email",
+		"emails.value":    "email",
+		"userName.value":  "username",
+		"active":          "enabled",
+		"externalId":      "external_id",
+		"name.givenName":  "first_name",
+		"name.familyName": "last_name",
+		// No display_name column exists; SCIM displayName is the composed name.
+		"displayName":  "(COALESCE(first_name, '') || ' ' || COALESCE(last_name, ''))",
+		"title":        "job_title",
+		"department":   "department",
 		"created":      "created_at",
+		"meta.created": "created_at",
 		"updated":      "updated_at",
+		"meta.updated": "updated_at",
 	}
 }
 
-// GetGroupFieldMapping returns the standard SCIM to SQL field mapping for groups
+// GetGroupFieldMapping returns the SCIM-to-SQL field mapping for groups.
+//
+// Same correction as the user mapping: displayName is the `name` column, and
+// `members` is intentionally omitted because membership lives in the
+// group_memberships join table and cannot be filtered by a column predicate.
+// A filter on members therefore returns 400 rather than being ignored.
 func GetGroupFieldMapping() map[string]string {
 	return map[string]string{
-		"id":          "id",
-		"displayName": "display_name",
-		"members":     "members",
-		"externalId":  "external_id",
-		"created":     "created_at",
-		"updated":     "updated_at",
+		"id":           "id",
+		"displayName":  "name",
+		"externalId":   "external_id",
+		"created":      "created_at",
+		"meta.created": "created_at",
+		"updated":      "updated_at",
+		"meta.updated": "updated_at",
 	}
 }
 

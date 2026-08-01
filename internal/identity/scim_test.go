@@ -277,9 +277,11 @@ func TestFilterToSQL_Simple(t *testing.T) {
 			wantErr:     false,
 		},
 		{
+			// There is no display_name column; SCIM displayName is the
+			// composed first/last name.
 			name:        "displayName co Test",
 			filter:      "displayName co Test",
-			wantClause:  "display_name ILIKE $1",
+			wantClause:  "(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) ILIKE $1",
 			wantArgsLen: 1,
 			wantErr:     false,
 		},
@@ -298,10 +300,34 @@ func TestFilterToSQL_Simple(t *testing.T) {
 			wantErr:     false,
 		},
 		{
+			// emails maps to the scalar `email` column, not a jsonb array —
+			// the old expectation asserted SQL that would have errored had it
+			// ever reached Postgres.
 			name:        "emails pr",
 			filter:      "emails pr",
-			wantClause:  "jsonb_array_length(emails::jsonb) > 0",
+			wantClause:  "email IS NOT NULL",
 			wantArgsLen: 0,
+			wantErr:     false,
+		},
+		{
+			name:        "emails eq matches the scalar column",
+			filter:      "emails eq user@example.com",
+			wantClause:  "email = $1",
+			wantArgsLen: 1,
+			wantErr:     false,
+		},
+		{
+			name:        "externalId eq (used by Okta/Entra before every create)",
+			filter:      "externalId eq ext-123",
+			wantClause:  "external_id = $1",
+			wantArgsLen: 1,
+			wantErr:     false,
+		},
+		{
+			name:        "active eq maps to the enabled column",
+			filter:      "active eq true",
+			wantClause:  "enabled = $1",
+			wantArgsLen: 1,
 			wantErr:     false,
 		},
 		{
@@ -923,7 +949,9 @@ func TestGetUserFieldMapping(t *testing.T) {
 	}
 
 	// Check some expected fields
-	expectedFields := []string{"userName", "displayName", "active", "emails", "groups"}
+	// Only attributes backed by a real column belong here. groups/roles/photos
+	// were removed: they named columns this schema does not have.
+	expectedFields := []string{"userName", "displayName", "active", "emails", "externalId"}
 	for _, field := range expectedFields {
 		if _, ok := mapping[field]; !ok {
 			t.Errorf("Expected field %s not found in mapping", field)
@@ -939,7 +967,9 @@ func TestGetGroupFieldMapping(t *testing.T) {
 	}
 
 	// Check some expected fields
-	expectedFields := []string{"displayName", "members", "externalId"}
+	// `members` is intentionally absent — membership is a join table, so a
+	// filter on it must 400 rather than be silently ignored.
+	expectedFields := []string{"displayName", "externalId", "id"}
 	for _, field := range expectedFields {
 		if _, ok := mapping[field]; !ok {
 			t.Errorf("Expected field %s not found in mapping", field)

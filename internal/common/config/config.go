@@ -49,6 +49,18 @@ type Config struct {
 	OPAURL         string `mapstructure:"opa_url"`
 	EnableOPAAuthz bool   `mapstructure:"enable_opa_authz"`
 
+	// PublicBaseURL is the externally reachable origin of the end-user web app
+	// — the base for links mailed to users (password reset, email verification,
+	// invitations).
+	//
+	// It is deliberately distinct from OAuthIssuer (an API origin) and from
+	// Port (this process's listener): a reset link must point at the browser
+	// app, not at whichever service happened to send the mail. Before this
+	// existed those links were hardcoded to http://localhost:3000 or
+	// http://localhost:<api-port>, which makes password reset, verification and
+	// invitation non-functional in any real deployment.
+	PublicBaseURL string `mapstructure:"public_base_url"`
+
 	// OAuth / OIDC settings
 	OAuthIssuer  string `mapstructure:"oauth_issuer"`
 	OAuthJWKSURL string `mapstructure:"oauth_jwks_url"`
@@ -688,6 +700,11 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("rate_limit_auth_window", 60)
 	v.SetDefault("rate_limit_per_user", false)
 
+	// Public base URL of the end-user web app. The localhost default keeps
+	// local development working; PUBLIC_BASE_URL must be set in any real
+	// deployment or the links mailed to users point at the operator's laptop.
+	v.SetDefault("public_base_url", "http://localhost:3000")
+
 	// OAuth / OIDC defaults
 	v.SetDefault("oauth_issuer", "http://localhost:8006")
 	v.SetDefault("oauth_jwks_url", "http://localhost:8006/.well-known/jwks.json")
@@ -890,6 +907,7 @@ func bindEnvVars(v *viper.Viper) {
 		"access_api_require_auth":             "ACCESS_API_REQUIRE_AUTH",
 		"admin_api_require_auth":              "ADMIN_API_REQUIRE_AUTH",
 		"shutdown_timeout_seconds":            "SHUTDOWN_TIMEOUT_SECONDS",
+		"public_base_url":                     "PUBLIC_BASE_URL",
 		"oauth_issuer":                        "OAUTH_ISSUER",
 		"tenant_base_domain":                  "TENANT_BASE_DOMAIN",
 		"dcr_initial_access_token":            "DCR_INITIAL_ACCESS_TOKEN",
