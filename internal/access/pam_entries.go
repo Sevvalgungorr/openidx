@@ -47,6 +47,10 @@ type PamEntryType struct {
 var pamEntryTypeCatalog = []PamEntryType{
 	// Remote sessions — brokered through Guacamole with server-side credential injection.
 	{Type: "rdp", Kind: "session", Label: "RDP Session", Protocol: "rdp", SecretLabel: "Password"},
+	// A Windows RemoteApp host — a plain RDP target that publishes single apps
+	// (see internal/access/windows_apps.go). Same brokered launch as rdp; the
+	// separate type lets the app catalog and pools reference "hosts" cleanly.
+	{Type: "windows_app_host", Kind: "session", Label: "Windows App Host", Protocol: "rdp", SecretLabel: "Password"},
 	{Type: "ssh", Kind: "session", Label: "SSH Shell", Protocol: "ssh", SecretLabel: "Password or private key"},
 	{Type: "vnc", Kind: "session", Label: "VNC Session", Protocol: "vnc", SecretLabel: "Password"},
 	{Type: "telnet", Kind: "session", Label: "Telnet Session", Protocol: "telnet", SecretLabel: "Password"},
@@ -94,7 +98,7 @@ func pamVaultSecretType(entryType string) string {
 		return "api_key"
 	case "certificate":
 		return "certificate"
-	case "rdp", "ssh", "vnc", "telnet", "website", "credential", "website_login", "email_account", "wifi":
+	case "rdp", "windows_app_host", "ssh", "vnc", "telnet", "website", "credential", "website_login", "email_account", "wifi":
 		return "password"
 	default:
 		return "pam_data"
@@ -301,7 +305,7 @@ func pamDefaultPort(entryType string, port int) int {
 		return port
 	}
 	switch entryType {
-	case "rdp":
+	case "rdp", "windows_app_host":
 		return 3389
 	case "ssh":
 		return 22

@@ -237,6 +237,7 @@ export const navigation: NavDomainGroup[] = [
         items: [
           { name: 'PAM Dashboard', href: '/pam-dashboard', icon: Gauge, minRole: 'admin', keywords: ['pam overview', 'privileged access', 'summary'] },
           { name: 'Connections', href: '/pam-connections', icon: Server, minRole: 'operator', keywords: ['rdm', 'remote desktop manager', 'devolutions', 'rdp', 'ssh', 'vnc', 'connection manager', 'passwordless', 'launch'] },
+          { name: 'Windows Apps', href: '/windows-apps', icon: AppWindow, minRole: 'operator', keywords: ['remoteapp', 'ssms', 'published applications', 'rds', 'app catalog', 'windows', 'single app', 'seamless'] },
           { name: 'Quick Links', href: '/quick-links-admin', icon: Link2, minRole: 'admin', keywords: ['support', 'shortcuts', 'launcher', 'teams', 'zoom', 'curate', 'links'] },
           { name: 'Vault Secrets', href: '/vault-secrets', icon: KeyRound, minRole: 'admin', keywords: ['pam', 'secrets', 'credentials', 'vault'] },
           { name: 'Rotation Policies', href: '/rotation-policies', icon: RefreshCw, minRole: 'admin', keywords: ['password rotation', 'rotate'] },

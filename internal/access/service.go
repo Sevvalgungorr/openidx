@@ -714,6 +714,25 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		api.POST("/pam/entries/:id/ziti/enable", svc.requireAdminRole(), svc.handlePamEnableZiti)
 		api.POST("/pam/entries/:id/ziti/disable", svc.requireAdminRole(), svc.handlePamDisableZiti)
 
+		// Windows application delivery — app catalog + host pools on top of the
+		// RemoteApp launch path. List/launch are operator-level (launch runs the
+		// same ACL + approval gates as pam connect); mutations are admin-only.
+		api.GET("/pam/apps", svc.handleWindowsAppList)
+		api.POST("/pam/apps", svc.requireAdminRole(), svc.handleWindowsAppCreate)
+		api.PUT("/pam/apps/:id", svc.requireAdminRole(), svc.handleWindowsAppUpdate)
+		api.DELETE("/pam/apps/:id", svc.requireAdminRole(), svc.handleWindowsAppDelete)
+		api.POST("/pam/apps/:id/launch", svc.handleWindowsAppLaunch)
+		api.GET("/pam/apps/:id/icon", svc.handleWindowsAppIcon)
+		// Distinct prefix (not /pam/apps/import) so the static segment doesn't
+		// collide with the /pam/apps/:id wildcard in gin's route tree.
+		api.POST("/pam/app-import", svc.requireAdminRole(), svc.handleWindowsAppImport)
+		api.GET("/pam/app-pools", svc.handleWindowsAppPoolList)
+		api.POST("/pam/app-pools", svc.requireAdminRole(), svc.handleWindowsAppPoolCreate)
+		api.PUT("/pam/app-pools/:id", svc.requireAdminRole(), svc.handleWindowsAppPoolUpdate)
+		api.DELETE("/pam/app-pools/:id", svc.requireAdminRole(), svc.handleWindowsAppPoolDelete)
+		api.POST("/pam/app-pools/:id/members", svc.requireAdminRole(), svc.handleWindowsAppPoolAddMember)
+		api.DELETE("/pam/app-pools/:id/members/:memberId", svc.requireAdminRole(), svc.handleWindowsAppPoolRemoveMember)
+
 		// Temporary access links for support/vendor access
 		// PAM vendor access to internal SSH/RDP/VNC hosts is a privileged
 		// operation — gate management to admins, matching the guacamole PAM

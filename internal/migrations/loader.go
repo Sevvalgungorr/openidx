@@ -838,5 +838,12 @@ func allMigrations() []*Migration {
 			UpSQL:       mcpToolApprovalUp,
 			DownSQL:     mcpToolApprovalDown,
 		},
+		{
+			Version:     119,
+			Name:        "windows_apps",
+			Description: "Windows application delivery — app catalog + host pools on top of the RemoteApp launch path. An app host stays a pam_entries row (new entry_type windows_app_host) so it inherits vault injection, Ziti reach, recording, approval and checkout unchanged; four new org-scoped (FORCE RLS) tables add the app layer: windows_app_pools (interchangeable host set + placement strategy), windows_app_pool_members (membership + per-host max_sessions capturing RDS-vs-desktop concurrency), windows_apps (a published app bound to exactly one host OR one pool via a CHECK, with source/verified_at distinguishing published-and-launchable from installed-only and nullable require_approval/record_session per-app tightening overrides), and windows_app_host_state (posture snapshot flagging the dangerous fAllowUnlistedRemotePrograms). Additive; existing RDP entries with remote-app settings keep working.",
+			UpSQL:       windowsAppsUp,
+			DownSQL:     windowsAppsDown,
+		},
 	}
 }

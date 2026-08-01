@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Folder, FolderPlus, Plus, Search, Star, Play, Eye, Trash2, Pencil, Upload,
   Server, Terminal, Monitor, Globe, KeyRound, StickyNote, CreditCard, ShieldCheck, Shield,
-  Send, Copy, Lock, Route, AlertTriangle,
+  Send, Copy, Lock, Route, AlertTriangle, AppWindow,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -32,6 +32,7 @@ import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-a
 const typeIcon = (t: string) => {
   switch (t) {
     case 'rdp': return Monitor
+    case 'windows_app_host': return AppWindow
     case 'ssh':
     case 'telnet': return Terminal
     case 'vnc': return Server

@@ -503,6 +503,46 @@ export const api = {
     disableZiti: (id: string) =>
       api.post<{ reach_mode: string }>(`/api/v1/access/pam/entries/${id}/ziti/disable`),
   },
+  windowsApps: {
+    // Apps + pools + host posture, in one call so the catalog page renders in
+    // a single round trip.
+    list: () =>
+      api.get<{
+        apps: WindowsApp[]
+        pools: WindowsAppPool[]
+        host_state: WindowsAppHostState[]
+      }>('/api/v1/access/pam/apps'),
+    create: (body: WindowsAppInput) =>
+      api.post<{ id: string }>('/api/v1/access/pam/apps', body),
+    update: (id: string, body: WindowsAppInput) =>
+      api.put<{ id: string }>(`/api/v1/access/pam/apps/${id}`, body),
+    remove: (id: string) => api.delete<void>(`/api/v1/access/pam/apps/${id}`),
+    // Launch. On a placement conflict the server replies 409 with a
+    // WindowsAppLaunchConflict body; pass replaceSessionId to a retry to
+    // disconnect that session and take its slot.
+    launch: (id: string, replaceSessionId?: string) => {
+      const qs = replaceSessionId ? `?replace=${encodeURIComponent(replaceSessionId)}` : ''
+      return api.post<WindowsAppLaunchResult>(`/api/v1/access/pam/apps/${id}/launch${qs}`)
+    },
+    iconURL: (id: string) => `/api/v1/access/pam/apps/${id}/icon`,
+    // Pools
+    listPools: () => api.get<{ pools: WindowsAppPool[] }>('/api/v1/access/pam/app-pools'),
+    createPool: (body: { name: string; description?: string; placement?: string }) =>
+      api.post<{ id: string }>('/api/v1/access/pam/app-pools', body),
+    updatePool: (id: string, body: { name: string; description?: string; placement?: string }) =>
+      api.put<{ id: string }>(`/api/v1/access/pam/app-pools/${id}`, body),
+    removePool: (id: string) => api.delete<void>(`/api/v1/access/pam/app-pools/${id}`),
+    addPoolMember: (poolId: string, body: { host_entry_id: string; max_sessions?: number }) =>
+      api.post<{ id: string }>(`/api/v1/access/pam/app-pools/${poolId}/members`, body),
+    removePoolMember: (poolId: string, memberId: string) =>
+      api.delete<void>(`/api/v1/access/pam/app-pools/${poolId}/members/${memberId}`),
+    // Discovery import: paste the PowerShell JSON output. Distinct path
+    // (not /pam/apps/import) to avoid the /pam/apps/:id route collision.
+    importDiscovery: (hostEntryId: string, data: string) =>
+      api.post<{ apps_created: number; apps_updated: number; host_updated: boolean }>(
+        `/api/v1/access/pam/app-import`, { host_entry_id: hostEntryId, data },
+      ),
+  },
   quickLinks: {
     listMine: () => api.get<{ quick_links: QuickLink[] }>('/api/v1/access/quick-links/my'),
     list: () => api.get<{ quick_links: QuickLink[] }>('/api/v1/access/quick-links'),
@@ -673,6 +713,93 @@ export interface PamImportResult {
   secrets_stored: number
   by_type: Record<string, number>
   skipped: Array<{ name: string; reason: string }>
+}
+
+// ---- Windows application delivery ----
+
+export interface WindowsApp {
+  id: string
+  host_entry_id?: string
+  host_name?: string
+  pool_id?: string
+  pool_name?: string
+  alias: string
+  display_name: string
+  exec_path?: string
+  args?: string
+  working_dir?: string
+  has_icon: boolean
+  source: 'manual' | 'discovered'
+  verified: boolean // alias seen in the host's TSAppAllowList — published & launchable
+  status: 'active' | 'inconsistent' | 'disabled'
+  require_approval?: boolean | null
+  record_session?: boolean | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WindowsAppInput {
+  host_entry_id?: string
+  pool_id?: string
+  alias: string
+  display_name: string
+  exec_path?: string
+  args?: string
+  working_dir?: string
+  require_approval?: boolean | null
+  record_session?: boolean | null
+}
+
+export interface WindowsAppPool {
+  id: string
+  name: string
+  description?: string
+  placement: 'least_loaded' | 'round_robin'
+  members: WindowsAppPoolMember[]
+  created_at: string
+  updated_at: string
+}
+
+export interface WindowsAppPoolMember {
+  id: string
+  host_entry_id: string
+  host_name: string
+  max_sessions: number
+  active_sessions: number
+}
+
+export interface WindowsAppHostState {
+  host_entry_id: string
+  os_edition?: string
+  nla_enabled?: boolean
+  allow_unlisted_remote_programs?: boolean
+  allowlist_enforced?: boolean
+  published_app_count?: number
+  checked_at?: string
+}
+
+// A launch either succeeds (guacamole) or reports a placement conflict the
+// user must resolve. Mirrors PamConnectResult on success.
+export interface WindowsAppLaunchResult {
+  launch_type: 'guacamole'
+  connect_url: string
+  app_id: string
+  host_entry_id: string
+  host_name: string
+  session_id?: string
+  recorded: boolean
+}
+
+export interface WindowsAppLaunchConflict {
+  reason: 'no_capacity' | 'user_session_conflict'
+  message: string
+  conflicts: Array<{
+    host_entry_id: string
+    host_name: string
+    session_id: string
+    app_name?: string
+    started_at: string
+  }>
 }
 
 // WebAuthn types

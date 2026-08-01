@@ -94,6 +94,7 @@ export const RotationPolicies = lazy(() => import('./rotation-policies').then((m
 export const GuacamoleSessions = lazy(() => import('./guacamole-sessions').then((m) => ({ default: m.GuacamoleSessionsPage })))
 export const PAMDashboard = lazy(() => import('./pam-dashboard').then((m) => ({ default: m.PAMDashboardPage })))
 export const PamConnections = lazy(() => import('./pam-connections').then((m) => ({ default: m.PamConnectionsPage })))
+export const WindowsApps = lazy(() => import('./windows-apps').then((m) => ({ default: m.WindowsAppsPage })))
 
 // Developer
 export const APIExplorer = lazy(() => import('./api-explorer').then((m) => ({ default: m.ApiExplorerPage })))

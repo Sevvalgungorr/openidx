@@ -290,6 +290,62 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 		return
 	}
 
+	// Everything from broker selection onward is the shared launch core, reused
+	// by the Windows-app launch path.
+	res, ok := s.launchPamSession(c, org.ID, &entry, typeInfo.Protocol, nil, "pam-"+entry.ID, entry.GuacConnectionID,
+		func(ctx context.Context, connID string) {
+			if _, err := s.db.Pool.Exec(ctx,
+				`UPDATE pam_entries SET guacamole_connection_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+				connID, entry.ID, org.ID); err != nil {
+				s.logger.Warn("handlePamConnect: persist connection id failed", zap.Error(err))
+			}
+		})
+	if !ok {
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"launch_type":         "guacamole",
+		"connect_url":         res.ConnectURL,
+		"entry_id":            entryID,
+		"session_id":          res.SessionID,
+		"credential_injected": res.Injected,
+		"recorded":            entry.RecordSession,
+		"reach_mode":          entry.ReachMode,
+	})
+}
+
+// pamSessionResult is the outcome of a successful brokered launch.
+type pamSessionResult struct {
+	ConnectURL string
+	ConnID     string
+	SessionID  string
+	Injected   bool
+	GuacUser   string
+}
+
+// launchPamSession runs the post-gate brokered-launch core shared by
+// entry-connect (handlePamConnect) and Windows-app launch (handleWindowsAppLaunch):
+// broker selection → credential resolution → vault decrypt → params (entry
+// settings + extraSettings, with RemoteApp GFX forcing) → Guacamole connection
+// (named connName, id persisted via persistConnID) → connect URL → session
+// ledger. The caller has already loaded the host `entry` and passed ACL +
+// approval (+ placement for apps).
+//
+// extraSettings are server-controlled parameters merged over the entry's stored
+// settings (the RemoteApp keys for an app launch); connName is the deterministic
+// Guacamole connection name; existingConnID is the id a prior launch persisted.
+//
+// Returns (result, true) on success. On any failure it has already written the
+// error response to c and returns (nil, false) — the caller just returns.
+func (s *Service) launchPamSession(
+	c *gin.Context, orgID string, entry *pamLaunchEntry, protocol string,
+	extraSettings map[string]string, connName, existingConnID string,
+	persistConnID func(ctx context.Context, connID string),
+) (*pamSessionResult, bool) {
+	ctx := c.Request.Context()
+	userID := c.GetString("user_id")
+
 	// Route to the broker matching the connection's per-entry choice: the
 	// dedicated OpenZiti broker for reach_mode='ziti' (its guacd rides the
 	// overlay), the direct broker otherwise. Fail closed when that broker isn't
@@ -300,11 +356,11 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 		if entry.ReachMode == "ziti" {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"error": "the OpenZiti PAM broker is not configured", "code": "ziti_broker_unconfigured"})
-			return
+			return nil, false
 		}
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "no session broker is configured", "code": "broker_unconfigured"})
-		return
+		return nil, false
 	}
 	// A ziti-reach entry also needs a live overlay to carry the target hop;
 	// without it the loopback intercept dials nothing. Fail closed with a code.
@@ -312,16 +368,16 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "OpenZiti overlay is unavailable for this Ziti-reach connection",
 			"code":  "ziti_unavailable"})
-		return
+		return nil, false
 	}
 
 	// Resolve the credential source (own secret or linked credential entry).
-	target, err := s.resolvePamLaunchTarget(ctx, org.ID, &entry)
+	target, err := s.resolvePamLaunchTarget(ctx, orgID, entry)
 	if err != nil {
-		s.logger.Warn("handlePamConnect: credential resolution failed",
-			zap.String("entry_id", scrubLogValue(entryID)), zap.Error(err))
+		s.logger.Warn("launchPamSession: credential resolution failed",
+			zap.String("entry_id", scrubLogValue(entry.ID)), zap.Error(err))
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		return
+		return nil, false
 	}
 
 	// Decrypt server-side. The plaintext never enters any response or log.
@@ -331,17 +387,17 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 		bctx := orgctx.WithBypassRLS(ctx)
 		cred, err = s.vaultSvc.Use(bctx, target.SecretID)
 		if err != nil {
-			s.logger.Warn("handlePamConnect: vault credential unavailable",
+			s.logger.Warn("launchPamSession: vault credential unavailable",
 				zap.String("secret_id", target.SecretID), zap.Error(err))
 			c.JSON(http.StatusForbidden, gin.H{"error": "credential unavailable"})
-			return
+			return nil, false
 		}
 		//orgscope:ignore vault_secrets SELECT under bypass-RLS context to determine injection field
 		_ = s.db.Pool.QueryRow(bctx,
 			`SELECT type FROM vault_secrets WHERE id=$1`, target.SecretID).Scan(&secretType)
 	}
 
-	recName := fmt.Sprintf("pam-%s-%d", entryID, time.Now().UnixMilli())
+	recName := fmt.Sprintf("pam-%s-%d", entry.ID, time.Now().UnixMilli())
 	recPath := ""
 	recFile := ""
 	if entry.RecordSession {
@@ -349,8 +405,22 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 		recFile = filepath.Join(recPath, recName)
 	}
 
+	// Merge server-controlled extraSettings over the entry's stored settings so
+	// reserved-key filtering AND RemoteApp GFX forcing (buildPamGuacParams)
+	// apply uniformly to app-derived params.
+	settings := entry.Settings
+	if len(extraSettings) > 0 {
+		settings = make(map[string]interface{}, len(entry.Settings)+len(extraSettings))
+		for k, v := range entry.Settings {
+			settings[k] = v
+		}
+		for k, v := range extraSettings {
+			settings[k] = v
+		}
+	}
+
 	params := buildPamGuacParams(secretType, target.Username, target.Domain, cred,
-		entry.Settings, entry.RecordSession, recPath, recName)
+		settings, entry.RecordSession, recPath, recName)
 	injected := len(cred) > 0
 	// Zero the plaintext immediately after buildPamGuacParams copies it into
 	// the params map (string copies are GC-managed; same caveat as M3).
@@ -358,18 +428,19 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 		cred[i] = 0
 	}
 
-	connID, err := s.ensurePamGuacConnection(ctx, org.ID, &entry, typeInfo.Protocol, params, broker)
+	dialHost, dialPort := entry.dialTarget()
+	connID, err := s.ensureGuacConnection(ctx, connName, existingConnID, protocol, dialHost, dialPort, params, broker, persistConnID)
 	if err != nil {
-		s.logger.Error("handlePamConnect: guacamole connection failed",
-			zap.String("entry_id", scrubLogValue(entryID)), zap.Error(err))
+		s.logger.Error("launchPamSession: guacamole connection failed",
+			zap.String("entry_id", scrubLogValue(entry.ID)), zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare session"})
-		return
+		return nil, false
 	}
 
 	if injected {
-		s.logAuditEvent(c, "pam.credential_injected", entryID, "pam_entry",
+		s.logAuditEvent(c, "pam.credential_injected", entry.ID, "pam_entry",
 			map[string]interface{}{
-				"entry_id":  entryID,
+				"entry_id":  entry.ID,
 				"secret_id": target.SecretID,
 				"user_id":   userID,
 				// Credential value intentionally omitted.
@@ -378,26 +449,21 @@ func (s *Service) handlePamConnect(c *gin.Context) {
 
 	// Build the browser URL before recording the launch so the per-user Guacamole
 	// identity (if enabled) can be persisted on the session row for later revoke.
-	connectURL, guacUser := s.connectURLForBroker(ctx, broker, org.ID, userID, connID, realClientIP(c))
+	connectURL, guacUser := s.connectURLForBroker(ctx, broker, orgID, userID, connID, realClientIP(c))
 
-	sessionID := s.recordPamLaunch(c, org.ID, &entry, typeInfo.Protocol, connID, injected, guacUser)
+	sessionID := s.recordPamLaunch(c, orgID, entry, protocol, connID, injected, guacUser)
 	if entry.RecordSession && sessionID != "" && recFile != "" {
 		if _, err := s.db.Pool.Exec(ctx,
 			//orgscope:ignore pam_entry_sessions UPDATE keyed by its own primary key immediately after the org-scoped INSERT
 			`UPDATE pam_entry_sessions SET recording_path = $2 WHERE id = $1`, sessionID, recFile); err != nil {
-			s.logger.Warn("handlePamConnect: recording path update failed", zap.Error(err))
+			s.logger.Warn("launchPamSession: recording path update failed", zap.Error(err))
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"launch_type":         "guacamole",
-		"connect_url":         connectURL,
-		"entry_id":            entryID,
-		"session_id":          sessionID,
-		"credential_injected": injected,
-		"recorded":            entry.RecordSession,
-		"reach_mode":          entry.ReachMode,
-	})
+	return &pamSessionResult{
+		ConnectURL: connectURL, ConnID: connID, SessionID: sessionID,
+		Injected: injected, GuacUser: guacUser,
+	}, true
 }
 
 // decodePamSettings unmarshals a settings JSONB blob, tolerating NULL/garbage.
@@ -409,45 +475,44 @@ func decodePamSettings(raw []byte) map[string]interface{} {
 	return settings
 }
 
-// ensurePamGuacConnection creates or refreshes the per-entry Guacamole
-// connection with the (credential-bearing) params. The connection is stable
-// per entry (mirrors the M3 per-route model); a vanished connection — e.g.
-// deleted inside Guacamole — is transparently recreated.
-func (s *Service) ensurePamGuacConnection(ctx context.Context, orgID string, entry *pamLaunchEntry, protocol string, params map[string]string, broker *GuacamoleClient) (string, error) {
-	name := "pam-" + entry.ID
-	// In ziti reach mode guacd dials the broker's loopback intercept, which the
-	// ziti-tunnel carries over the overlay to the target; in direct mode it dials
-	// the real target. The injected credential/params are identical either way.
-	dialHost, dialPort := entry.dialTarget()
-	connID := entry.GuacConnectionID
-	if connID != "" {
-		if err := broker.UpdateConnection(connID, name, protocol, dialHost, dialPort, params); err == nil {
-			return connID, nil
+// ensureGuacConnection creates or refreshes a Guacamole connection by
+// deterministic name with the given (credential-bearing) params, decoupled
+// from any particular catalog table. The name is stable per logical target
+// (pam-<entryID> for a session entry, pam-<hostID>-app-<appID> for a published
+// app) so two apps on one host each get their own connection instead of
+// fighting over one. existingConnID is the id persisted by a prior launch (may
+// be stale); persist stores the resulting id. A vanished/duplicate connection
+// is transparently recovered by name.
+func (s *Service) ensureGuacConnection(
+	ctx context.Context, name, existingConnID, protocol, dialHost string, dialPort int,
+	params map[string]string, broker *GuacamoleClient, persist func(ctx context.Context, connID string),
+) (string, error) {
+	if existingConnID != "" {
+		if err := broker.UpdateConnection(existingConnID, name, protocol, dialHost, dialPort, params); err == nil {
+			return existingConnID, nil
 		}
-		s.logger.Warn("ensurePamGuacConnection: update failed; recreating",
-			zap.String("entry_id", entry.ID), zap.String("guac_conn_id", connID))
+		s.logger.Warn("ensureGuacConnection: update failed; recreating",
+			zap.String("name", name), zap.String("guac_conn_id", existingConnID))
 	}
 	newID, err := broker.CreateConnection(name, protocol, dialHost, dialPort, params)
 	if err != nil {
-		// The connection name is deterministic (pam-<entryID>). If a prior launch
-		// created it but we never persisted the id (failed/cross-context persist, or
-		// a stale guacamole_connection_id that no longer resolves), Guacamole rejects
-		// the duplicate name. Recover by finding the existing connection by name and
-		// updating it in place — makes ensure idempotent regardless of persisted state.
+		// The connection name is deterministic. If a prior launch created it but
+		// we never persisted the id (failed/cross-context persist, or a stale id
+		// that no longer resolves), Guacamole rejects the duplicate name. Recover
+		// by finding the existing connection by name and updating it in place —
+		// makes ensure idempotent regardless of persisted state.
 		existingID := s.findGuacConnectionIDByName(ctx, broker, name)
 		if existingID == "" {
 			return "", err
 		}
 		if uerr := broker.UpdateConnection(existingID, name, protocol, dialHost, dialPort, params); uerr != nil {
-			s.logger.Warn("ensurePamGuacConnection: update of existing connection failed",
-				zap.String("entry_id", entry.ID), zap.Error(uerr))
+			s.logger.Warn("ensureGuacConnection: update of existing connection failed",
+				zap.String("name", name), zap.Error(uerr))
 		}
 		newID = existingID
 	}
-	if _, err := s.db.Pool.Exec(ctx,
-		`UPDATE pam_entries SET guacamole_connection_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-		newID, entry.ID, orgID); err != nil {
-		s.logger.Warn("ensurePamGuacConnection: persist connection id failed", zap.Error(err))
+	if persist != nil {
+		persist(ctx, newID)
 	}
 	return newID, nil
 }

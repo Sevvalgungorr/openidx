@@ -106,6 +106,7 @@ import {
   GuacamoleSessions,
   PAMDashboard,
   PamConnections,
+  WindowsApps,
   MyPrivilegedAccess,
 } from '@/pages'
 import { useAppStore } from '@/lib/store'
@@ -315,6 +316,7 @@ function App() {
         {/* Privileged Access - Admin Protected */}
         <Route path="pam-dashboard" element={<AdminRoute><PAMDashboard /></AdminRoute>} />
         <Route path="pam-connections" element={<PamConnections />} />
+        <Route path="windows-apps" element={<WindowsApps />} />
         <Route path="vault-secrets" element={<AdminRoute><VaultSecrets /></AdminRoute>} />
         <Route path="rotation-policies" element={<AdminRoute><RotationPolicies /></AdminRoute>} />
         <Route path="guacamole-sessions" element={<AdminRoute><GuacamoleSessions /></AdminRoute>} />
