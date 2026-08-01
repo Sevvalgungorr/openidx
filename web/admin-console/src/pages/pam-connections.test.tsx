@@ -28,7 +28,8 @@ vi.mock('../lib/api', () => ({
 vi.mock('../hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }))
 
 import { PamConnectionsPage } from './pam-connections'
-import { api } from '../lib/api'
+import { connectionPathSteps } from '../lib/connection-path'
+import { api, PamEntry } from '../lib/api'
 
 const pam = api.pam as unknown as Record<string, ReturnType<typeof vi.fn>>
 
@@ -152,5 +153,60 @@ describe('PamConnectionsPage', () => {
     await waitFor(() => expect(pam.createEntry).toHaveBeenCalled())
     const body = pam.createEntry.mock.calls[0][0]
     expect(body.settings).toMatchObject({ 'remote-app': '||SSMS', 'remote-app-args': '-E' })
+  })
+
+  it('shows a used-by badge on credential entries that session entries link to', async () => {
+    const cred = {
+      ...rdpEntry, id: 'c1', name: 'svc-admin', entry_type: 'credential', kind: 'credential',
+      hostname: '', username: 'svc-admin',
+    }
+    pam.listEntries.mockResolvedValue({
+      entries: [cred, { ...rdpEntry, credential_entry_id: 'c1', credential_entry_name: 'svc-admin' }],
+    })
+    renderPage()
+    await screen.findByText('svc-admin')
+    expect(screen.getByText('used by 1')).toBeInTheDocument()
+    expect(screen.getByTitle('Injected into: DC01')).toBeInTheDocument()
+  })
+
+  it('opens the connection path explainer from a session entry', async () => {
+    renderPage()
+    const card = (await screen.findByText('DC01')).closest('[class*="rounded"]') as HTMLElement
+    fireEvent.click(within(card).getByTitle('Launch path'))
+    expect(await screen.findByText(/how “DC01” connects/i)).toBeInTheDocument()
+    // rdpEntry: no approval, own secret, plain RDP, recording on, direct reach.
+    expect(screen.getByText('Vaulted secret')).toBeInTheDocument()
+    expect(screen.getByText('Guacamole RDP session')).toBeInTheDocument()
+    expect(screen.getByText('Session recording')).toBeInTheDocument()
+    expect(screen.getByText('Direct reach')).toBeInTheDocument()
+  })
+})
+
+describe('connectionPathSteps', () => {
+  const base = rdpEntry as unknown as PamEntry
+
+  it('tells the approval + linked-credential + RemoteApp + Ziti story', () => {
+    const steps = connectionPathSteps({
+      ...base,
+      require_approval: true,
+      credential_entry_id: 'c1', credential_entry_name: 'svc-admin',
+      settings: { 'remote-app': '||SSMS' },
+      ziti_enabled: true,
+    })
+    const titles = steps.map((s) => s.title)
+    expect(titles).toEqual([
+      'Approval gate',
+      'Linked credential: svc-admin',
+      'RemoteApp: SSMS',
+      'Session recording',
+      'Ziti overlay (zero-trust)',
+      'dc01.corp:3389',
+    ])
+  })
+
+  it('describes the wasm-ssh renderer as a browser terminal', () => {
+    const steps = connectionPathSteps({ ...base, entry_type: 'ssh', renderer: 'wasm-ssh', record_session: false })
+    expect(steps.map((s) => s.title)).toContain('Browser terminal')
+    expect(steps.map((s) => s.title)).not.toContain('Session recording')
   })
 })

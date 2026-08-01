@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Folder, FolderPlus, Plus, Search, Star, Play, Eye, Trash2, Pencil, Upload,
   Server, Terminal, Monitor, Globe, KeyRound, StickyNote, CreditCard, ShieldCheck, Shield,
-  Send, Copy, Lock,
+  Send, Copy, Lock, Route,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -25,6 +25,7 @@ import {
 } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { TerminalSession } from '../components/remote/terminal-session'
+import { connectionPathSteps } from '../lib/connection-path'
 
 // Icon + accent per entry type, so the list reads like RDM's typed tree.
 const typeIcon = (t: string) => {
@@ -50,6 +51,16 @@ const kindBadge: Record<string, string> = {
   credential: 'bg-purple-100 text-purple-800',
   info: 'bg-gray-100 text-gray-800',
 }
+
+// Common RemoteApp publications; picking one pre-fills the alias/args so
+// admins don't have to know Guacamole's parameter names. Aliases must match
+// what the RDS host publishes (New-RDRemoteApp -Alias ...).
+const remoteAppPresets: { label: string; alias: string; args?: string }[] = [
+  { label: 'SQL Server Management Studio', alias: 'SSMS', args: '-E' },
+  { label: 'PowerShell', alias: 'PowerShell' },
+  { label: 'Visual Studio Code', alias: 'Code' },
+  { label: 'Google Chrome', alias: 'Chrome' },
+]
 
 const emptyForm: PamEntryInput = {
   name: '', entry_type: 'rdp', description: '', tags: [],
@@ -90,6 +101,9 @@ export function PamConnectionsPage() {
 
   const [deleteEntry, setDeleteEntry] = useState<PamEntry | null>(null)
 
+  // "How does this connect" explainer dialog for a session entry.
+  const [pathEntry, setPathEntry] = useState<PamEntry | null>(null)
+
   const { data: typesData } = useQuery({
     queryKey: ['pam-entry-types'],
     queryFn: () => api.pam.listEntryTypes(),
@@ -110,12 +124,24 @@ export function PamConnectionsPage() {
       favorites: favoritesOnly || undefined,
     }),
   })
-  const entries: PamEntry[] = entriesData?.entries || []
+  const entries: PamEntry[] = useMemo(() => entriesData?.entries || [], [entriesData])
 
   const credentialEntries = useMemo(
     () => entries.filter((e) => e.kind === 'credential'),
     [entries],
   )
+
+  // How many loaded session entries borrow each credential entry's secret —
+  // makes the credential ↔ session relationship visible from both sides.
+  const credentialUsage = useMemo(() => {
+    const usage = new Map<string, string[]>()
+    for (const e of entries) {
+      if (e.credential_entry_id) {
+        usage.set(e.credential_entry_id, [...(usage.get(e.credential_entry_id) || []), e.name])
+      }
+    }
+    return usage
+  }, [entries])
 
   const selectedType = entryTypes.find((t) => t.type === form.entry_type)
 
@@ -397,6 +423,11 @@ export function PamConnectionsPage() {
                           )}
                           {entry.has_secret && <Badge variant="outline" title="Vaulted secret"><KeyRound className="h-3 w-3" /></Badge>}
                           {entry.ziti_enabled && <Badge className="bg-emerald-100 text-emerald-800" title="Reaches target over the OpenZiti overlay (zero-trust)"><Shield className="h-3 w-3 mr-1" />via Ziti</Badge>}
+                          {entry.kind === 'credential' && (credentialUsage.get(entry.id)?.length ?? 0) > 0 && (
+                            <Badge variant="outline" title={`Injected into: ${credentialUsage.get(entry.id)!.join(', ')}`}>
+                              used by {credentialUsage.get(entry.id)!.length}
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {entry.hostname && <span>{entry.username ? `${entry.username}@` : ''}{entry.hostname}{entry.port ? `:${entry.port}` : ''}</span>}
@@ -429,6 +460,11 @@ export function PamConnectionsPage() {
                             title={entry.ziti_enabled ? 'Disable Ziti reach (revert to direct)' : 'Enable Ziti reach (zero-trust overlay to target)'}
                           >
                             <Shield className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {launchable && (
+                          <Button size="sm" variant="ghost" onClick={() => setPathEntry(entry)} title="Launch path">
+                            <Route className="h-4 w-4" />
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" onClick={() => openEdit(entry)} title="Edit">
@@ -512,6 +548,32 @@ export function PamConnectionsPage() {
                     Requires the program to be published as a RemoteApp on the RDS host.
                     Credentials stay vault-injected; recording and approval work as usual.
                   </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Preset</label>
+                  <Select
+                    value="custom"
+                    onValueChange={(v) => {
+                      const preset = remoteAppPresets.find((p) => p.alias === v)
+                      if (!preset) return
+                      setForm((f) => ({
+                        ...f,
+                        settings: {
+                          ...(f.settings || {}),
+                          'remote-app': `||${preset.alias}`,
+                          ...(preset.args ? { 'remote-app-args': preset.args } : {}),
+                        },
+                      }))
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Pick a common app…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="custom">Custom…</SelectItem>
+                      {remoteAppPresets.map((p) => (
+                        <SelectItem key={p.alias} value={p.alias}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -610,6 +672,34 @@ export function PamConnectionsPage() {
               {editingId ? 'Save' : 'Create'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Connection path explainer: the launch chain with this entry's real config */}
+      <Dialog open={!!pathEntry} onOpenChange={(o) => { if (!o) setPathEntry(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>How “{pathEntry?.name}” connects</DialogTitle></DialogHeader>
+          {pathEntry && (
+            <div>
+              {connectionPathSteps(pathEntry).map((step, i, arr) => {
+                const StepIcon = step.icon
+                return (
+                  <div key={i} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="rounded-full border p-1.5 bg-muted/40">
+                        <StepIcon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      {i < arr.length - 1 && <div className="w-px flex-1 bg-border my-1" />}
+                    </div>
+                    <div className="pb-4 min-w-0">
+                      <p className="text-sm font-medium">{step.title}</p>
+                      <p className="text-xs text-muted-foreground">{step.desc}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
