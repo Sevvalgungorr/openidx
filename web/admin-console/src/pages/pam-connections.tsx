@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Folder, FolderPlus, Plus, Search, Star, Play, Eye, Trash2, Pencil, Upload,
   Server, Terminal, Monitor, Globe, KeyRound, StickyNote, CreditCard, ShieldCheck, Shield,
-  Send, Copy, Lock, Route,
+  Send, Copy, Lock, Route, AlertTriangle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -26,6 +26,7 @@ import {
 import { useToast } from '../hooks/use-toast'
 import { TerminalSession } from '../components/remote/terminal-session'
 import { connectionPathSteps } from '../lib/connection-path'
+import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
 
 // Icon + accent per entry type, so the list reads like RDM's typed tree.
 const typeIcon = (t: string) => {
@@ -599,7 +600,15 @@ export function PamConnectionsPage() {
                     value={settingStr('remote-app-args')}
                     onChange={(e) => setSetting('remote-app-args', e.target.value)}
                     placeholder="-S sql01.corp.local -E"
+                    aria-invalid={remoteAppArgsLookSecret(settingStr('remote-app-args'))}
+                    className={remoteAppArgsLookSecret(settingStr('remote-app-args')) ? 'border-destructive' : undefined}
                   />
+                  {remoteAppArgsLookSecret(settingStr('remote-app-args')) && (
+                    <p className="mt-1 flex items-start gap-1.5 text-xs text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                      <span>{REMOTE_APP_SECRET_HINT}</span>
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -668,7 +677,10 @@ export function PamConnectionsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEntryDialog(false)}>Cancel</Button>
-            <Button onClick={() => saveEntry.mutate()} disabled={saveEntry.isPending || !form.name}>
+            <Button
+              onClick={() => saveEntry.mutate()}
+              disabled={saveEntry.isPending || !form.name || remoteAppArgsLookSecret(settingStr('remote-app-args'))}
+            >
               {editingId ? 'Save' : 'Create'}
             </Button>
           </DialogFooter>

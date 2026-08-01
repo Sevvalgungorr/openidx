@@ -73,6 +73,66 @@ func TestBuildPamGuacParams(t *testing.T) {
 			t.Fatal("non-string setting passed through")
 		}
 	})
+
+	t.Run("RemoteApp forces disable-gfx and settings cannot re-enable it", func(t *testing.T) {
+		// A RemoteApp launch (remote-app set) must run with GFX off
+		// (GUACAMOLE-2123: RemoteApp windows stay blank with GFX on).
+		settings := map[string]interface{}{
+			"remote-app":  "||SSMS",
+			"disable-gfx": "false", // attacker/typo trying to re-enable GFX
+		}
+		p := buildPamGuacParams("password", "u", "", []byte("x"), settings, false, "", "")
+		if p["disable-gfx"] != "true" {
+			t.Fatalf("RemoteApp must force disable-gfx=true, got %q", p["disable-gfx"])
+		}
+		if p["remote-app"] != "||SSMS" {
+			t.Fatalf("remote-app should pass through: %v", p)
+		}
+	})
+
+	t.Run("non-RemoteApp RDP keeps GFX (no disable-gfx forced)", func(t *testing.T) {
+		p := buildPamGuacParams("password", "u", "", []byte("x"), nil, false, "", "")
+		if _, ok := p["disable-gfx"]; ok {
+			t.Fatalf("full-desktop RDP should not force disable-gfx: %v", p)
+		}
+	})
+}
+
+func TestValidateRemoteAppArgs(t *testing.T) {
+	t.Parallel()
+
+	ok := []string{
+		"",
+		"   ",
+		"-E",                       // SSMS integrated auth — the correct pattern
+		"-S sql01.corp.local -E",   // host + integrated auth
+		"--nowelcome",              // ordinary flags
+		"/log C:\\logs\\app.log",   // a path arg
+		"-server tcp:db01,1433 -E", // no secret
+	}
+	for _, a := range ok {
+		if err := validateRemoteAppArgs(a); err != nil {
+			t.Errorf("expected %q to be allowed, got %v", a, err)
+		}
+	}
+
+	bad := []string{
+		"-P hunter2",
+		"-p hunter2",
+		"--password hunter2",
+		"--pass=hunter2",
+		"/password:hunter2",
+		"/pass hunter2",
+		"-U sa -P hunter2",
+		"password=hunter2",
+		"PWD=hunter2",
+		"-S db;PWD=secret",
+	}
+	for _, a := range bad {
+		if err := validateRemoteAppArgs(a); err == nil {
+			t.Errorf("expected %q to be rejected as a secret", a)
+		}
+	}
 }
 
 // The session ledger DTO must expose availability only — never the on-disk

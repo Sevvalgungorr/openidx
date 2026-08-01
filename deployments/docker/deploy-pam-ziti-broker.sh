@@ -33,14 +33,14 @@ podman rm -f pam-guacamole-ziti pam-ziti-tunnel pam-guacd-ziti 2>/dev/null || tr
 echo "== 1/3 guacd-ziti (owns the shared netns; publishes the broker port) =="
 podman run -d --name pam-guacd-ziti --network "$NET" \
   -p 127.0.0.1:${GUAC_ZITI_PORT}:8080 --restart unless-stopped \
-  docker.io/guacamole/guacd:latest
+  docker.io/guacamole/guacd:1.6.0
 
 echo "== 2/3 ziti-tunnel (shares guacd-ziti netns; dials PAM services over overlay) =="
 podman run -d --name pam-ziti-tunnel --restart unless-stopped \
   --network "container:pam-guacd-ziti" --cap-add NET_ADMIN --device /dev/net/tun \
   -v "${ZITI_ID_DIR}:/ziti-identity:Z" \
   --entrypoint ziti-edge-tunnel \
-  docker.io/openziti/ziti-edge-tunnel:latest \
+  docker.io/openziti/ziti-edge-tunnel:1.16.2 \
   run --identity /ziti-identity/pam-broker.json
 
 echo "== 3/3 guacamole-ziti (guac_ziti DB; guacd on localhost via shared netns) =="
@@ -50,7 +50,7 @@ podman run -d --name pam-guacamole-ziti --restart unless-stopped \
   -e POSTGRESQL_HOSTNAME=pam-guac-db -e POSTGRESQL_DATABASE=guac_ziti \
   -e POSTGRESQL_USER=guacamole -e POSTGRESQL_PASSWORD="$DB_PASS" \
   -e POSTGRESQL_AUTO_CREATE_ACCOUNTS=true \
-  docker.io/guacamole/guacamole:latest
+  docker.io/guacamole/guacamole:1.6.0
 
 echo "== waiting for guacamole-ziti to come up =="
 sleep 12

@@ -309,7 +309,7 @@ accessService:
 pamBroker:
   enabled: false
   guacd:
-    image: guacamole/guacd:latest
+    image: guacamole/guacd:1.6.0
     resources:
       requests:
         cpu: 100m
@@ -318,7 +318,7 @@ pamBroker:
         cpu: 500m
         memory: 512Mi
   guacamole:
-    image: guacamole/guacamole:latest
+    image: guacamole/guacamole:1.6.0
     resources:
       requests:
         cpu: 100m
@@ -327,7 +327,7 @@ pamBroker:
         cpu: 500m
         memory: 512Mi
   zitiTunnel:
-    image: openziti/ziti-edge-tunnel:latest
+    image: openziti/ziti-edge-tunnel:1.16.2
     # Secret holding the enrolled #pam-broker-dialers identity (pam-broker.json).
     # When empty an emptyDir is used and you enroll into it out-of-band.
     identitySecret: ""

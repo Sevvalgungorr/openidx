@@ -282,6 +282,16 @@ func validatePamEntry(req *pamEntryUpsertReq) (PamEntryType, error) {
 	if req.Port < 0 || req.Port > 65535 {
 		return PamEntryType{}, errors.New("port out of range")
 	}
+	// RemoteApp command-line args must never carry a secret (visible in the
+	// target's process list). Reject on write so the mistake surfaces in the
+	// entry dialog, not as an opaque failure at launch.
+	if raw, ok := req.Settings["remote-app-args"]; ok {
+		if s, ok := raw.(string); ok {
+			if err := validateRemoteAppArgs(s); err != nil {
+				return PamEntryType{}, err
+			}
+		}
+	}
 	return t, nil
 }
 

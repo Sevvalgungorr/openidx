@@ -48,9 +48,12 @@ services:
     networks:
       - openidx-network
 
+  # Broker images pinned to fixed versions (not :latest). guacd/guacamole 1.6.0:
+  # RemoteApp needs FreeRDP 2, which 1.6.0 defaults to — a guacd built against
+  # FreeRDP >=3.4.0 breaks RemoteApp entirely (GUACAMOLE-2072, fix unreleased).
   # ---- Direct broker ----
   pam-guacd:
-    image: guacamole/guacd:latest
+    image: guacamole/guacd:1.6.0
     container_name: openidx-pam-guacd
     restart: unless-stopped
     volumes:
@@ -61,7 +64,7 @@ services:
       - openidx-network
 
   pam-guacamole:
-    image: guacamole/guacamole:latest
+    image: guacamole/guacamole:1.6.0
     container_name: openidx-pam-guacamole
     restart: unless-stopped
     entrypoint: /bin/bash
@@ -98,7 +101,7 @@ services:
 
   # ---- OpenZiti broker ----
   pam-guacd-ziti:
-    image: guacamole/guacd:latest
+    image: guacamole/guacd:1.6.0
     container_name: openidx-pam-guacd-ziti
     restart: unless-stopped
     volumes:
@@ -112,7 +115,7 @@ services:
   # Dial the per-entry PAM services. See README.pam-broker.md for enrollment and
   # the loopback-binding refresh from /pam/broker/ziti-bindings.
   pam-ziti-tunnel:
-    image: openziti/ziti-edge-tunnel:latest
+    image: openziti/ziti-edge-tunnel:1.16.2
     container_name: openidx-pam-ziti-tunnel
     restart: unless-stopped
     network_mode: "service:pam-guacd-ziti"
@@ -136,7 +139,7 @@ services:
       - pam-guacd-ziti
 
   pam-guacamole-ziti:
-    image: guacamole/guacamole:latest
+    image: guacamole/guacamole:1.6.0
     container_name: openidx-pam-guacamole-ziti
     restart: unless-stopped
     entrypoint: /bin/bash

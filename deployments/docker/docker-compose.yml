@@ -847,15 +847,18 @@ services:
   # Apache Guacamole - Clientless Remote Desktop Gateway
   #---------------------------------------------------------------------------
 
+  # Pinned to 1.6.0 (not :latest): RemoteApp is broken when guacd is built
+  # against FreeRDP >=3.4.0 (GUACAMOLE-2072, fix only in unreleased 1.6.1); the
+  # 1.6.0 image defaults to FreeRDP 2, which RemoteApp needs. Bump deliberately.
   guacd:
-    image: guacamole/guacd:latest
+    image: guacamole/guacd:1.6.0
     container_name: openidx-guacd
     restart: unless-stopped
     networks:
       - openidx-network
 
   guacamole:
-    image: guacamole/guacamole:latest
+    image: guacamole/guacamole:1.6.0
     container_name: openidx-guacamole
     restart: unless-stopped
     entrypoint: /bin/bash

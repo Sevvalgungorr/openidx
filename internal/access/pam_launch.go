@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,14 +29,59 @@ import (
 	"github.com/openidx/openidx/internal/common/orgctx"
 )
 
+// remoteAppSecretArgRE matches credential-looking tokens in a RemoteApp
+// command line. RDP passes remote-app-args verbatim and they are visible in the
+// target's process list (Task Manager, `Get-CimInstance Win32_Process`), so a
+// password placed there leaks to anyone who can see processes on the host. We
+// reject the common forms and steer admins to integrated auth (e.g. SSMS `-E`,
+// which authenticates as the vault-injected Windows identity — no secret in the
+// args at all). Case-insensitive; matches `-P xxx`, `/password:xxx`,
+// `--pass=xxx`, `pwd=xxx`, `pass=xxx`.
+var remoteAppSecretArgRE = regexp.MustCompile(`(?i)(^|\s)(-{1,2}p(ass(word)?)?|/pass(word)?)([\s:=]|$)|(?i)(^|\s|;|&)(password|passwd|pwd)\s*=`)
+
+// errRemoteAppSecretArg is returned when RemoteApp args appear to carry a
+// secret. Callers surface it to the admin (on save) or the user (on launch).
+var errRemoteAppSecretArg = errors.New(
+	"remote-app-args must not contain a password — RDP command lines are visible in the target's process list. " +
+		"Use integrated authentication instead (e.g. SSMS \"-E\"), which signs in as the injected Windows identity")
+
+// validateRemoteAppArgs rejects credential-looking RemoteApp command-line
+// arguments. Empty args are always fine.
+func validateRemoteAppArgs(args string) error {
+	if strings.TrimSpace(args) == "" {
+		return nil
+	}
+	if remoteAppSecretArgRE.MatchString(args) {
+		return errRemoteAppSecretArg
+	}
+	return nil
+}
+
 // pamReservedGuacParams are connection parameters an entry's settings JSON may
-// NOT override: injected credentials, identity fields, endpoint address, and
-// recording configuration all come from the entry columns / server config.
+// NOT override: injected credentials, identity fields, endpoint address,
+// recording configuration, and the GFX toggle all come from the entry columns
+// / server config. `disable-gfx` is reserved because RemoteApp launches must
+// force it on (see forcePamRemoteAppParams) — a stored setting must never be
+// able to re-enable GFX and reintroduce the GUACAMOLE-2123 blank-window bug.
 var pamReservedGuacParams = map[string]bool{
 	"password": true, "private-key": true, "passphrase": true,
 	"username": true, "domain": true,
 	"hostname": true, "port": true,
 	"recording-path": true, "recording-name": true, "recording-include-keys": true,
+	"disable-gfx": true,
+}
+
+// forcePamRemoteAppParams applies the server-mandated overrides for RemoteApp
+// (single published Windows application) launches. Guacamole 1.6.0 enables the
+// RDP Graphics Pipeline (GFX) by default, but RemoteApp windows fail to repaint
+// with GFX on (GUACAMOLE-2123). Whenever a launch is a RemoteApp — signalled by
+// a non-empty `remote-app` parameter — we force `disable-gfx=true` server-side.
+// `disable-gfx` is in pamReservedGuacParams so stored settings can never turn
+// it back on. No-op for full-desktop RDP, which keeps GFX for responsiveness.
+func forcePamRemoteAppParams(params map[string]string) {
+	if params["remote-app"] != "" {
+		params["disable-gfx"] = "true"
+	}
 }
 
 // buildPamGuacParams assembles the Guacamole parameters for a PAM entry
@@ -71,6 +118,9 @@ func buildPamGuacParams(secretType, username, domain string, cred []byte, settin
 		params["recording-name"] = recordingName
 		params["recording-include-keys"] = "true"
 	}
+	// RemoteApp launches must run with GFX disabled (GUACAMOLE-2123); applied
+	// after the settings/credential layering so nothing can override it.
+	forcePamRemoteAppParams(params)
 	return params
 }
 
