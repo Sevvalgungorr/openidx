@@ -123,6 +123,106 @@ func (s *Service) handleWindowsAppList(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"apps": apps, "pools": pools, "host_state": hostState, "host_agents": hostAgents})
 }
 
+// myWindowsApp is the lean, launch-oriented view an end user sees in the
+// portal — no exec_path/args/source internals, just what a tile needs.
+type myWindowsApp struct {
+	ID              string `json:"id"`
+	DisplayName     string `json:"display_name"`
+	Alias           string `json:"alias"`
+	HostName        string `json:"host_name,omitempty"`
+	PoolName        string `json:"pool_name,omitempty"`
+	HasIcon         bool   `json:"has_icon"`
+	RequireApproval bool   `json:"require_approval"`
+}
+
+// handleMyWindowsApps — GET /pam/my-apps. The launchable apps for the calling
+// user: active apps whose host (single) or any pool member (pool) the user is
+// permitted to connect to — the same "connect" grant the launch endpoint gates
+// on. Admins see every active app. Powers the end-user portal tiles; launching
+// still runs the full placement + approval gate on POST /pam/apps/:id/launch.
+func (s *Service) handleMyWindowsApps(c *gin.Context) {
+	ctx := c.Request.Context()
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "organization context required"})
+		return
+	}
+	userID := c.GetString("user_id")
+	isAdmin := s.pamCallerIsAdmin(c)
+	roles := pamCallerRoles(c)
+
+	apps, err := s.listWindowsApps(ctx, org.ID)
+	if err != nil {
+		s.logger.Error("handleMyWindowsApps: apps query failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load apps"})
+		return
+	}
+
+	// Resolve the candidate host entry ids for every app in one query: a
+	// single-host app maps to its own host; a pool app to each member host.
+	appHostIDs := map[string][]string{}
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT a.id::text, COALESCE(a.host_entry_id::text, m.host_entry_id::text)
+		  FROM windows_apps a
+		  LEFT JOIN windows_app_pool_members m ON m.pool_id = a.pool_id AND m.org_id = a.org_id
+		 WHERE a.org_id = $1 AND a.status = 'active'`, org.ID)
+	if err != nil {
+		s.logger.Error("handleMyWindowsApps: host-id query failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve hosts"})
+		return
+	}
+	for rows.Next() {
+		var appID, hostID string
+		if err := rows.Scan(&appID, &hostID); err != nil {
+			continue
+		}
+		if hostID != "" {
+			appHostIDs[appID] = append(appHostIDs[appID], hostID)
+		}
+	}
+	rows.Close()
+
+	// Cache per-host allow decisions so a pool of N hosts costs at most N checks.
+	allowCache := map[string]bool{}
+	canReach := func(hostID string) bool {
+		if v, ok := allowCache[hostID]; ok {
+			return v
+		}
+		ok, aerr := s.pamEntryAllowed(ctx, org.ID, hostID, userID, roles, "connect")
+		if aerr != nil {
+			s.logger.Warn("handleMyWindowsApps: ACL check failed", zap.String("host", hostID), zap.Error(aerr))
+			ok = false
+		}
+		allowCache[hostID] = ok
+		return ok
+	}
+
+	out := []myWindowsApp{}
+	for _, a := range apps {
+		if a.Status != "active" {
+			continue
+		}
+		if !isAdmin {
+			permitted := false
+			for _, h := range appHostIDs[a.ID] {
+				if canReach(h) {
+					permitted = true
+					break
+				}
+			}
+			if !permitted {
+				continue
+			}
+		}
+		out = append(out, myWindowsApp{
+			ID: a.ID, DisplayName: a.DisplayName, Alias: a.Alias,
+			HostName: a.HostName, PoolName: a.PoolName, HasIcon: a.HasIcon,
+			RequireApproval: a.RequireApproval != nil && *a.RequireApproval,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"apps": out})
+}
+
 func (s *Service) listWindowsApps(ctx context.Context, orgID string) ([]windowsApp, error) {
 	rows, err := s.db.Pool.Query(ctx, `
 		SELECT a.id, COALESCE(a.host_entry_id::text,''), COALESCE(he.name,''),

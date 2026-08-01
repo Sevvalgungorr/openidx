@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Textarea } from '../components/ui/textarea'
 import { Badge } from '../components/ui/badge'
+import { Checkbox } from '../components/ui/checkbox'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import {
@@ -45,6 +46,7 @@ export function WindowsAppsPage() {
   const [showImport, setShowImport] = useState(false)
   const [importHost, setImportHost] = useState('')
   const [importData, setImportData] = useState('')
+  const [showPools, setShowPools] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['windows-apps'],
@@ -188,6 +190,9 @@ export function WindowsAppsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowPools(true)}>
+            <Layers className="h-4 w-4 mr-1" /> Manage pools
+          </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <Download className="h-4 w-4 mr-1" /> Import from host
           </Button>
@@ -395,6 +400,27 @@ export function WindowsAppsPage() {
                 </p>
               )}
             </div>
+
+            {/* Per-app policy overrides — tighten-only. Checked forces the gate
+                ON for this app; unchecked inherits the host connection's setting
+                (a checkbox can only ADD a control, never remove the host's). */}
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">App policy (overrides only tighten the host's settings)</p>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.require_approval === true}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, require_approval: v === true ? true : undefined }))}
+                />
+                Require approval before launching this app
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.record_session === true}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, record_session: v === true ? true : undefined }))}
+                />
+                Always record this app's session
+              </label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAppDialog(false)}>Cancel</Button>
@@ -464,7 +490,179 @@ export function WindowsAppsPage() {
         onCancel={() => setConflict(null)}
         onReplace={(sessionId) => conflict && launch.mutate({ app: conflict.app, replaceSessionId: sessionId })}
       />
+
+      {/* Pools management — create pools + set per-host capacity */}
+      <PoolsDialog
+        open={showPools}
+        onOpenChange={setShowPools}
+        pools={pools}
+        appHosts={appHosts}
+        onChanged={invalidate}
+      />
     </div>
+  )
+}
+
+// PoolsDialog — full pool lifecycle: create a pool, pick its placement, and
+// add/remove member hosts with per-host max_sessions (the RDS-vs-desktop
+// concurrency knob). Backed by the existing app-pools CRUD.
+function PoolsDialog({ open, onOpenChange, pools, appHosts, onChanged }: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  pools: WindowsAppPool[]
+  appHosts: PamEntry[]
+  onChanged: () => void
+}) {
+  const { toast } = useToast()
+  const [newName, setNewName] = useState('')
+  const [newPlacement, setNewPlacement] = useState('least_loaded')
+  // Per-pool "add member" draft: { [poolId]: { host, max } }
+  const [memberDraft, setMemberDraft] = useState<Record<string, { host: string; max: string }>>({})
+
+  const err = (e: Error) => toast({ title: 'Pool update failed', description: e.message, variant: 'destructive' })
+
+  const createPool = useMutation({
+    mutationFn: () => api.windowsApps.createPool({ name: newName.trim(), placement: newPlacement }),
+    onSuccess: () => { setNewName(''); onChanged(); toast({ title: 'Pool created' }) },
+    onError: err,
+  })
+  const removePool = useMutation({
+    mutationFn: (id: string) => api.windowsApps.removePool(id),
+    onSuccess: () => { onChanged(); toast({ title: 'Pool removed' }) },
+    onError: err,
+  })
+  const updatePlacement = useMutation({
+    mutationFn: (v: { pool: WindowsAppPool; placement: string }) =>
+      api.windowsApps.updatePool(v.pool.id, { name: v.pool.name, description: v.pool.description, placement: v.placement }),
+    onSuccess: () => onChanged(),
+    onError: err,
+  })
+  const addMember = useMutation({
+    mutationFn: (v: { poolId: string; host: string; max: number }) =>
+      api.windowsApps.addPoolMember(v.poolId, { host_entry_id: v.host, max_sessions: v.max }),
+    onSuccess: (_r, v) => {
+      setMemberDraft((s) => ({ ...s, [v.poolId]: { host: '', max: '1' } }))
+      onChanged()
+    },
+    onError: err,
+  })
+  const removeMember = useMutation({
+    mutationFn: (v: { poolId: string; memberId: string }) => api.windowsApps.removePoolMember(v.poolId, v.memberId),
+    onSuccess: () => onChanged(),
+    onError: err,
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Host pools</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          A pool is a set of interchangeable hosts. A launch is placed on a member with free
+          capacity; a second app for the same user goes to another host. Set each host's
+          <strong> max sessions</strong> to match its edition (1 for Windows 10/11 Pro; higher for Windows Server + RDS).
+        </p>
+
+        {/* Create a pool */}
+        <div className="flex items-end gap-2 rounded-md border p-3">
+          <div className="flex-1">
+            <label className="text-sm font-medium">New pool name</label>
+            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="SSMS hosts" />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Placement</label>
+            <Select value={newPlacement} onValueChange={setNewPlacement}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="least_loaded">Least loaded</SelectItem>
+                <SelectItem value="round_robin">Round robin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={() => createPool.mutate()} disabled={createPool.isPending || !newName.trim()}>
+            <Plus className="h-4 w-4 mr-1" /> Create
+          </Button>
+        </div>
+
+        {/* Existing pools */}
+        {pools.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">No pools yet.</p>
+        ) : pools.map((pool) => {
+          const draft = memberDraft[pool.id] ?? { host: '', max: '1' }
+          const memberHostIds = new Set(pool.members.map((m) => m.host_entry_id))
+          const available = appHosts.filter((h) => !memberHostIds.has(h.id))
+          return (
+            <div key={pool.id} className="rounded-md border p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{pool.name}</span>
+                <div className="flex items-center gap-2">
+                  <Select value={pool.placement} onValueChange={(v) => updatePlacement.mutate({ pool, placement: v })}>
+                    <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="least_loaded">Least loaded</SelectItem>
+                      <SelectItem value="round_robin">Round robin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" variant="ghost" onClick={() => removePool.mutate(pool.id)} title="Delete pool">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+
+              {pool.members.length > 0 && (
+                <div className="space-y-1">
+                  {pool.members.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between rounded border px-2 py-1 text-sm">
+                      <span className="flex items-center gap-1.5 min-w-0 truncate">
+                        <Server className="h-3.5 w-3.5 shrink-0" /> {m.host_name}
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <Badge variant="outline">{m.active_sessions}/{m.max_sessions}</Badge>
+                        <Button size="sm" variant="ghost" onClick={() => removeMember.mutate({ poolId: pool.id, memberId: m.id })} title="Remove host">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add a member host */}
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Select value={draft.host} onValueChange={(v) => setMemberDraft((s) => ({ ...s, [pool.id]: { ...draft, host: v } }))}>
+                    <SelectTrigger className="h-8"><SelectValue placeholder={available.length ? 'Add a host…' : 'All hosts already added'} /></SelectTrigger>
+                    <SelectContent>
+                      {available.map((h) => (
+                        <SelectItem key={h.id} value={h.id}>{h.name}{h.hostname ? ` (${h.hostname})` : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-24">
+                  <Input
+                    type="number" min={1} className="h-8"
+                    value={draft.max}
+                    onChange={(e) => setMemberDraft((s) => ({ ...s, [pool.id]: { ...draft, max: e.target.value } }))}
+                    placeholder="max"
+                  />
+                </div>
+                <Button
+                  size="sm" variant="outline"
+                  disabled={addMember.isPending || !draft.host}
+                  onClick={() => addMember.mutate({ poolId: pool.id, host: draft.host, max: Math.max(1, parseInt(draft.max || '1', 10)) })}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add host
+                </Button>
+              </div>
+            </div>
+          )
+        })}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

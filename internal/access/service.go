@@ -718,6 +718,9 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		// RemoteApp launch path. List/launch are operator-level (launch runs the
 		// same ACL + approval gates as pam connect); mutations are admin-only.
 		api.GET("/pam/apps", svc.handleWindowsAppList)
+		// End-user launchable-apps view (portal tiles). Distinct /pam/my-apps
+		// prefix so the static segment can't collide with /pam/apps/:id.
+		api.GET("/pam/my-apps", svc.handleMyWindowsApps)
 		api.POST("/pam/apps", svc.requireAdminRole(), svc.handleWindowsAppCreate)
 		api.PUT("/pam/apps/:id", svc.requireAdminRole(), svc.handleWindowsAppUpdate)
 		api.DELETE("/pam/apps/:id", svc.requireAdminRole(), svc.handleWindowsAppDelete)

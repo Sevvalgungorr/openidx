@@ -121,6 +121,14 @@ Treat a published-app host as a semi-trusted boundary and harden it:
 - **Credentials never leave the server.** The host credential is vault-decrypted
   in memory and injected into the Guacamole connection; the browser only ever
   receives a connect URL. There is no downloadable `.rdp` file.
+- **Per-app policy tightens, never loosens.** An app may set `require_approval`
+  and `record_session` overrides (in the add/edit dialog); at launch these can
+  only *add* a control on top of the host connection's policy, never remove one
+  — so a per-app override can force approval/recording but can't waive the host's.
+
+End users see only the apps published to them, as launch tiles under **My Windows
+Apps** (`GET /pam/my-apps`, filtered to the `connect` grants they hold — the same
+gate the launch enforces); they can't reach the catalog, hosts, or pools.
 
 ## Broker version pinning
 
@@ -142,7 +150,9 @@ launch because RemoteApp windows don't repaint with the GFX pipeline on, which
 | Agent discovery (report endpoint, agent binding, config hint) | `internal/access/windows_apps_discovery.go`, `internal/access/agent_api.go` |
 | Schema | `internal/migrations/sql_v119.go`, `internal/migrations/sql_v120.go` |
 | Host prep / discovery script | `scripts/windows/Prepare-OpenIDXAppHost.ps1` |
-| Console | `web/admin-console/src/pages/windows-apps.tsx` |
+| Console (admin catalog, pools, discovery) | `web/admin-console/src/pages/windows-apps.tsx` |
+| End-user portal tiles | `web/admin-console/src/pages/my-windows-apps.tsx` (`GET /pam/my-apps`) |
+| Eval host (non-production) | `deployments/docker/docker-compose.windows-apphost.yml` |
 
 ## App-V and other packaging layers
 

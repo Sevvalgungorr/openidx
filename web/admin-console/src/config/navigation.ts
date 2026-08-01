@@ -123,6 +123,7 @@ export const navigation: NavDomainGroup[] = [
           { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, minRole: 'user', keywords: ['overview', 'home'] },
           { name: 'My Profile', href: '/profile', icon: User, minRole: 'user', keywords: ['account', 'password'] },
           { name: 'My Apps', href: '/app-launcher', icon: Rocket, minRole: 'user', keywords: ['launcher', 'portal'] },
+          { name: 'My Windows Apps', href: '/my-apps', icon: AppWindow, minRole: 'user', keywords: ['remoteapp', 'ssms', 'published', 'rds', 'windows', 'launch', 'desktop app'] },
           { name: 'Quick Links', href: '/quick-links', icon: Link2, minRole: 'user', keywords: ['support', 'shortcuts', 'teams', 'zoom', 'launcher', 'connect'] },
           { name: 'My Access', href: '/my-access', icon: Eye, minRole: 'user', keywords: ['entitlements', 'permissions'] },
           { name: 'My Privileged Access', href: '/my-privileged-access', icon: KeyRound, minRole: 'user', keywords: ['pam', 'my secrets', 'checkout', 'privileged'] },

@@ -513,6 +513,9 @@ export const api = {
         host_state: WindowsAppHostState[]
         host_agents: WindowsAppHostAgent[]
       }>('/api/v1/access/pam/apps'),
+    // End-user launchable-apps view for the portal tiles — only apps the caller
+    // is permitted to launch (RBAC-filtered server-side).
+    listMine: () => api.get<{ apps: MyWindowsApp[] }>('/api/v1/access/pam/my-apps'),
     create: (body: WindowsAppInput) =>
       api.post<{ id: string }>('/api/v1/access/pam/apps', body),
     update: (id: string, body: WindowsAppInput) =>
@@ -785,6 +788,17 @@ export interface WindowsAppHostState {
   allowlist_enforced?: boolean
   published_app_count?: number
   checked_at?: string
+}
+
+// The end-user portal view of a launchable app — just what a tile needs.
+export interface MyWindowsApp {
+  id: string
+  display_name: string
+  alias: string
+  host_name?: string
+  pool_name?: string
+  has_icon: boolean
+  require_approval: boolean
 }
 
 // Which enrolled agent (if any) is bound to a host entry, so the console can

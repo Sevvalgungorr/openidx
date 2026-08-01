@@ -15,6 +15,11 @@ vi.mock('../lib/api', () => ({
       importDiscovery: vi.fn(),
       linkAgent: vi.fn(),
       unlinkAgent: vi.fn(),
+      createPool: vi.fn(),
+      updatePool: vi.fn(),
+      removePool: vi.fn(),
+      addPoolMember: vi.fn(),
+      removePoolMember: vi.fn(),
       iconURL: (id: string) => `/icon/${id}`,
     },
     pam: { listEntries: vi.fn() },
@@ -53,6 +58,7 @@ describe('WindowsAppsPage', () => {
     wa.launch.mockResolvedValue({ launch_type: 'guacamole', connect_url: 'https://guac/x', app_id: 'a1', host_entry_id: 'h1', host_name: 'RDS01', recorded: true })
     wa.linkAgent.mockResolvedValue({ host_entry_id: 'h1', agent_id: 'agent-1a2b3c4d' })
     wa.unlinkAgent.mockResolvedValue(undefined)
+    wa.createPool.mockResolvedValue({ id: 'p1' })
     window.open = vi.fn()
   })
 
@@ -132,5 +138,24 @@ describe('WindowsAppsPage', () => {
     expect(screen.getByText(/agent-1a2b3c4d/)).toBeInTheDocument()
     fireEvent.click(screen.getByTitle(/unlink agent/i))
     await waitFor(() => expect(wa.unlinkAgent).toHaveBeenCalledWith('h1'))
+  })
+
+  it('creates a pool from the Manage pools dialog', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /manage pools/i }))
+    const nameInput = await screen.findByPlaceholderText(/ssms hosts/i)
+    fireEvent.change(nameInput, { target: { value: 'SSMS hosts' } })
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+    await waitFor(() => expect(wa.createPool).toHaveBeenCalledWith({ name: 'SSMS hosts', placement: 'least_loaded' }))
+  })
+
+  it('exposes per-app policy override toggles in the add dialog', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /add app/i }))
+    const approval = await screen.findByRole('checkbox', { name: /require approval before launching/i })
+    expect(approval).not.toBeChecked()
+    fireEvent.click(approval)
+    await waitFor(() => expect(approval).toBeChecked())
+    expect(screen.getByRole('checkbox', { name: /always record this app/i })).toBeInTheDocument()
   })
 })

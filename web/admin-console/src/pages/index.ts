@@ -95,6 +95,7 @@ export const GuacamoleSessions = lazy(() => import('./guacamole-sessions').then(
 export const PAMDashboard = lazy(() => import('./pam-dashboard').then((m) => ({ default: m.PAMDashboardPage })))
 export const PamConnections = lazy(() => import('./pam-connections').then((m) => ({ default: m.PamConnectionsPage })))
 export const WindowsApps = lazy(() => import('./windows-apps').then((m) => ({ default: m.WindowsAppsPage })))
+export const MyWindowsApps = lazy(() => import('./my-windows-apps').then((m) => ({ default: m.MyWindowsAppsPage })))
 
 // Developer
 export const APIExplorer = lazy(() => import('./api-explorer').then((m) => ({ default: m.ApiExplorerPage })))

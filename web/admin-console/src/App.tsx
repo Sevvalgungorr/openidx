@@ -107,6 +107,7 @@ import {
   PAMDashboard,
   PamConnections,
   WindowsApps,
+  MyWindowsApps,
   MyPrivilegedAccess,
 } from '@/pages'
 import { useAppStore } from '@/lib/store'
@@ -317,6 +318,7 @@ function App() {
         <Route path="pam-dashboard" element={<AdminRoute><PAMDashboard /></AdminRoute>} />
         <Route path="pam-connections" element={<PamConnections />} />
         <Route path="windows-apps" element={<WindowsApps />} />
+        <Route path="my-apps" element={<MyWindowsApps />} />
         <Route path="vault-secrets" element={<AdminRoute><VaultSecrets /></AdminRoute>} />
         <Route path="rotation-policies" element={<AdminRoute><RotationPolicies /></AdminRoute>} />
         <Route path="guacamole-sessions" element={<AdminRoute><GuacamoleSessions /></AdminRoute>} />

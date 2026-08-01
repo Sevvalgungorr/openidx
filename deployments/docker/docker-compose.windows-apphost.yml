@@ -1,0 +1,62 @@
+# OpenIDX Windows app host — EVALUATION ONLY (compose overlay).
+#
+# ⚠️  NON-PRODUCTION. This stands up a throwaway Windows host in a container
+#     (dockur/windows, which runs Windows under QEMU/KVM) so you can exercise the
+#     Windows Application Delivery path end-to-end WITHOUT a real Windows Server +
+#     RDS box. It is for local demos and CI-adjacent manual testing only:
+#       - Windows licensing for RDS/CALs is YOUR responsibility; this image
+#         downloads evaluation media. Do not run tenant workloads on it.
+#       - It requires nested virtualization: a host /dev/kvm and NET_ADMIN. Many
+#         cloud VMs and all rootless/CI sandboxes cannot provide these.
+#       - Single Windows instance → ONE concurrent RemoteApp session (Pro/eval,
+#         not multi-session RDS). Use it to validate publish → discover → launch,
+#         not to load-test placement.
+#
+# Usage (opt-in overlay, layered on the base compose so it joins openidx-network):
+#   docker compose -f docker-compose.yml -f docker-compose.windows-apphost.yml up -d windows-apphost
+#
+# Then, once Windows has finished installing (watch http://localhost:8006):
+#   1. In the guest, run scripts/windows/Prepare-OpenIDXAppHost.ps1 -Publish to
+#      publish apps + enable RDP/NLA, then -Report to emit the discovery JSON.
+#   2. In OpenIDX, add a "Windows App Host" connection pointing at
+#      windows-apphost:3389 (reachable on openidx-network), vault its credential,
+#      and import the report under Windows Apps → Import from host.
+#
+# See docs/architecture/windows-app-delivery.md for the full flow.
+
+services:
+  windows-apphost:
+    image: dockurr/windows:latest
+    container_name: openidx-windows-apphost
+    # Eval box — do not auto-restart into a half-installed state on the host reboot.
+    restart: "no"
+    environment:
+      # Windows 11 evaluation media. Override to a Server edition (e.g. "2022")
+      # to exercise true multi-session RDS if your license permits.
+      VERSION: "${WINDOWS_APPHOST_VERSION:-11}"
+      # Sized for a couple of published apps + the OS. Bump for heavier apps.
+      RAM_SIZE: "${WINDOWS_APPHOST_RAM:-4G}"
+      CPU_CORES: "${WINDOWS_APPHOST_CPUS:-2}"
+      DISK_SIZE: "${WINDOWS_APPHOST_DISK:-64G}"
+      # First-boot admin account. EVAL ONLY — vault the real credential in OpenIDX.
+      USERNAME: "${WINDOWS_APPHOST_USER:-openidx}"
+      PASSWORD: "${WINDOWS_APPHOST_PASSWORD:?set WINDOWS_APPHOST_PASSWORD for the eval host (non-production)}"
+    devices:
+      # Nested virtualization — the whole reason this is eval-only.
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      # noVNC/web installer viewer (host-only). RDP (3389) is intentionally NOT
+      # published to the host — OpenIDX reaches it over openidx-network so the
+      # eval box mirrors the "no inbound target exposure" posture of a real host.
+      - "127.0.0.1:8006:8006"
+    volumes:
+      - windows_apphost_storage:/storage
+    stop_grace_period: 2m
+    networks:
+      - openidx-network
+
+volumes:
+  windows_apphost_storage:
