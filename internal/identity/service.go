@@ -5123,7 +5123,12 @@ func (s *Service) handleVerifyEmail(c *gin.Context) {
 
 	if _, err := s.db.Pool.Exec(ctx,
 		"UPDATE email_verification_tokens SET used_at = NOW() WHERE token = $1 AND org_id = $2", req.Token, org.ID); err != nil {
-		s.logger.Error("failed to mark verification token as used", zap.String("token", req.Token), zap.Error(err))
+		// SECURITY: log the user, never the token. This branch fires precisely
+		// when the token is still unspent, so writing it here would put a live
+		// single-use credential in the log — the same mistake that was fixed on
+		// the password-reset path.
+		s.logger.Error("failed to mark verification token as used",
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
 	}
 
 	c.JSON(200, gin.H{"message": "Email verified successfully"})

@@ -8,6 +8,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/openidx/openidx/internal/common/database"
+	"github.com/openidx/openidx/internal/common/testsupport"
 )
 
 // groupsSchema mirrors the production groups constraint that matters here:
@@ -36,13 +37,12 @@ func setupGroupsDB(t *testing.T) (*database.PostgresDB, func()) {
 		Env:          map[string]string{"POSTGRES_USER": "test", "POSTGRES_PASSWORD": "test", "POSTGRES_DB": "testdb"},
 		WaitingFor:   wait.ForListeningPort("5432/tcp"),
 	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req, Started: true,
+	container := testsupport.RunOrSkip(t, req.Image, func() (testcontainers.Container, error) {
+		return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: req,
+			Started:          true,
+		})
 	})
-	if err != nil {
-		t.Skipf("start container: %v", err)
-		return nil, func() {}
-	}
 	host, _ := container.Host(ctx)
 	port, _ := container.MappedPort(ctx, "5432")
 	conn := "postgres://test:test@" + host + ":" + port.Port() + "/testdb?sslmode=disable"

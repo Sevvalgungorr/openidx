@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openidx/openidx/internal/common/config"
+	"github.com/openidx/openidx/internal/common/database"
 	"go.uber.org/zap"
 )
 
@@ -22,10 +23,23 @@ func createTestAuditServiceForBench(b testing.TB) *Service {
 
 	logger := zap.NewNop()
 
-	// Use the existing db from the service (initialized elsewhere)
-	// For benchmarks, we'll use a nil db to skip actual database operations
-	svc := NewService(nil, nil, cfg, logger)
-	return svc
+	// This used to build the service with a nil database, on the theory that a
+	// nil db would "skip actual database operations". It does not: LogEvent,
+	// QueryEvents, GetEventStatistics and GenerateComplianceReport all reach
+	// s.db.Pool unconditionally, so the first one to run segfaulted and took
+	// every later benchmark in the package down with it — which is why only one
+	// of them ever appeared in a benchmark report.
+	//
+	// Connect for real and skip when there is no database, matching
+	// createTestOAuthServiceForBench.
+	db, err := database.NewPostgres(cfg.DatabaseURL)
+	if err != nil {
+		b.Skip("Skipping benchmark: database not available")
+		return nil
+	}
+	b.Cleanup(func() { _ = db.Close() })
+
+	return NewService(db, nil, cfg, logger)
 }
 
 // BenchmarkLogEvent benchmarks logging audit events to the database

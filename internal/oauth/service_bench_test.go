@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"testing"
 	"time"
@@ -300,7 +302,10 @@ func BenchmarkGetClient(b *testing.B) {
 // BenchmarkPKCEVerification benchmarks PKCE code verifier validation
 func BenchmarkPKCEVerification(b *testing.B) {
 	codeVerifier := randomString(43)
-	codeChallenge := benchSha256Hash(codeVerifier)
+	codeChallenge := benchPKCEChallenge(codeVerifier)
+	if !VerifyPKCE(codeVerifier, codeChallenge, "S256") {
+		b.Fatal("benchmark fixture does not verify — this would time the rejection path")
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -360,12 +365,22 @@ func BenchmarkRefreshTokenGrant(b *testing.B) {
 // Helper functions
 
 func randomString(n int) string {
-	b := make([]byte, n/2)
+	// Round the byte count UP: n/2 bytes hex-encodes to only n-1 characters for
+	// odd n, and the slice below then panics. randomString(43) — the RFC 7636
+	// minimum verifier length — produced exactly that, killing every remaining
+	// benchmark in this package.
+	b := make([]byte, (n+1)/2)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)[:n]
 }
 
-// benchSha256Hash is a simplified SHA256 hash for benchmark PKCE code challenges
-func benchSha256Hash(s string) string {
-	return hex.EncodeToString([]byte(s))[:32]
+// benchPKCEChallenge derives the S256 code challenge for a verifier, the same
+// way VerifyPKCE does.
+//
+// Its predecessor hex-encoded the verifier and truncated to 32 chars, which is
+// not SHA-256 and never matched — so the benchmark was timing the rejection
+// path while claiming to measure PKCE verification.
+func benchPKCEChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(sum[:])
 }

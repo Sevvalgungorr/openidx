@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	rediscontainer "github.com/testcontainers/testcontainers-go/modules/redis"
+
+	"github.com/openidx/openidx/internal/common/testsupport"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -1023,11 +1025,10 @@ func TestCircuitBreaker_DistributedState(t *testing.T) {
 	t.Run("Redis distributed state coordination", func(t *testing.T) {
 		ctx := context.Background()
 
-		redisContainer, err := rediscontainer.Run(ctx, "redis:7-alpine")
-		if err != nil {
-			t.Skip("Redis container not available:", err)
-			return
-		}
+		redisContainer := testsupport.RunOrSkip(t, "redis:7-alpine",
+			func() (*rediscontainer.RedisContainer, error) {
+				return rediscontainer.Run(ctx, "redis:7-alpine")
+			})
 		defer testcontainers.TerminateContainer(redisContainer)
 
 		redisHost, err := redisContainer.Host(ctx)

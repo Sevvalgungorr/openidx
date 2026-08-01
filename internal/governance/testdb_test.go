@@ -10,6 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/openidx/openidx/internal/common/database"
+	"github.com/openidx/openidx/internal/common/testsupport"
 )
 
 // setupTestDB creates a test database container
@@ -32,14 +33,12 @@ func setupTestDB(t *testing.T) (*database.PostgresDB, func()) {
 			WithStartupTimeout(30 * time.Second),
 	}
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
+	container := testsupport.RunOrSkip(t, req.Image, func() (testcontainers.Container, error) {
+		return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: req,
+			Started:          true,
+		})
 	})
-	if err != nil {
-		t.Skipf("Failed to start test container: %v", err)
-		return nil, func() {}
-	}
 
 	host, err := container.Host(ctx)
 	if err != nil {

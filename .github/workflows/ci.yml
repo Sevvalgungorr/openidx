@@ -221,18 +221,44 @@ jobs:
             ${{ runner.os }}-go-build-${{ env.GO_VERSION }}-
             ${{ runner.os }}-go-build-
 
+      # The matrix value is an import path ("internal/metrics", "pkg/"), so it
+      # cannot go into a filename as-is: -coverprofile=coverage_internal/metrics.out
+      # asks Go to write into a directory that does not exist, and it fails in
+      # under a second, before compiling a single package. That is what the old
+      # `|| true` was really hiding — not flaky tests, but a command that could
+      # never run. Flatten the separators once and reuse the slug below.
+      - name: Derive coverage file name
+        id: cov
+        run: |
+          slug='${{ matrix.package }}'
+          slug="${slug%/}"
+          echo "slug=${slug//\//_}" >> "$GITHUB_OUTPUT"
+
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgres://openidx:test_secret@localhost:5432/openidx_test?sslmode=disable
           REDIS_URL: redis://localhost:6379
         run: |
-          go test -v -race -coverprofile=coverage_${{ matrix.package }}.out -covermode=atomic ./${{ matrix.package }}/... || true
+          # A failing test MUST fail this job. This step carried `|| true` for a
+          # long time, which meant test-unit reported success no matter what —
+          # and since test-unit is one of the Required Checks (see the gate job
+          # at the bottom of this file), the whole per-package matrix was a
+          # green light that could never turn red. Only test-race, which runs
+          # the whole repo without these service containers, was a real gate.
+          #
+          # Keep this a hard failure: it is the fast, per-package signal, and
+          # it is the only job that runs with the Postgres/Redis services
+          # attached, so it covers tests test-race cannot.
+          go test -v -race -coverprofile=coverage_${{ steps.cov.outputs.slug }}.out -covermode=atomic ./${{ matrix.package }}/...
 
+      # Upload whatever coverage was produced even when the tests failed, so a
+      # red run still yields a coverage artifact to inspect.
       - name: Upload coverage
+        if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: coverage-${{ matrix.package }}
-          path: coverage_${{ matrix.package }}.out
+          name: coverage-${{ steps.cov.outputs.slug }}
+          path: coverage_${{ steps.cov.outputs.slug }}.out
           if-no-files-found: ignore
 
   # Integration tests

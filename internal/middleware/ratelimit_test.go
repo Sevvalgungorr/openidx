@@ -35,7 +35,14 @@ func TestSlidingWindowRateLimit_IPBased(t *testing.T) {
 
 	cfg := DefaultRateLimitConfig()
 	cfg.IPRequestsPerMin = 5
-	cfg.Window = time.Second
+	// A window wide enough that a burst cannot straddle it. With a 1s window
+	// this test was a coin flip under load: the six requests below are meant to
+	// be one burst, but if the first few land in the previous second they age
+	// out of the window and the sixth is legitimately allowed — a 200 where the
+	// test demands 429. Expiry has its own test (TestSlidingWindowRateLimit_
+	// SlidingWindow, which sleeps deliberately); this one is only about
+	// counting, so it should not depend on wall-clock timing at all.
+	cfg.Window = time.Minute
 
 	router := gin.New()
 	router.Use(SlidingWindowRateLimit(client, cfg))
@@ -197,7 +204,7 @@ func TestSlidingWindowRateLimit_SkipPaths(t *testing.T) {
 
 	cfg := DefaultRateLimitConfig()
 	cfg.IPRequestsPerMin = 1
-	cfg.Window = time.Second
+	cfg.Window = time.Minute // counting only — see TestSlidingWindowRateLimit_IPBased
 	cfg.SkipPaths = []string{"/health", "/metrics"}
 
 	router := gin.New()
@@ -276,7 +283,7 @@ func TestSlidingWindowRateLimit_RateLimitHeaders(t *testing.T) {
 
 	cfg := DefaultRateLimitConfig()
 	cfg.IPRequestsPerMin = 10
-	cfg.Window = time.Second
+	cfg.Window = time.Minute // counting only — see TestSlidingWindowRateLimit_IPBased
 
 	router := gin.New()
 	router.Use(SlidingWindowRateLimit(client, cfg))
