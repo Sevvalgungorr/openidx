@@ -99,6 +99,14 @@ type RefreshToken struct {
 	SessionID string    `json:"session_id,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// FamilyID groups every token descended from one authorization. Rotation
+	// carries it forward so a whole chain can be revoked at once when a replay
+	// proves the secret leaked.
+	FamilyID string `json:"family_id,omitempty"`
+	// UsedAt is set when this token is rotated away. A non-nil value on a
+	// presented token means someone is replaying it — see detectRefreshReuse.
+	UsedAt *time.Time `json:"used_at,omitempty"`
 }
 
 // TokenResponse represents an OAuth token response
@@ -585,10 +593,18 @@ func (s *Service) CreateRefreshToken(ctx context.Context, token *RefreshToken) e
 		sessionID = token.SessionID
 	}
 
+	// A token with no family starts its own: the first token of an
+	// authorization, or one issued before migration v122.
+	familyID := token.FamilyID
+	if familyID == "" {
+		familyID = uuid.New().String()
+		token.FamilyID = familyID
+	}
+
 	_, err = s.db.Pool.Exec(ctx, `
-		INSERT INTO oauth_refresh_tokens (token, client_id, user_id, scope, session_id, expires_at, created_at, org_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, token.Token, token.ClientID, token.UserID, token.Scope, sessionID, token.ExpiresAt, token.CreatedAt, org.ID)
+		INSERT INTO oauth_refresh_tokens (token, client_id, user_id, scope, session_id, expires_at, created_at, org_id, family_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, token.Token, token.ClientID, token.UserID, token.Scope, sessionID, token.ExpiresAt, token.CreatedAt, org.ID, familyID)
 
 	return err
 }
@@ -603,12 +619,17 @@ func (s *Service) GetRefreshToken(ctx context.Context, token string) (*RefreshTo
 		return nil, err
 	}
 
+	// A rotated (used_at) token is deliberately still returned: the caller has
+	// to see it in order to recognise a replay. Only an explicitly revoked
+	// token is filtered out here, because that one carries no new information.
+	var familyID *string
 	err = s.db.Pool.QueryRow(ctx, `
-		SELECT token, client_id, user_id, scope, session_id, expires_at, created_at
-		FROM oauth_refresh_tokens WHERE token = $1 AND org_id = $2
+		SELECT token, client_id, user_id, scope, session_id, expires_at, created_at, family_id, used_at
+		FROM oauth_refresh_tokens WHERE token = $1 AND org_id = $2 AND revoked_at IS NULL
 	`, token, org.ID).Scan(
 		&refreshToken.Token, &refreshToken.ClientID, &refreshToken.UserID,
 		&refreshToken.Scope, &sessionID, &refreshToken.ExpiresAt, &refreshToken.CreatedAt,
+		&familyID, &refreshToken.UsedAt,
 	)
 
 	if err != nil {
@@ -617,6 +638,9 @@ func (s *Service) GetRefreshToken(ctx context.Context, token string) (*RefreshTo
 
 	if sessionID != nil {
 		refreshToken.SessionID = *sessionID
+	}
+	if familyID != nil {
+		refreshToken.FamilyID = *familyID
 	}
 
 	if time.Now().After(refreshToken.ExpiresAt) {
@@ -632,8 +656,114 @@ func (s *Service) RevokeRefreshToken(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Pool.Exec(ctx, "DELETE FROM oauth_refresh_tokens WHERE token = $1 AND org_id = $2", token, org.ID)
+	// Marked, not deleted. A deleted token is indistinguishable from one that
+	// never existed, which is precisely what made refresh-token theft invisible
+	// before reuse detection: the replay came back as a plain invalid_grant.
+	// The row ages out with its own expires_at.
+	_, err = s.db.Pool.Exec(ctx,
+		"UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE token = $1 AND org_id = $2 AND revoked_at IS NULL",
+		token, org.ID)
 	return err
+}
+
+// handleRefreshTokenReuse responds to a proven refresh-token replay: revoke the
+// whole family, kill the linked session, and leave a record.
+//
+// The logging is deliberately loud. Reuse detection is one of the few signals
+// that distinguishes "a token leaked" from ordinary client misbehavior, and
+// before this existed the event produced a single indistinguishable
+// invalid_grant — an operator had no way to know a refresh token had been
+// stolen. Errors here are logged rather than returned: the caller has already
+// decided to reject the request, and a failure to clean up must not turn into a
+// 500 that hides the security event.
+func (s *Service) handleRefreshTokenReuse(ctx context.Context, token *RefreshToken, clientID string) {
+	revoked := int64(0)
+	if token.FamilyID != "" {
+		n, err := s.revokeRefreshTokenFamily(ctx, token.FamilyID)
+		if err != nil {
+			s.logger.Error("refresh reuse: failed to revoke token family",
+				zap.String("family_id", token.FamilyID), zap.Error(err))
+		}
+		revoked = n
+	} else {
+		// Issued before migration v122, so it has no family. Revoke what we can.
+		if err := s.RevokeRefreshToken(ctx, token.Token); err != nil {
+			s.logger.Error("refresh reuse: failed to revoke token", zap.Error(err))
+		}
+	}
+
+	// The session behind the chain is as compromised as the tokens.
+	if token.SessionID != "" && s.redis != nil {
+		if err := s.redis.Client.Set(ctx,
+			"revoked_session:"+token.SessionID, "refresh_reuse", 24*time.Hour).Err(); err != nil {
+			s.logger.Error("refresh reuse: failed to revoke session",
+				zap.String("session_id", token.SessionID), zap.Error(err))
+		}
+	}
+
+	s.logger.Warn("SECURITY: refresh token reuse detected — token family revoked",
+		zap.String("client_id", sanitizeForLog(clientID)),
+		zap.String("user_id", sanitizeForLog(token.UserID)),
+		zap.String("family_id", sanitizeForLog(token.FamilyID)),
+		zap.String("session_id", sanitizeForLog(token.SessionID)),
+		zap.Int64("tokens_revoked", revoked),
+		zap.Timep("rotated_at", token.UsedAt))
+
+	if s.webhookService != nil {
+		s.webhookService.Publish(ctx, "oauth.refresh_token.reuse_detected", map[string]interface{}{
+			"user_id":        token.UserID,
+			"client_id":      clientID,
+			"family_id":      token.FamilyID,
+			"session_id":     token.SessionID,
+			"tokens_revoked": revoked,
+		})
+	}
+}
+
+// markRefreshTokenRotated tombstones a token that has just been exchanged for a
+// successor, leaving it present but spent.
+//
+// The UPDATE is conditional on used_at IS NULL and reports whether it matched,
+// which makes rotation the point where a race is settled: if two requests
+// present the same refresh token concurrently, exactly one wins the update and
+// the loser is treated as a replay. Doing the check in SQL rather than in Go
+// avoids a read-then-write window an attacker could aim for deliberately.
+func (s *Service) markRefreshTokenRotated(ctx context.Context, token string) (bool, error) {
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return false, err
+	}
+	tag, err := s.db.Pool.Exec(ctx,
+		"UPDATE oauth_refresh_tokens SET used_at = NOW() WHERE token = $1 AND org_id = $2 AND used_at IS NULL",
+		token, org.ID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// revokeRefreshTokenFamily revokes every token descended from one authorization.
+//
+// This is the response to a proven replay. Revoking only the presented token
+// would leave the *other* holder — quite possibly the attacker, since the
+// legitimate client is the one that noticed something was wrong — with a
+// working chain. RFC 6819 §5.2.2.3 is explicit that the server cannot tell the
+// two apart, so both lose and the user re-authenticates.
+//
+// A token predating migration v122 may have no family; the caller falls back to
+// revoking the single token in that case.
+func (s *Service) revokeRefreshTokenFamily(ctx context.Context, familyID string) (int64, error) {
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return 0, err
+	}
+	tag, err := s.db.Pool.Exec(ctx,
+		"UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE family_id = $1 AND org_id = $2 AND revoked_at IS NULL",
+		familyID, org.ID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // accessTokenBlacklistKey returns the Redis key used to mark a given access
@@ -3093,6 +3223,23 @@ func (s *Service) handleRefreshTokenGrant(c *gin.Context) {
 		return
 	}
 
+	// REUSE DETECTION (RFC 6819 §5.2.2.3 / OAuth 2.1 §6.1).
+	//
+	// A token that is present but already rotated means two parties hold the
+	// same secret. The server cannot tell which one is the legitimate client,
+	// so it revokes the entire family and forces re-authentication. Revoking
+	// just this token would leave the other holder — plausibly the attacker,
+	// since the honest client is usually the one that trips the detector —
+	// with a working chain.
+	if token.UsedAt != nil {
+		s.handleRefreshTokenReuse(c.Request.Context(), token, clientID)
+		c.JSON(400, gin.H{
+			"error":             "invalid_grant",
+			"error_description": "refresh token reuse detected; the token family has been revoked",
+		})
+		return
+	}
+
 	// Verify the refresh token was issued to the requesting client (RFC 6749 §10.4)
 	if token.ClientID != clientID {
 		s.logger.Warn("Refresh token client_id mismatch",
@@ -3160,6 +3307,31 @@ func (s *Service) handleRefreshTokenGrant(c *gin.Context) {
 	// surface. The integration suite's TestSessionManagement/refresh_access_token
 	// expects the rotated token in the response.
 	if client.AllowRefreshToken && strings.Contains(token.Scope, "offline_access") {
+		// Claim the old token first. The UPDATE is conditional on it being
+		// unused, so of two concurrent refreshes with the same token exactly
+		// one proceeds; the loser falls through to the reuse path on its next
+		// attempt rather than both being handed fresh chains.
+		claimed, err := s.markRefreshTokenRotated(c.Request.Context(), refreshToken)
+		if err != nil {
+			// clientID is attacker-controlled (form field or Basic header), so
+			// it is scrubbed of CR/LF before logging — otherwise it can forge
+			// or split log lines (CWE-117).
+			s.logger.Error("failed to mark refresh token rotated",
+				zap.String("client_id", sanitizeForLog(clientID)), zap.Error(err))
+			writeServerOrUnavailable(c, err)
+			return
+		}
+		if !claimed {
+			// Someone rotated it between our read and this update: same
+			// situation the detector above catches, just observed later.
+			s.handleRefreshTokenReuse(c.Request.Context(), token, clientID)
+			c.JSON(400, gin.H{
+				"error":             "invalid_grant",
+				"error_description": "refresh token reuse detected; the token family has been revoked",
+			})
+			return
+		}
+
 		newRefresh := GenerateRandomToken(32)
 		if err := s.CreateRefreshToken(c.Request.Context(), &RefreshToken{
 			Token:     newRefresh,
@@ -3168,16 +3340,15 @@ func (s *Service) handleRefreshTokenGrant(c *gin.Context) {
 			Scope:     token.Scope,
 			SessionID: token.SessionID,
 			ExpiresAt: time.Now().Add(time.Duration(client.RefreshTokenLifetime) * time.Second),
+			// Successors inherit the family so a later replay revokes the
+			// whole chain, however many rotations deep it is.
+			FamilyID: token.FamilyID,
 		}); err != nil {
 			s.logger.Error("failed to persist rotated refresh token",
-				zap.String("client_id", clientID),
-				zap.String("user_id", token.UserID),
+				zap.String("client_id", sanitizeForLog(clientID)),
+				zap.String("user_id", sanitizeForLog(token.UserID)),
 				zap.Error(err))
 		} else {
-			// Invalidate the old refresh token only after the new one
-			// is safely stored, so a crash between the two doesn't leave
-			// the user with no working refresh token.
-			_ = s.RevokeRefreshToken(c.Request.Context(), refreshToken)
 			response.RefreshToken = newRefresh
 		}
 	}

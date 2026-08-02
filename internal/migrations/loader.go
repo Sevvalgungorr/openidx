@@ -859,5 +859,12 @@ func allMigrations() []*Migration {
 			UpSQL:       rlsBeltGapUp,
 			DownSQL:     rlsBeltGapDown,
 		},
+		{
+			Version:     122,
+			Name:        "refresh_token_reuse_detection",
+			Description: "Add family_id, used_at and revoked_at to oauth_refresh_tokens so rotation can tombstone the old token instead of deleting it. A hard DELETE made a replayed refresh token indistinguishable from a bogus one and left the newest token working, so refresh-token theft produced a single invalid_grant and no revocation. With a family and a tombstone, presenting an already-rotated token proves two parties hold the same secret and revokes the whole chain (RFC 6819 §5.2.2.3 / OAuth 2.1 §6.1). Additive and backfilled — pre-existing tokens become single-member families and keep working.",
+			UpSQL:       refreshTokenReuseUp,
+			DownSQL:     refreshTokenReuseDown,
+		},
 	}
 }
