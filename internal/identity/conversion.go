@@ -68,11 +68,22 @@ func (u *UserDB) ToUser() User {
 		}
 	}
 
-	// Convert flat email to SCIM Emails array
+	// Convert flat email to SCIM Emails array.
+	//
+	// The address is typed "work" rather than left untyped. `users` holds one
+	// address, so this is the account's only email and there is nothing to
+	// distinguish it from — but the type matters on the way back in: Entra ID's
+	// default attribute mapping updates an address with the PATCH path
+	// `emails[type eq "work"].value`, and Okta's profile mapping does the same.
+	// An untyped address matches neither filter, so the update would be
+	// rejected as noTarget. Emitting the type we accept keeps GET and PATCH
+	// describing the same resource.
 	if u.Email != "" {
 		primary := true
+		emailType := "work"
 		user.Emails = []Email{{
 			Value:   u.Email,
+			Type:    &emailType,
 			Primary: &primary,
 		}}
 	}

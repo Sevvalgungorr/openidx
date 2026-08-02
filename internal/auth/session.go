@@ -204,23 +204,62 @@ func (ss *SessionService) Get(ctx context.Context, sessionID string) (*Session, 
 		return nil, ErrSessionExpired
 	}
 
-	// Update last seen asynchronously (fire and forget). Operate on a copy so we
-	// never mutate the *Session that is returned to (and concurrently used by)
-	// the caller.
-	go func(s Session) {
-		refreshCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		s.LastSeen = time.Now()
-		if newData, err := json.Marshal(&s); err == nil {
-			// Only update if session still exists
-			if ss.redis.Exists(refreshCtx, sessionKey).Val() > 0 {
-				ss.redis.Expire(refreshCtx, sessionKey, ss.config.DefaultTTL)
-				ss.redis.Set(refreshCtx, sessionKey, newData, ss.config.DefaultTTL)
-			}
-		}
-	}(session)
+	// Update last seen asynchronously (fire and forget).
+	go ss.touchLastSeen(sessionKey)
 
 	return &session, nil
+}
+
+// touchLastSeen bumps LastSeen and extends the TTL for a session that was just
+// read, so activity keeps a session alive.
+//
+// It re-reads the record under WATCH instead of writing back the copy Get
+// already had in hand. That copy is a snapshot from before the caller did
+// anything, and this write lands at an unpredictable time — it is a
+// fire-and-forget goroutine — so writing it back blindly reverts whatever was
+// stored in between. Refresh is the case that made this visible: it calls Get,
+// extends ExpiresAt, and writes; then the goroutine spawned by its own Get
+// wakes up and puts the pre-refresh ExpiresAt back. The refresh returned nil,
+// and the session still expired at its original time.
+//
+// The same lost update hit UpdateMetadata, where it was previously read as
+// "the write hasn't settled yet" and papered over with a retry loop in the
+// test. It was never a settling delay — the value really was overwritten, and
+// it stayed overwritten.
+//
+// WATCH makes the read-modify-write conditional on the record not having
+// changed since we read it: if it did, the transaction aborts and this touch is
+// dropped. Dropping a LastSeen bump is harmless — the next Get does it again —
+// whereas clobbering an expiry extension logs a user out early.
+func (ss *SessionService) touchLastSeen(sessionKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_ = ss.redis.Watch(ctx, func(tx *redis.Tx) error {
+		data, err := tx.Get(ctx, sessionKey).Bytes()
+		if err != nil {
+			// Gone (expired or deleted) — nothing to touch, and recreating it
+			// here is exactly the resurrection Delete guards against.
+			return err
+		}
+
+		var current Session
+		if err := json.Unmarshal(data, &current); err != nil {
+			return err
+		}
+		current.LastSeen = time.Now()
+
+		updated, err := json.Marshal(&current)
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Set(ctx, sessionKey, updated, ss.config.DefaultTTL)
+			return nil
+		})
+		return err
+	}, sessionKey)
 }
 
 // Delete removes a session by ID

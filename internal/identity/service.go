@@ -121,6 +121,21 @@ type TOTPVerification struct {
 	Code string `json:"code"`
 }
 
+// Membership outcomes callers need to distinguish. These carry the exact
+// message text the previous fmt.Errorf calls produced, so existing responses
+// are unchanged; what is new is that a caller can branch on them with
+// errors.Is rather than matching on a string.
+var (
+	// ErrAlreadyGroupMember means the membership already exists — for an
+	// idempotent client (SCIM, provisioning retries) this is success, not
+	// failure.
+	ErrAlreadyGroupMember = errors.New("user is already a member of this group")
+	// ErrNotGroupMember means there was no membership to remove.
+	ErrNotGroupMember = errors.New("user is not a member of this group")
+	// ErrGroupMemberLimit means the group's max_members cap was reached.
+	ErrGroupMemberLimit = errors.New("group has reached maximum member limit")
+)
+
 // GroupMember represents a user's membership in a group
 type GroupMember struct {
 	UserID    string    `json:"user_id"`
@@ -1201,9 +1216,9 @@ func (s *Service) AddGroupMember(ctx context.Context, groupID, userID string) er
 			return err
 		}
 		if exists {
-			return fmt.Errorf("user is already a member of this group")
+			return ErrAlreadyGroupMember
 		}
-		return fmt.Errorf("group has reached maximum member limit")
+		return ErrGroupMemberLimit
 	}
 
 	return nil
@@ -1227,7 +1242,7 @@ func (s *Service) RemoveGroupMember(ctx context.Context, groupID, userID string)
 	}
 
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("user is not a member of this group")
+		return ErrNotGroupMember
 	}
 
 	return nil

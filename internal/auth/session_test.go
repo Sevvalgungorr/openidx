@@ -588,26 +588,68 @@ func TestSessionService_UpdateMetadata(t *testing.T) {
 	err = ss.UpdateMetadata(ctx, session.ID, newMetadata)
 	require.NoError(t, err)
 
-	// Verify metadata was updated. Brief poll: at -count=100 under the
-	// race detector, the SET inside UpdateMetadata occasionally hasn't
-	// settled into miniredis storage by the time the test's next GET
-	// fires (~1.5% rate on go-redis v9.7.x / miniredis v2.38). A 5-attempt
-	// 10ms-backoff poll deflakes it without burning real wall-clock
-	// time on the happy path.
-	var updated *Session
-	for attempt := 0; attempt < 5; attempt++ {
-		updated, err = ss.Get(ctx, session.ID)
-		require.NoError(t, err)
-		if updated.Metadata["new"] == "value" && updated.Metadata["original"] == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Read straight back — no retry loop. This used to poll five times with a
+	// 10ms backoff, on the theory that the write "hadn't settled into miniredis
+	// yet". It had settled; it was being reverted. Get's async LastSeen touch
+	// wrote back a pre-update snapshot of the whole record, so the new metadata
+	// really was gone, and would have stayed gone in production too. The touch
+	// now re-reads under WATCH (see touchLastSeen), so a single read is
+	// deterministic — and if that regresses, this assertion says so instead of
+	// retrying until the clobber happens to lose the race.
+	updated, err := ss.Get(ctx, session.ID)
+	require.NoError(t, err)
 	assert.Equal(t, "value", updated.Metadata["new"])
 	assert.Equal(t, float64(42), updated.Metadata["number"]) // JSON unmarshaling converts to float64
 	assert.Equal(t, true, updated.Metadata["boolean"])
 	// Old metadata should be replaced
 	assert.Nil(t, updated.Metadata["original"])
+}
+
+// TestSessionService_RefreshSurvivesConcurrentReads pins the bug that made
+// TestSessionService_Refresh flaky in CI: Get bumps LastSeen from a background
+// goroutine, and that write used to carry a whole snapshot of the record taken
+// before the caller did anything. Landing after a Refresh, it put the old
+// ExpiresAt back — the refresh returned nil and the session still expired on
+// its original schedule.
+//
+// Reads are what make it fire, so this test does what a busy session does:
+// reads around the refresh, then checks the expiry actually moved. Against the
+// old fire-and-forget write this fails within a few iterations.
+func TestSessionService_RefreshSurvivesConcurrentReads(t *testing.T) {
+	s, client := mustCreateTestRedisForSession(t)
+	defer s.Close()
+	ctx := context.Background()
+
+	ss := NewSessionService(client, zap.NewNop()).WithConfig(SessionConfig{
+		DefaultTTL: 1 * time.Hour,
+	})
+
+	for i := 0; i < 25; i++ {
+		session, err := ss.Create(ctx, "user123", "tenant456", "192.168.1.1", "Mozilla", nil)
+		require.NoError(t, err)
+		originalExpiry := session.ExpiresAt
+
+		// Reads in flight, each spawning a LastSeen touch.
+		for r := 0; r < 4; r++ {
+			_, err := ss.Get(ctx, session.ID)
+			require.NoError(t, err)
+		}
+
+		time.Sleep(2 * time.Millisecond)
+		require.NoError(t, ss.Refresh(ctx, session.ID))
+
+		// Let every touch spawned above finish. Any one of them landing after
+		// the Refresh must not undo it.
+		time.Sleep(25 * time.Millisecond)
+
+		refreshed, err := ss.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.True(t, refreshed.ExpiresAt.After(originalExpiry),
+			"iteration %d: expiry reverted to its pre-refresh value (%v); a background LastSeen write clobbered the refresh",
+			i, originalExpiry)
+
+		require.NoError(t, ss.Delete(ctx, session.ID))
+	}
 }
 
 func TestSessionService_Refresh_ConcurrentAccess(t *testing.T) {

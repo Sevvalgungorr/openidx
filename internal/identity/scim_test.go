@@ -676,36 +676,33 @@ func TestApplySCIMPatchToUser_Replace(t *testing.T) {
 }
 
 func TestApplySCIMPatchToUser_Remove(t *testing.T) {
-	group1 := "group1"
-	group2 := "group2"
+	// This test used to assert that `groups[group1]` removed one group. That
+	// path is not valid SCIM filter syntax, and removing a group from the User
+	// resource never reached the database in any case — UpdateUser writes the
+	// `users` row only, so the in-memory change was discarded. Per RFC 7643
+	// §4.1.2 User.groups is readOnly; membership is patched on the Group
+	// resource, which now writes it for real (see scim_members.go).
 	user := &User{
 		ID:       "user1",
 		UserName: "john.doe",
-		Groups:   []string{group1, group2},
+		Groups:   []string{"group1", "group2"},
 	}
 
 	patchReq := &SCIMPatchRequest{
 		Schemas: []string{"urn:ietf:params:scim:api:messages:2.0:PatchOp"},
 		Ops: []SCIMPatchOp{
-			{
-				Op:    "remove",
-				Path:  stringPtr("groups[group1]"), // Use bracket syntax to remove specific value
-				Value: "group1",
-			},
+			{Op: "remove", Path: stringPtr(`groups[value eq "group1"]`)},
 		},
 	}
 
-	err := ApplySCIMPatchToUser(user, patchReq)
-	if err != nil {
-		t.Fatalf("ApplySCIMPatchToUser() error = %v", err)
+	if err := ApplySCIMPatchToUser(user, patchReq); err == nil {
+		t.Fatal("a filtered remove on User.groups reported success")
+	} else if got := scimPatchErrorType(err); got != "invalidPath" {
+		t.Errorf("scimType = %v, want invalidPath (err: %v)", got, err)
 	}
 
-	if len(user.Groups) != 1 {
-		t.Errorf("Groups length = %v, want 1", len(user.Groups))
-	}
-
-	if len(user.Groups) > 0 && user.Groups[0] != group2 {
-		t.Errorf("Groups[0] = %v, want %v", user.Groups[0], group2)
+	if len(user.Groups) != 2 {
+		t.Errorf("Groups length = %v, want the list untouched", len(user.Groups))
 	}
 }
 
@@ -784,9 +781,10 @@ func TestApplySCIMPatchToGroup_RemoveMember(t *testing.T) {
 		Schemas: []string{"urn:ietf:params:scim:api:messages:2.0:PatchOp"},
 		Ops: []SCIMPatchOp{
 			{
-				Op:    "remove",
-				Path:  stringPtr("members[user1]"), // Use bracket syntax to remove specific member
-				Value: "user1",
+				Op: "remove",
+				// See the note in TestApplySCIMPatchToUser_Remove: the target is
+				// expressed in the path filter, not in op.Value.
+				Path: stringPtr(`members[value eq "user1"]`),
 			},
 		},
 	}

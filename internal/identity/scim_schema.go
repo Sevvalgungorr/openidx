@@ -667,7 +667,25 @@ func SCIMListResponseForGroups(groups []Group, totalResults, startIndex, itemsPe
 // SCIM Patch Operation Helpers
 // ============================================================
 
-// ApplySCIMPatchToUser applies SCIM patch operations to a User
+// ApplySCIMPatchToUser applies SCIM patch operations to a User.
+//
+// Filtered paths are honored for `emails`, the one multi-valued User attribute
+// this directory actually stores (`users.email`). They are deliberately NOT
+// honored for phoneNumbers, roles, addresses or photos: nothing persists those,
+// so "applying" a filtered patch to them would produce an in-memory change that
+// UpdateUser discards — a 200 for work that never reached disk. A filtered path
+// against one of those is rejected as an unsupported path instead.
+//
+// Their unfiltered forms are left as they were (accepted, then ignored on
+// write). That is the behavior every deployed connector has been running
+// against, and RFC 7643 §7 lets a provider ignore attributes outside its
+// schema; turning it into a hard 400 would fail whole PATCH requests whose
+// name/email operations are perfectly valid. Closing that gap means storing the
+// attributes, which is a schema change, not a patch-parser change.
+//
+// `groups` is different again: it is a real relationship, but RFC 7643 §4.1.2
+// makes User.groups readOnly. Membership is changed through the Group resource,
+// which now writes it for real — see scim_members.go.
 func ApplySCIMPatchToUser(user *User, patchReq *SCIMPatchRequest) error {
 	for _, op := range patchReq.Ops {
 		switch op.Op {
@@ -725,6 +743,22 @@ func applyAddOp(user *User, op SCIMPatchOp) error {
 	}
 
 	path := *op.Path
+
+	// A filtered path (emails[type eq "work"].value) selects one element of a
+	// multi-valued attribute. Handle it before the plain-path switch, which
+	// would otherwise fall through to a default branch that matches nothing
+	// and returns success without touching the user.
+	parsed, err := parseSCIMPatchPath(path)
+	if err != nil {
+		return err
+	}
+	if handled, err := applyFilteredUserPatch(user, parsed, op.Value); handled {
+		return err
+	}
+	if parsed.HasFilter() {
+		return invalidPathf("unsupported filtered patch path: %s", path)
+	}
+
 	switch {
 	case path == "emails":
 		emails, ok := op.Value.([]interface{})
@@ -834,6 +868,19 @@ func applyReplaceOp(user *User, op SCIMPatchOp) error {
 	}
 
 	path := *op.Path
+
+	// Same as add: a filtered path targets one element, not the whole array.
+	parsed, err := parseSCIMPatchPath(path)
+	if err != nil {
+		return err
+	}
+	if handled, err := applyFilteredUserPatch(user, parsed, op.Value); handled {
+		return err
+	}
+	if parsed.HasFilter() {
+		return invalidPathf("unsupported filtered patch path: %s", path)
+	}
+
 	switch {
 	case path == "emails":
 		emails, ok := op.Value.([]interface{})
@@ -959,64 +1006,66 @@ func applyRemoveOp(user *User, op SCIMPatchOp) error {
 	}
 
 	path := *op.Path
-	switch {
-	case path == "emails":
+
+	// A filtered remove targets specific elements. The old bracket handling
+	// ignored the filter entirely and matched on op.Value, so
+	// `emails[type eq "work"]` (which carries no value) removed nothing and
+	// still reported success.
+	parsed, err := parseSCIMPatchPath(path)
+	if err != nil {
+		return err
+	}
+	if handled, err := removeFilteredUserPatch(user, parsed); handled {
+		return err
+	}
+	if parsed.HasFilter() {
+		return invalidPathf("unsupported filtered patch path: %s", path)
+	}
+
+	// The emails[/phoneNumbers[/groups[/roles[ branches that used to live in
+	// this switch are gone: they ignored the filter expression and matched on
+	// op.Value, so `emails[type eq "work"]` removed nothing and still reported
+	// success. Filtered paths are parsed and applied above.
+	switch path {
+	case "emails":
 		user.Emails = nil
-	case path == "phoneNumbers":
+	case "phoneNumbers":
 		user.PhoneNumbers = nil
-	case path == "groups":
+	case "groups":
 		user.Groups = nil
-	case path == "roles":
+	case "roles":
 		user.Roles = nil
-	case strings.HasPrefix(path, "emails["):
-		// Filter based on value in op.Value
-		if op.Value != nil {
-			if filterValue, ok := op.Value.(string); ok {
-				var newEmails []Email
-				for _, e := range user.Emails {
-					if e.Value != filterValue {
-						newEmails = append(newEmails, e)
-					}
-				}
-				user.Emails = newEmails
+	case "displayName":
+		user.DisplayName = nil
+	case "name":
+		user.Name = nil
+	default:
+		// RFC 7644 §3.5.2: an unrecognized path is invalidPath, not a no-op.
+		// Returning nil here is how `remove` on a filtered path used to report
+		// success without removing anything.
+		if strings.HasPrefix(path, "name.") {
+			field := strings.TrimPrefix(path, "name.")
+			switch field {
+			case "givenName", "familyName", "middleName", "formatted":
+			default:
+				return invalidPathf("unsupported patch path for user remove: %s", path)
 			}
-		}
-	case strings.HasPrefix(path, "phoneNumbers["):
-		if op.Value != nil {
-			if filterValue, ok := op.Value.(string); ok {
-				var newPhones []PhoneNumber
-				for _, p := range user.PhoneNumbers {
-					if p.Value != filterValue {
-						newPhones = append(newPhones, p)
-					}
-				}
-				user.PhoneNumbers = newPhones
+			if user.Name == nil {
+				return nil
 			}
-		}
-	case strings.HasPrefix(path, "groups["):
-		if op.Value != nil {
-			if filterValue, ok := op.Value.(string); ok {
-				var newGroups []string
-				for _, g := range user.Groups {
-					if g != filterValue {
-						newGroups = append(newGroups, g)
-					}
-				}
-				user.Groups = newGroups
+			switch field {
+			case "givenName":
+				user.Name.GivenName = nil
+			case "familyName":
+				user.Name.FamilyName = nil
+			case "middleName":
+				user.Name.MiddleName = nil
+			case "formatted":
+				user.Name.Formatted = nil
 			}
+			return nil
 		}
-	case strings.HasPrefix(path, "roles["):
-		if op.Value != nil {
-			if filterValue, ok := op.Value.(string); ok {
-				var newRoles []string
-				for _, r := range user.Roles {
-					if r != filterValue {
-						newRoles = append(newRoles, r)
-					}
-				}
-				user.Roles = newRoles
-			}
-		}
+		return invalidPathf("unsupported patch path for user remove: %s", path)
 	}
 
 	return nil
@@ -1024,6 +1073,18 @@ func applyRemoveOp(user *User, op SCIMPatchOp) error {
 
 // applyGroupAddOp handles "add" operations for groups
 func applyGroupAddOp(group *Group, op SCIMPatchOp) error {
+	if op.Path != nil {
+		parsed, err := parseSCIMPatchPath(*op.Path)
+		if err != nil {
+			return err
+		}
+		if parsed.HasFilter() {
+			// `add` appends; selecting an existing element with a filter is not
+			// something we can honor, and answering 200 would be a lie.
+			return invalidPathf("unsupported filtered patch path: %s", *op.Path)
+		}
+	}
+
 	if op.Path == nil || *op.Path == "members" {
 		members, ok := op.Value.([]interface{})
 		if !ok {
@@ -1076,6 +1137,17 @@ func applyGroupReplaceOp(group *Group, op SCIMPatchOp) error {
 		return nil
 	}
 
+	parsed, err := parseSCIMPatchPath(*op.Path)
+	if err != nil {
+		return err
+	}
+	if handled, err := replaceFilteredGroupMembers(group, parsed, op.Value); handled {
+		return err
+	}
+	if parsed.HasFilter() {
+		return invalidPathf("unsupported filtered patch path: %s", *op.Path)
+	}
+
 	switch *op.Path {
 	case "displayName":
 		if value, ok := op.Value.(string); ok {
@@ -1117,24 +1189,22 @@ func applyGroupRemoveOp(group *Group, op SCIMPatchOp) error {
 		return fmt.Errorf("remove operation requires a path")
 	}
 
+	// members[value eq "..."] — the form Okta and Entra use to detach one
+	// member. The old branch here ignored the filter and matched on op.Value,
+	// so a remove expressed purely in the path removed nothing.
+	parsed, err := parseSCIMPatchPath(*op.Path)
+	if err != nil {
+		return err
+	}
+	if handled, err := removeFilteredGroupMembers(group, parsed); handled {
+		return err
+	}
+
 	switch *op.Path {
 	case "members":
 		group.Members = nil
 	default:
-		// Check for members[value] syntax
-		if strings.HasPrefix(*op.Path, "members[") {
-			if op.Value != nil {
-				if filterValue, ok := op.Value.(string); ok {
-					var newMembers []Member
-					for _, m := range group.Members {
-						if m.Value != filterValue {
-							newMembers = append(newMembers, m)
-						}
-					}
-					group.Members = newMembers
-				}
-			}
-		}
+		return invalidPathf("unsupported patch path for group remove: %s", *op.Path)
 	}
 
 	return nil
