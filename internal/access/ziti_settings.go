@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/openidx/openidx/internal/common/database"
-	"github.com/openidx/openidx/internal/mfa"
 )
 
 // zitiConnSettingsKey is the system_settings row that backs the admin-managed
@@ -62,7 +61,7 @@ func (s ZitiConnSettings) decryptPassword(encKey string) (string, error) {
 	if s.AdminPasswordEnc == "" {
 		return "", nil
 	}
-	enc, err := mfa.NewAES256GCMEncrypter(encKey)
+	enc, err := newSecretCipher(encKey)
 	if err != nil {
 		return "", fmt.Errorf("ziti settings: %w", err)
 	}
@@ -103,7 +102,7 @@ func saveZitiConnSettings(ctx context.Context, db *database.PostgresDB, encKey s
 		AdminPasswordEnc:   cur.AdminPasswordEnc, // keep by default (merge)
 	}
 	if in.AdminPassword != "" && in.AdminPassword != maskedSecret {
-		enc, eerr := mfa.NewAES256GCMEncrypter(encKey)
+		enc, eerr := newSecretCipher(encKey)
 		if eerr != nil {
 			// Never silently store plaintext — refuse.
 			return fmt.Errorf("ziti settings: cannot encrypt password: %w", eerr)

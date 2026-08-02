@@ -164,7 +164,6 @@ jobs:
           - internal/health
           - internal/identity
           - internal/metrics
-          - internal/mfa
           - internal/middleware
           - internal/migrations
           - internal/notifications
