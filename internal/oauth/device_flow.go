@@ -130,6 +130,36 @@ func randomUserCode() (string, error) {
 	return string(out), nil
 }
 
+// deviceVerificationURI returns the address printed on the device's screen.
+//
+// It is built from PublicBaseURL — the externally reachable origin of the
+// end-user web app — and not from the OAuth issuer. The issuer is this API's
+// origin, which serves no /device page, so a URI built from it sends the user
+// to a JSON 404. That is the same mistake PublicBaseURL was introduced to fix
+// for password reset, email verification and invitation links, and it is worse
+// here: the user cannot correct a bad URL they are reading off a television.
+//
+// Falls back to the issuer only when PublicBaseURL is unset, which config.Load
+// always populates; that path exists for a zero-config Service in tests.
+//
+// Whatever the source, the result must be absolute. A relative "/device" is
+// meaningless to a device that has to display it for someone to type into a
+// different machine, so an origin-less result degrades to the same localhost
+// default config.Load uses rather than being handed out.
+func (s *Service) deviceVerificationURI(org orgctx.Org) string {
+	base := ""
+	if s.config != nil && s.config.PublicBaseURL != "" {
+		base = s.config.PublicBaseURL
+	} else {
+		base = s.issuerForOrg(org)
+	}
+	base = strings.TrimRight(base, "/")
+	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+		base = "http://localhost:3000"
+	}
+	return base + "/device"
+}
+
 // handleDeviceAuthorization implements RFC 8628 §3.1/§3.2: the device asks for a
 // code pair and is told where to send the user.
 func (s *Service) handleDeviceAuthorization(c *gin.Context) {
@@ -219,8 +249,7 @@ func (s *Service) handleDeviceAuthorization(c *gin.Context) {
 		return
 	}
 
-	issuer := s.issuerForOrg(org)
-	verificationURI := issuer + "/device"
+	verificationURI := s.deviceVerificationURI(org)
 
 	s.logger.Info("device authorization issued",
 		zap.String("client_id", scrubLogValue(clientID)), zap.String("org_id", org.ID))

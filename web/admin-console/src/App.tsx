@@ -97,6 +97,7 @@ import {
   MyAccess,
   MyDevices,
   TrustedBrowsers,
+  DeviceAuthorization,
   AccessRequests,
   NotificationCenter,
   NotificationPreferences,
@@ -230,6 +231,10 @@ function App() {
         <Route path="my-devices" element={<MyDevices />} />
         <Route path="my-security" element={<MySecurity />} />
         <Route path="trusted-browsers" element={<TrustedBrowsers />} />
+        {/* RFC 8628 verification page. The path must stay "/device": it is what
+            deviceVerificationURI prints on the device's screen, and a user
+            reading it off a television cannot correct a mismatch. */}
+        <Route path="device" element={<DeviceAuthorization />} />
         <Route path="access-requests" element={<AccessRequests />} />
         <Route path="notification-center" element={<NotificationCenter />} />
 

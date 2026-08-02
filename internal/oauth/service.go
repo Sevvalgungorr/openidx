@@ -1304,8 +1304,22 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 		// verification routes back the page the user opens on a second device.
 		oauth.POST("/device_authorization", svc.handleDeviceAuthorization)
 		oauth.OPTIONS("/device_authorization", svc.handleDeviceAuthorization)
-		oauth.GET("/device/lookup", svc.handleDeviceVerificationLookup)
-		oauth.POST("/device/decision", svc.handleDeviceVerificationDecision)
+
+		// The verification routes sit behind flowAuth for the same reason the
+		// step-up endpoints above do: handleDeviceVerificationDecision reads the
+		// subject from the gin context, which only the auth middleware populates
+		// from the JWT's sub claim. Registered without it, every approval sees an
+		// empty user id and 401s — the exact shape of issue #124. The lookup is
+		// guarded too: it is the one endpoint that answers questions about a
+		// user_code, and there is no reason for it to answer them to anyone who
+		// is not signed in and about to approve.
+		if len(flowAuth) > 0 {
+			oauth.GET("/device/lookup", append(flowAuth, svc.handleDeviceVerificationLookup)...)
+			oauth.POST("/device/decision", append(flowAuth, svc.handleDeviceVerificationDecision)...)
+		} else {
+			oauth.GET("/device/lookup", svc.handleDeviceVerificationLookup)
+			oauth.POST("/device/decision", svc.handleDeviceVerificationDecision)
+		}
 
 		// Token introspection & revocation
 		// RFC 7662 §2.1 / RFC 7009 §2.1: both endpoints require client
