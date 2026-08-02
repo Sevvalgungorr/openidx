@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -2067,18 +2068,32 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID, secret, verificationCo
 	now := time.Now()
 	totpID := uuid.New().String()
 
+	// The delete and the insert are one transaction.
+	//
+	// Re-enrolling replaces the user's existing factor, and these ran as two
+	// separate statements: if the insert failed after the delete succeeded, the
+	// user was left with no TOTP at all — silently downgraded to single-factor
+	// by a transient database error, with nothing to tell them.
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to enroll TOTP: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	// Remove any existing TOTP records for this user before inserting
-	if _, err := s.db.Pool.Exec(ctx, `DELETE FROM mfa_totp WHERE user_id = $1 AND org_id = $2`, userID, org.ID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM mfa_totp WHERE user_id = $1 AND org_id = $2`, userID, org.ID); err != nil {
 		return fmt.Errorf("failed to remove existing TOTP records: %w", err)
 	}
 
 	// Insert TOTP record
-	_, err = s.db.Pool.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO mfa_totp (id, user_id, secret, enabled, enrolled_at, created_at, updated_at, org_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, totpID, userID, secret, true, now, now, now, org.ID)
+	`, totpID, userID, secret, true, now, now, now, org.ID); err != nil {
+		return fmt.Errorf("failed to enroll TOTP: %w", err)
+	}
 
-	if err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to enroll TOTP: %w", err)
 	}
 
@@ -2270,6 +2285,21 @@ func (s *Service) GenerateBackupCodes(ctx context.Context, userID string, count 
 
 	var codes []string
 
+	// All `count` inserts are one transaction.
+	//
+	// This function returns the plaintext codes for the caller to show the user
+	// once, and they are unrecoverable afterwards. Inserting them one statement
+	// at a time meant a failure on code 7 of 10 returned an error while codes 1
+	// through 6 stayed in the database — so a retry stacked a second set on top
+	// of a live partial one, and the user could be holding a printed list where
+	// some codes work and some do not. Either every code in the set is stored or
+	// none is.
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to store backup codes: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	for i := 0; i < count; i++ {
 		// Generate random 8-character alphanumeric code
 		bytes := make([]byte, 8)
@@ -2296,14 +2326,16 @@ func (s *Service) GenerateBackupCodes(ctx context.Context, userID string, count 
 
 		// Store in database
 		codeID := uuid.New().String()
-		_, err = s.db.Pool.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO mfa_backup_codes (id, user_id, code_hash, created_at, org_id)
 			VALUES ($1, $2, $3, $4, $5)
-		`, codeID, userID, codeHash, time.Now(), org.ID)
-
-		if err != nil {
+		`, codeID, userID, codeHash, time.Now(), org.ID); err != nil {
 			return nil, fmt.Errorf("failed to store backup code: %w", err)
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to store backup codes: %w", err)
 	}
 
 	// The codes themselves never go near the audit trail — only that a fresh
@@ -4185,17 +4217,64 @@ func (s *Service) handleGetGroup(c *gin.Context) {
 	c.JSON(200, group)
 }
 
+// handleGetGroupMembers lists a group's members.
+//
+// This used to call the unbounded GetGroupMembers, so the response size was
+// whatever the group happened to contain — one request against a large group
+// read every row and built every JSON object in memory. It now goes through
+// GetGroupMembersPaginated, which the codebase already had.
+//
+// The response is still a bare JSON array rather than a {items, total} object,
+// because the admin console types this endpoint as GroupMember[] and changing
+// the shape would break it for no security benefit. Total count is returned in
+// X-Total-Count, so a caller can tell when a group has more members than the
+// page it received — the bound is visible rather than a silent truncation.
 func (s *Service) handleGetGroupMembers(c *gin.Context) {
 	groupID := c.Param("id")
 
-	members, err := s.GetGroupMembers(c.Request.Context(), groupID)
+	limit := parseBoundedQueryInt(c, "limit", groupMemberPageDefault, 1, groupMemberPageMax)
+	offset := parseBoundedQueryInt(c, "offset", 0, 0, math.MaxInt32)
+
+	members, total, err := s.GetGroupMembersPaginated(
+		c.Request.Context(), groupID, c.Query("search"), offset, limit)
 	if err != nil {
 		s.logger.Error("failed to get group members", zap.String("group_id", groupID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
 	}
 
+	c.Header("X-Total-Count", strconv.Itoa(total))
 	c.JSON(200, members)
+}
+
+const (
+	// groupMemberPageDefault is generous enough that ordinary groups come back
+	// whole — the point of the bound is to stop one pathological group from
+	// dominating a response, not to paginate everyday use.
+	groupMemberPageDefault = 500
+	groupMemberPageMax     = 1000
+)
+
+// parseBoundedQueryInt reads an integer query parameter, falling back to def
+// when absent or unparseable and clamping to [min, max]. Clamping rather than
+// erroring keeps a caller that asks for limit=100000 from getting the
+// unbounded read back through the front door.
+func parseBoundedQueryInt(c *gin.Context, name string, def, min, max int) int {
+	raw := c.Query(name)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return def
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 func (s *Service) handleCreateGroup(c *gin.Context) {
@@ -5032,41 +5111,68 @@ func (s *Service) handleResetPassword(c *gin.Context) {
 		return
 	}
 
-	// Validate token
-	var userID string
-	var usedAt *time.Time
-	err = s.db.Pool.QueryRow(ctx, `
-		SELECT user_id, used_at FROM password_reset_tokens
-		WHERE token = $1 AND org_id = $2 AND expires_at > NOW()
-	`, req.Token, org.ID).Scan(&userID, &usedAt)
-	if err != nil {
-		c.JSON(400, gin.H{"error": "Invalid or expired reset token"})
-		return
-	}
-	if usedAt != nil {
-		c.JSON(400, gin.H{"error": "This reset token has already been used"})
-		return
-	}
-
-	// Hash new password
+	// Hash before opening the transaction: bcrypt at cost 12 takes ~300ms, and
+	// holding the token's row lock for that long would serialize unrelated
+	// resets behind it.
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to process password"})
 		return
 	}
 
-	// Update password
-	_, err = s.db.Pool.Exec(ctx,
-		"UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2 AND org_id = $3",
-		string(hashedPassword), userID, org.ID)
+	// Claiming the token and setting the password are one transaction.
+	//
+	// This used to SELECT used_at, check it in Go, update the password, and
+	// then mark the token used in a separate statement whose error was
+	// discarded. Two failures came out of that: two requests carrying the same
+	// token could both pass the check and both reset the password, and a failed
+	// "mark used" left a token that had already reset a password still usable —
+	// silently, because nothing looked at the error.
+	//
+	// The UPDATE below claims the token and rejects it in the same statement:
+	// `used_at IS NULL` is evaluated under the row lock, so exactly one
+	// concurrent caller can match. Wrapping it with the password write means a
+	// failure there rolls the claim back, so the token is not burned by an
+	// error the user did not cause — it is spent only when the reset actually
+	// happened.
+	tx, err := s.db.Pool.Begin(ctx)
 	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to reset password"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var userID string
+	err = tx.QueryRow(ctx, `
+		UPDATE password_reset_tokens
+		SET used_at = NOW()
+		WHERE token = $1 AND org_id = $2 AND expires_at > NOW() AND used_at IS NULL
+		RETURNING user_id
+	`, req.Token, org.ID).Scan(&userID)
+	if err != nil {
+		// No row matched: the token is unknown, expired, or already spent.
+		// These are deliberately one message — distinguishing them tells an
+		// attacker holding a token whether it was ever valid.
+		c.JSON(400, gin.H{"error": "Invalid or expired reset token"})
+		return
+	}
+
+	if _, err = tx.Exec(ctx,
+		"UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2 AND org_id = $3",
+		string(hashedPassword), userID, org.ID); err != nil {
 		c.JSON(500, gin.H{"error": "Failed to update password"})
 		return
 	}
 
-	// Mark token as used
-	s.db.Pool.Exec(ctx,
-		"UPDATE password_reset_tokens SET used_at = NOW() WHERE token = $1 AND org_id = $2", req.Token, org.ID)
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error("failed to commit password reset",
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
+		c.JSON(500, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	s.logAuditEvent(ctx, "identity", "security", "user.password_reset", "success",
+		userID, userID, "user", nil)
 
 	c.JSON(200, gin.H{"message": "Password has been reset successfully"})
 }
