@@ -89,7 +89,7 @@ func (s *Service) CreateMagicLink(ctx context.Context, email, purpose, redirectU
 	token := base64.URLEncoding.EncodeToString(tokenBytes)
 
 	// Hash token for storage
-	tokenHash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
+	tokenHash, err := bcrypt.GenerateFromPassword([]byte(token), bcryptCost)
 	if err != nil {
 		return nil, err
 	}

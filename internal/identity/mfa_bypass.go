@@ -86,7 +86,7 @@ func (s *Service) GenerateMFABypassCode(ctx context.Context, req *GenerateBypass
 	code := base64.URLEncoding.EncodeToString(codeBytes)[:16]
 
 	// Hash the code
-	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcryptCost)
 	if err != nil {
 		return nil, err
 	}

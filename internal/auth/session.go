@@ -110,27 +110,18 @@ func (ss *SessionService) Create(ctx context.Context, userID, tenantID, ipAddres
 		return nil, errors.New("redis client not configured")
 	}
 
-	// Check current session count
-	currentCount, err := ss.getCount(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get session count: %w", err)
-	}
-
-	// Enforce max sessions limit
-	if currentCount >= ss.config.MaxSessions {
-		// Optionally: delete oldest session
-		if err := ss.deleteOldestSession(ctx, userID); err != nil {
-			ss.logger.Warn("failed to delete oldest session", zap.Error(err))
-		} else {
-			currentCount--
-		}
-	}
-
-	if currentCount >= ss.config.MaxSessions {
-		return nil, fmt.Errorf("%w: maximum %d sessions allowed", ErrMaxSessionsReached, ss.config.MaxSessions)
-	}
-
-	// Create new session
+	// The max-concurrent-session limit used to be enforced by counting first
+	// and creating afterwards: SCARD, compare, then SADD. Two logins arriving
+	// together both read a count below the limit, both passed the check, and
+	// both created a session — so a cap of N admitted N+1 or more, and the
+	// window widens with exactly the parallelism an attacker replaying stolen
+	// credentials produces. A limit that yields under concurrent load is not
+	// bounding anything.
+	//
+	// The order is now inverted: claim the slot with SADD, which is atomic and
+	// makes the new session countable the instant it exists, and only then
+	// reconcile down to the limit. Racers all end up inside one consistent
+	// count instead of each acting on a private snapshot.
 	sessionID := uuid.New().String()
 	now := time.Now()
 	session := &Session{
@@ -157,7 +148,10 @@ func (ss *SessionService) Create(ctx context.Context, userID, tenantID, ipAddres
 		return nil, fmt.Errorf("set session: %w", err)
 	}
 
-	// Add to user's session set
+	// Claim the slot. Data is written before SADD so that the reconcile below
+	// can read this session's CreatedAt and correctly see it as the newest —
+	// otherwise a brand-new session looks like a dangling id and could be
+	// chosen for eviction ahead of genuinely older ones.
 	userSessionsKey := ss.userSessionsKey(userID)
 	if err := ss.redis.SAdd(ctx, userSessionsKey, sessionID).Err(); err != nil {
 		// Rollback session creation
@@ -167,6 +161,12 @@ func (ss *SessionService) Create(ctx context.Context, userID, tenantID, ipAddres
 
 	// Set expiry on user sessions set
 	ss.redis.Expire(ctx, userSessionsKey, ss.config.DefaultTTL*2)
+
+	if err := ss.enforceSessionLimit(ctx, userID, sessionID); err != nil {
+		ss.redis.SRem(ctx, userSessionsKey, sessionID)
+		ss.redis.Del(ctx, sessionKey)
+		return nil, err
+	}
 
 	ss.logger.Debug("created session",
 		zap.String("session_id", sessionID),
@@ -444,6 +444,55 @@ func (ss *SessionService) getCount(ctx context.Context, userID string) (int, err
 		return 0, err
 	}
 	return len(sessionIDs), nil
+}
+
+// enforceSessionLimit brings a user's session set back within MaxSessions after
+// a slot has already been claimed, and reports whether the caller's own session
+// survived.
+//
+// It runs after the SADD rather than before it, so every concurrent creator is
+// reconciling against a count that already includes all of them. Eviction is
+// oldest-first, matching the previous behavior: reaching the limit displaces
+// the stalest session rather than refusing the new login.
+//
+// The final membership check is the part that makes this safe under
+// concurrency. Two creators can reconcile at the same time and evict more than
+// they each intended; whoever finds their own id gone lost the race and gets
+// ErrMaxSessionsReached instead of a session that is not in the set — which
+// would be a session the limit no longer accounts for.
+func (ss *SessionService) enforceSessionLimit(ctx context.Context, userID, sessionID string) error {
+	if ss.config.MaxSessions <= 0 {
+		return fmt.Errorf("%w: maximum %d sessions allowed", ErrMaxSessionsReached, ss.config.MaxSessions)
+	}
+
+	// Bounded: each pass evicts at least one session, and the set cannot exceed
+	// the limit by more than the number of creators racing. The cap only stops
+	// a pathological spin if Redis keeps handing back a set that will not
+	// shrink.
+	const maxEvictions = 32
+	for i := 0; i < maxEvictions; i++ {
+		count, err := ss.getCount(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get session count: %w", err)
+		}
+		if count <= ss.config.MaxSessions {
+			break
+		}
+		if err := ss.deleteOldestSession(ctx, userID); err != nil {
+			ss.logger.Warn("failed to delete oldest session", zap.Error(err))
+			break
+		}
+	}
+
+	// Did our own claim survive? A concurrent creator may have evicted it.
+	member, err := ss.redis.SIsMember(ctx, ss.userSessionsKey(userID), sessionID).Result()
+	if err != nil {
+		return fmt.Errorf("verify session slot: %w", err)
+	}
+	if !member {
+		return fmt.Errorf("%w: maximum %d sessions allowed", ErrMaxSessionsReached, ss.config.MaxSessions)
+	}
+	return nil
 }
 
 // deleteOldestSession deletes the oldest session for a user

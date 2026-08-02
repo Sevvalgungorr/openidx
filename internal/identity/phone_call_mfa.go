@@ -92,7 +92,7 @@ func (s *Service) CreatePhoneCallChallenge(ctx context.Context, userID, phoneNum
 	}
 
 	// Hash the code
-	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcryptCost)
 	if err != nil {
 		return nil, err
 	}

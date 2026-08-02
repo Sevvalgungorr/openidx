@@ -17,6 +17,26 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Password policy.
+//
+// There used to be two of these. This one, reached from the reset-password
+// handler, is unicode-aware and requires a special character. A second copy in
+// service.go, reached from UpdatePassword and admin password set, compared
+// against ASCII ranges and required no special character. So the same password
+// was accepted or rejected depending on which door the user came through, and
+// a password set through one path could not have been set through the other.
+//
+// This is now the single implementation; ValidatePasswordPolicy wraps it. The
+// stricter of the two was kept: the reset path already enforced it, so no
+// password that exists today becomes invalid, whereas relaxing it would have
+// silently lowered the bar on a path that already met it.
+//
+// Note for later: NIST SP 800-63B §5.1.1.2 advises against composition rules
+// like these in favor of length plus a breached-password check — which this
+// service already has in CheckPasswordBreached. Dropping the character-class
+// requirements would be defensible, but it is a product decision and a
+// deliberate loosening, so it is not folded into a consolidation change.
+
 // ValidatePasswordPolicyChecks validates a password against policy requirements
 // and returns a list of all violation messages. An empty slice means the password is valid.
 func (s *Service) ValidatePasswordPolicyChecks(password string) []string {
@@ -195,3 +215,18 @@ func (s *Service) CheckPasswordExpiration(ctx context.Context, userID string) (b
 
 	return expired, daysRemaining, nil
 }
+
+// bcryptCost is the work factor for every bcrypt hash this service writes.
+//
+// Costs were previously mixed: one call site used a hardcoded 12 while every
+// other used bcrypt.DefaultCost (10). Two costs in one system is not a policy,
+// it is an accident — a credential's resistance to offline cracking depended on
+// which handler happened to create it, and nothing recorded or reconciled the
+// difference.
+//
+// 12 is the higher of the two already in use, so unifying upward strengthens
+// every site that was on 10 and leaves the one already on 12 unchanged.
+// Verification is unaffected: bcrypt encodes the cost in the hash, so existing
+// rows at cost 10 keep verifying and are re-hashed at 12 the next time their
+// secret is set.
+const bcryptCost = 12

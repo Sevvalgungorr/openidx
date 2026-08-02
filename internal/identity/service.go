@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/csv"
@@ -1485,63 +1486,77 @@ func (s *Service) RevokeUserSessionsOnPasswordChange(ctx context.Context, userID
 	return nil
 }
 
-// RecordFailedLogin records a failed login attempt for account lockout
+// RecordFailedLogin records a failed login attempt for account lockout.
+//
+// The counter is incremented in the database, not in Go. This used to SELECT
+// failed_login_count, add one in memory, and UPDATE it back. Two failed
+// attempts arriving together both read the same value and both wrote the same
+// value, so the pair counted as one — and an attacker running attempts in
+// parallel got materially more than the threshold before the account locked.
+// Lockout is the control that makes password guessing expensive; a counter that
+// undercounts under exactly the conditions an attacker creates is not a control.
+//
+// The single UPDATE below increments and decides the lockout in one statement,
+// so concurrent attempts serialize on the row and every one of them counts.
 func (s *Service) RecordFailedLogin(ctx context.Context, username string) error {
-	s.logger.Info("Recording failed login", zap.String("username", username))
+	s.logger.Info("Recording failed login", zap.String("username", scrubLogValue(username)))
 
 	org, err := orgctx.From(ctx)
 	if err != nil {
 		return err
 	}
 
-	now := time.Now()
+	maxFailures, lockoutDuration := s.lockoutPolicy(ctx)
 
-	// Get current user state
-	var user User
+	// failed_login_count + 1 is evaluated by Postgres against the current row
+	// under the UPDATE's row lock, so no increment can be lost. locked_until is
+	// set in the same statement from that same post-increment value.
+	var failures int
+	var lockedUntil *time.Time
 	err = s.db.Pool.QueryRow(ctx, `
-		SELECT id, failed_login_count, last_failed_login_at, locked_until
-		FROM users WHERE username = $1 AND org_id = $2
-	`, username, org.ID).Scan(&user.ID, &user.FailedLoginCount, &user.LastFailedLoginAt, &user.LockedUntil)
+		UPDATE users
+		SET failed_login_count   = failed_login_count + 1,
+		    last_failed_login_at = NOW(),
+		    locked_until = CASE
+		        WHEN failed_login_count + 1 >= $3 THEN NOW() + $4::interval
+		        ELSE locked_until
+		    END
+		WHERE username = $1 AND org_id = $2
+		RETURNING failed_login_count, locked_until
+	`, username, org.ID, maxFailures, lockoutDuration.String()).Scan(&failures, &lockedUntil)
 	if err != nil {
 		return err
 	}
 
-	user.FailedLoginCount++
-	user.LastFailedLoginAt = &now
+	if lockedUntil != nil && failures >= maxFailures {
+		s.logger.Warn("Account locked due to failed login attempts",
+			zap.String("username", scrubLogValue(username)), zap.Int("failures", failures))
+	}
+	return nil
+}
 
-	// Read lockout settings from system_settings, with defaults
-	maxFailures := 5
+// lockoutPolicy reads the lockout threshold and duration from system_settings,
+// falling back to defaults when unset or malformed.
+func (s *Service) lockoutPolicy(ctx context.Context) (maxFailures int, lockout time.Duration) {
+	maxFailures = 5
 	lockoutMinutes := 15
+
 	var settingsValue []byte
+	//orgscope:ignore system_settings is global configuration, not tenant data
 	if err := s.db.Pool.QueryRow(ctx, "SELECT value FROM system_settings WHERE key = 'failed_login_lockout_threshold'").Scan(&settingsValue); err == nil {
 		var v int
 		if json.Unmarshal(settingsValue, &v) == nil && v > 0 {
 			maxFailures = v
 		}
 	}
+	//orgscope:ignore system_settings is global configuration, not tenant data
 	if err := s.db.Pool.QueryRow(ctx, "SELECT value FROM system_settings WHERE key = 'failed_login_lockout_duration'").Scan(&settingsValue); err == nil {
 		var v int
 		if json.Unmarshal(settingsValue, &v) == nil && v > 0 {
 			lockoutMinutes = v
 		}
 	}
-	lockoutDuration := time.Duration(lockoutMinutes) * time.Minute
-
-	if user.FailedLoginCount >= maxFailures {
-		lockoutUntil := now.Add(lockoutDuration)
-		user.LockedUntil = &lockoutUntil
-		s.logger.Warn("Account locked due to failed login attempts",
-			zap.String("username", username), zap.Int("failures", user.FailedLoginCount))
-	}
-
-	// Update user record
-	_, err = s.db.Pool.Exec(ctx, `
-		UPDATE users
-		SET failed_login_count = $2, last_failed_login_at = $3, locked_until = $4
-		WHERE username = $1 AND org_id = $5
-	`, username, user.FailedLoginCount, user.LastFailedLoginAt, user.LockedUntil, org.ID)
-
-	return err
+	return maxFailures, time.Duration(lockoutMinutes) * time.Minute
 }
 
 // ClearFailedLogins clears failed login attempts (on successful login)
@@ -1608,37 +1623,15 @@ func (s *Service) publicBaseURL() string {
 
 // ValidatePasswordPolicy validates a password against policy requirements
 func (s *Service) ValidatePasswordPolicy(password string) error {
-	// Basic password policy: minimum 8 characters, at least one uppercase, one lowercase, one digit
-	if len(password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters long")
+	// Delegates to the single policy implementation (passwords.go). This used
+	// to be a second, weaker copy: ASCII-range comparisons and no special
+	// character requirement, so it accepted passwords the reset-password path
+	// rejected.
+	violations := s.ValidatePasswordPolicyChecks(password)
+	if len(violations) == 0 {
+		return nil
 	}
-
-	hasUpper := false
-	hasLower := false
-	hasDigit := false
-
-	for _, char := range password {
-		switch {
-		case 'A' <= char && char <= 'Z':
-			hasUpper = true
-		case 'a' <= char && char <= 'z':
-			hasLower = true
-		case '0' <= char && char <= '9':
-			hasDigit = true
-		}
-	}
-
-	if !hasUpper {
-		return fmt.Errorf("password must contain at least one uppercase letter")
-	}
-	if !hasLower {
-		return fmt.Errorf("password must contain at least one lowercase letter")
-	}
-	if !hasDigit {
-		return fmt.Errorf("password must contain at least one digit")
-	}
-
-	return nil
+	return errors.New(strings.Join(violations, "; "))
 }
 
 // UpdatePassword updates a user's password and enforces policy
@@ -1654,7 +1647,7 @@ func (s *Service) UpdatePassword(ctx context.Context, userID string, newPassword
 		return err
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcryptCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -1867,7 +1860,7 @@ func (s *Service) SetPassword(ctx context.Context, userID string, password strin
 	}
 
 	// Hash password
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -1971,19 +1964,22 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID, secret, verificationCo
 
 // VerifyTOTP verifies a TOTP code for a user
 func (s *Service) VerifyTOTP(ctx context.Context, userID, code string) (bool, error) {
-	s.logger.Debug("Verifying TOTP code", zap.String("user_id", userID))
+	s.logger.Debug("Verifying TOTP code", zap.String("user_id", scrubLogValue(userID)))
 
 	org, err := orgctx.From(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	// Get user's TOTP secret
+	// Get the user's TOTP secret along with its throttling state.
 	var secret string
 	var enabled bool
+	var failedAttempts int
+	var lockedUntil *time.Time
 	err = s.db.Pool.QueryRow(ctx, `
-		SELECT secret, enabled FROM mfa_totp WHERE user_id = $1 AND org_id = $2
-	`, userID, org.ID).Scan(&secret, &enabled)
+		SELECT secret, enabled, failed_attempts, locked_until
+		FROM mfa_totp WHERE user_id = $1 AND org_id = $2
+	`, userID, org.ID).Scan(&secret, &enabled, &failedAttempts, &lockedUntil)
 
 	if err != nil {
 		return false, fmt.Errorf("failed to get TOTP settings: %w", err)
@@ -1993,20 +1989,94 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID, code string) (bool, er
 		return false, fmt.Errorf("TOTP not enabled for user")
 	}
 
-	// Verify the code
-	valid := validateTOTPWithSkew(code, secret)
-	if valid {
-		// Update last used timestamp
-		now := time.Now()
-		_, err = s.db.Pool.Exec(ctx, `
-			UPDATE mfa_totp SET last_used_at = $2, updated_at = $2 WHERE user_id = $1 AND org_id = $3
-		`, userID, now, org.ID)
-		if err != nil {
-			s.logger.Warn("Failed to update TOTP last used timestamp", zap.Error(err))
-		}
+	// Refuse while locked out, before the code is examined at all. Returning
+	// early here is what makes the lockout worth anything: a verifier that
+	// checks the code first and only then notices the lock still leaks whether
+	// the guess was right.
+	if lockedUntil != nil && time.Now().Before(*lockedUntil) {
+		s.logger.Warn("TOTP verification refused: locked out",
+			zap.String("user_id", scrubLogValue(userID)),
+			zap.Time("locked_until", *lockedUntil))
+		return false, ErrTOTPLockedOut
 	}
 
-	return valid, nil
+	if validateTOTPWithSkew(code, secret) {
+		// Success clears the counter and the lock in one statement.
+		if _, err := s.db.Pool.Exec(ctx, `
+			UPDATE mfa_totp
+			SET last_used_at = NOW(), updated_at = NOW(),
+			    failed_attempts = 0, last_failed_at = NULL, locked_until = NULL
+			WHERE user_id = $1 AND org_id = $2
+		`, userID, org.ID); err != nil {
+			s.logger.Warn("Failed to update TOTP state after success", zap.Error(err))
+		}
+		return true, nil
+	}
+
+	s.recordFailedTOTP(ctx, userID, org.ID)
+	return false, nil
+}
+
+// TOTP verification throttling.
+//
+// A TOTP code is six digits and validateTOTPWithSkew accepts a ±1 step window,
+// so roughly 3 of 10^6 values are valid at any instant. Unthrottled, an
+// attacker expects a hit in the low hundreds of thousands of requests — minutes
+// of sustained traffic against an endpoint that otherwise looks healthy. The
+// second factor is only a factor if guessing it is expensive.
+const (
+	// totpMaxAttempts is the number of consecutive failures tolerated before
+	// the factor locks. internal/mfa used 3; 5 matches the account-lockout
+	// threshold on users, and one number for "how many tries do I get" is
+	// easier to reason about (and to tune) than two.
+	totpMaxAttempts = 5
+	// totpLockoutDuration bounds a wrong-but-honest user's pain while making
+	// sustained guessing pointless: at 5 tries per 15 minutes, exhausting a
+	// million-value keyspace takes centuries.
+	totpLockoutDuration = 15 * time.Minute
+)
+
+// ErrTOTPLockedOut is returned when the factor is locked after repeated
+// failures. It is distinguishable from a wrong code so callers can tell the
+// user to wait rather than to try again, but it deliberately carries no
+// information about the submitted code.
+var ErrTOTPLockedOut = errors.New("too many failed TOTP attempts; try again later")
+
+// recordFailedTOTP counts a failed verification and locks the factor at the
+// threshold.
+//
+// The increment happens in the database, for the same reason the failed-login
+// counter does: reading the count into Go, adding one and writing it back loses
+// increments under exactly the concurrency an attacker generates, so the cap
+// binds later than it claims — or never. Errors here are logged and swallowed
+// because the caller has already decided the code was wrong; failing the
+// request instead would tell the attacker their guess was interesting.
+func (s *Service) recordFailedTOTP(ctx context.Context, userID, orgID string) {
+	var attempts int
+	var lockedUntil *time.Time
+	err := s.db.Pool.QueryRow(ctx, `
+		UPDATE mfa_totp
+		SET failed_attempts = failed_attempts + 1,
+		    last_failed_at  = NOW(),
+		    updated_at      = NOW(),
+		    locked_until = CASE
+		        WHEN failed_attempts + 1 >= $3 THEN NOW() + $4::interval
+		        ELSE locked_until
+		    END
+		WHERE user_id = $1 AND org_id = $2
+		RETURNING failed_attempts, locked_until
+	`, userID, orgID, totpMaxAttempts, totpLockoutDuration.String()).Scan(&attempts, &lockedUntil)
+	if err != nil {
+		s.logger.Error("Failed to record TOTP failure; throttling may not be enforced",
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
+		return
+	}
+
+	if lockedUntil != nil && attempts >= totpMaxAttempts {
+		s.logger.Warn("TOTP locked after repeated failures",
+			zap.String("user_id", scrubLogValue(userID)),
+			zap.Int("attempts", attempts))
+	}
 }
 
 // DisableTOTP disables TOTP for a user
@@ -2074,15 +2144,25 @@ func (s *Service) GenerateBackupCodes(ctx context.Context, userID string, count 
 		}
 
 		code := base32.StdEncoding.EncodeToString(bytes)[:8]
-		codes = append(codes, strings.ToUpper(code))
+		codes = append(codes, code)
 
-		// Hash the code for storage
-		hash := sha256.Sum256([]byte(code))
-		codeHash := hex.EncodeToString(hash[:])
+		// Hash for storage with bcrypt, matching recovery and bypass codes.
+		//
+		// These were stored as unsalted SHA-256. A backup code is a standing
+		// second factor, and SHA-256 over an 8-character base32 alphabet is
+		// brute-forceable at enormous rates on commodity GPUs; unsalted also
+		// means one rainbow table covers every user and every tenant at once.
+		// bcrypt at bcryptCost makes each guess cost real work and salts each
+		// row independently.
+		hashed, err := bcrypt.GenerateFromPassword([]byte(code), bcryptCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash backup code: %w", err)
+		}
+		codeHash := string(hashed)
 
 		// Store in database
 		codeID := uuid.New().String()
-		_, err := s.db.Pool.Exec(ctx, `
+		_, err = s.db.Pool.Exec(ctx, `
 			INSERT INTO mfa_backup_codes (id, user_id, code_hash, created_at, org_id)
 			VALUES ($1, $2, $3, $4, $5)
 		`, codeID, userID, codeHash, time.Now(), org.ID)
@@ -2095,41 +2175,95 @@ func (s *Service) GenerateBackupCodes(ctx context.Context, userID string, count 
 	return codes, nil
 }
 
-// ValidateBackupCode validates a backup code and marks it as used
+// ValidateBackupCode validates a backup code and marks it as used.
+//
+// bcrypt salts every row, so a code can no longer be found by hashing the input
+// and looking it up. Instead the user's unused codes are fetched and compared
+// one at a time. That is bounded work — GenerateBackupCodes caps at 20 — and it
+// is what the recovery and bypass code paths already do.
+//
+// Rows written before the move to bcrypt hold unsalted SHA-256 hex. Those still
+// verify, and a code matching a legacy hash is consumed exactly like any other,
+// so no user is locked out by the change and no re-enrollment is needed. Legacy
+// rows disappear as they are used; nothing rewrites them, because a used backup
+// code is spent either way.
+//
+// Consumption is a conditional UPDATE rather than a read followed by a write.
+// The previous version selected a matching unused row and then marked it used
+// in a separate statement, so two requests presenting the same code could both
+// find it unused and both be accepted — a single-use credential honored twice.
 func (s *Service) ValidateBackupCode(ctx context.Context, userID, code string) (bool, error) {
-	s.logger.Info("Validating backup code", zap.String("user_id", userID))
+	s.logger.Info("Validating backup code", zap.String("user_id", scrubLogValue(userID)))
 
 	org, err := orgctx.From(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	// Hash the provided code
-	hash := sha256.Sum256([]byte(strings.ToUpper(code)))
-	codeHash := hex.EncodeToString(hash[:])
+	// Backup codes are issued in the base32 alphabet, which is upper case.
+	// Accept a lower-case paste of the same code.
+	candidate := strings.ToUpper(strings.TrimSpace(code))
+	if candidate == "" {
+		return false, nil
+	}
+	legacySum := sha256.Sum256([]byte(candidate))
+	legacyHex := hex.EncodeToString(legacySum[:])
 
-	// Check if code exists and is unused
-	var codeID string
-	err = s.db.Pool.QueryRow(ctx, `
-		SELECT id FROM mfa_backup_codes
-		WHERE user_id = $1 AND code_hash = $2 AND used = false AND org_id = $3
-	`, userID, codeHash, org.ID).Scan(&codeID)
-
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT id, code_hash FROM mfa_backup_codes
+		WHERE user_id = $1 AND used = false AND org_id = $2
+	`, userID, org.ID)
 	if err != nil {
-		return false, nil // Code not found or already used
+		return false, err
 	}
 
-	// Mark code as used
-	now := time.Now()
-	_, err = s.db.Pool.Exec(ctx, `
-		UPDATE mfa_backup_codes SET used = true, used_at = $2 WHERE id = $1 AND org_id = $3
-	`, codeID, now, org.ID)
-
-	if err != nil {
-		s.logger.Warn("Failed to mark backup code as used", zap.Error(err))
+	type storedCode struct{ id, hash string }
+	var stored []storedCode
+	for rows.Next() {
+		var c storedCode
+		if err := rows.Scan(&c.id, &c.hash); err != nil {
+			rows.Close()
+			return false, err
+		}
+		stored = append(stored, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, err
 	}
 
-	return true, nil
+	for _, c := range stored {
+		if !backupCodeMatches(c.hash, candidate, legacyHex) {
+			continue
+		}
+
+		// Claim it. RowsAffected() == 0 means another request consumed this
+		// same code first; that request wins and this one is rejected.
+		tag, err := s.db.Pool.Exec(ctx, `
+			UPDATE mfa_backup_codes
+			SET used = true, used_at = $2
+			WHERE id = $1 AND org_id = $3 AND used = false
+		`, c.id, time.Now(), org.ID)
+		if err != nil {
+			return false, err
+		}
+		return tag.RowsAffected() == 1, nil
+	}
+
+	return false, nil
+}
+
+// backupCodeMatches compares a stored hash against a presented code, accepting
+// both the current bcrypt form and the legacy unsalted SHA-256 hex form.
+//
+// The legacy comparison is constant-time. It compares hashes rather than
+// secrets, but a variable-time compare over a value derived from user input is
+// the kind of detail that is easy to get wrong once and never revisit.
+func backupCodeMatches(storedHash, candidate, candidateLegacyHex string) bool {
+	if strings.HasPrefix(storedHash, "$2") {
+		return bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(candidate)) == nil
+	}
+	return subtle.ConstantTimeCompare([]byte(storedHash), []byte(candidateLegacyHex)) == 1
 }
 
 // GetRemainingBackupCodes returns count of unused backup codes
@@ -4713,7 +4847,7 @@ func (s *Service) handleResetPassword(c *gin.Context) {
 	}
 
 	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to process password"})
 		return
@@ -5366,7 +5500,7 @@ func (s *Service) handleAcceptInvitation(c *gin.Context) {
 	}
 
 	// Set password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
 	if err == nil {
 		s.db.Pool.Exec(ctx,
 			"UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2 AND org_id = $3",

@@ -866,5 +866,12 @@ func allMigrations() []*Migration {
 			UpSQL:       refreshTokenReuseUp,
 			DownSQL:     refreshTokenReuseDown,
 		},
+		{
+			Version:     123,
+			Name:        "totp_verification_throttle",
+			Description: "Add failed_attempts, last_failed_at and locked_until to mfa_totp so TOTP verification can be rate limited. VerifyTOTP had no attempt cap: a six-digit code with the verifier's +/-1 step skew is roughly 3 in 10^6 per guess, so an unbounded endpoint yields a hit within minutes of sustained traffic. State is stored here rather than in Redis because Redis is optional in this deployment and a brute-force counter that stops counting during an outage is not a control. Columns mirror the account-lockout fields on users so there is one lockout pattern rather than two. Additive and defaulted; existing rows read as no failures.",
+			UpSQL:       totpThrottleUp,
+			DownSQL:     totpThrottleDown,
+		},
 	}
 }

@@ -121,9 +121,14 @@ func TestValidatePasswordPolicy_Invalid(t *testing.T) {
 			wantError: "digit",
 		},
 		{
-			name:      "No special character - passes basic policy",
+			// This case previously asserted that ValidatePasswordPolicy accepts
+			// a password with no special character, while the reset-password
+			// path (ValidatePasswordPolicyChecks) rejected the same string.
+			// That divergence was the bug, not the contract: both entry points
+			// now run the one policy, and the stricter of the two was kept.
+			name:      "No special character",
 			password:  "NoSpecial123",
-			wantError: "", // No special character required by ValidatePasswordPolicy
+			wantError: "special character",
 		},
 		{
 			name:      "Only lowercase",
