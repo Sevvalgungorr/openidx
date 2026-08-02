@@ -807,6 +807,18 @@ func getActorID(c *gin.Context) string {
 	return "system"
 }
 
+// auditCtx is the request context a service call should run under: it carries
+// the acting user and the client IP so audit_events records who did it and
+// from where.
+//
+// Handlers that pass c.Request.Context() straight through still work, but every
+// event they produce is attributed to "system" with no IP — which is to say the
+// row exists and answers nothing. Prefer this at any call site that mutates
+// identities, credentials, group membership, roles or federation.
+func auditCtx(c *gin.Context) context.Context {
+	return ContextWithActor(c.Request.Context(), getActorID(c), c.ClientIP())
+}
+
 // validateCreateUserRequest validates the user creation request
 func validateCreateUserRequest(req *CreateOrUpdateUserRequest) *apperrors.AppError {
 	if req.UserName == "" {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/openidx/openidx/internal/common/orgctx"
@@ -437,5 +438,36 @@ func (s *Service) logBypassAudit(ctx context.Context, bypassID, userID, action s
 		INSERT INTO mfa_bypass_audit (id, bypass_code_id, user_id, action, performed_by, ip_address, user_agent, details, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
 	`
-	s.db.Pool.Exec(ctx, query, uuid.New().String(), bypassIDPtr, userIDPtr, action, performedBy, ipAddress, userAgent, details)
+	if _, err := s.db.Pool.Exec(ctx, query,
+		uuid.New().String(), bypassIDPtr, userIDPtr, action, performedBy, ipAddress, userAgent, details); err != nil {
+		// This used to discard the error, so a broken insert lost the record of
+		// an MFA bypass without a trace anywhere.
+		s.logger.Error("failed to write MFA bypass audit entry",
+			zap.String("action", scrubLogValue(action)),
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
+	}
+
+	// Mirror into audit_events as well.
+	//
+	// mfa_bypass_audit is a private table: the unified audit trail, the
+	// compliance reports and the SIEM forwarder all read audit_events, so a
+	// bypass — issuing a code that skips the second factor, and using one — was
+	// invisible to every one of them. It is the single most security-relevant
+	// MFA event there is, and it was the one not being forwarded.
+	actor := actorIDFromContext(ctx)
+	if performedBy != nil && *performedBy != "" {
+		actor = *performedBy
+	}
+	if ipAddress != "" {
+		ctx = ContextWithActor(ctx, actor, ipAddress)
+	}
+	mirrored := map[string]interface{}{"bypass_action": action}
+	for k, v := range details {
+		mirrored[k] = v
+	}
+	if bypassID != "" {
+		mirrored["bypass_code_id"] = bypassID
+	}
+	s.logAuditEvent(ctx, "identity", "mfa", "mfa.bypass_"+action, "success",
+		actor, userID, "user", mirrored)
 }

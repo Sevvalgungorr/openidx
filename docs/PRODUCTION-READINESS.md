@@ -104,7 +104,7 @@ Supporting binaries: `cmd/migrate` (schema migrations), `cmd/backup` (backup + r
 
 ### 2.9 Auditing & Compliance
 
-- Unified audit log across services (writes to `audit_logs`, replicated to Elasticsearch when configured).
+- Unified audit log across services (writes to `audit_events`, replicated to Elasticsearch when configured). MFA bypass additionally keeps a dedicated `mfa_bypass_audit` row, and is mirrored into `audit_events` so the unified view, the compliance reports and the SIEM forwarder all see it.
 - WebSocket streaming endpoint (`/api/v1/audit/stream`) with origin allow-list and message-size cap.
 - Audit archival to S3 / cold storage.
 - Compliance reports — SOC2, HIPAA, GDPR (consent + DSAR), PCI DSS.
@@ -167,7 +167,7 @@ Supporting binaries: `cmd/migrate` (schema migrations), `cmd/backup` (backup + r
 - **Insecure dev-only knobs** — `ziti_insecure_skip_verify`, `redis_tls_skip_verify` default false; require explicit opt-in.
 - **Dynamic SQL** — every `UPDATE … SET %s WHERE id=$N` Sprintf site has been audited; columns are hardcoded string literals from `if req.X != nil { sets = append(sets, "x=$N") }` blocks. No request-derived column names.
 - **CVE bumps** — Go toolchain 1.25.11 (fixes GO-2026-5037/5038/5039); 5 dependency-CVE bumps as part of the v1 hardening pass.
-- **Audit logging** — every admin action, every auth event, every governance decision lands in `audit_logs` with actor, target, resource, before/after.
+- **Audit logging** — sensitive IAM actions land in `audit_events` with actor, actor IP, target and outcome: login success / failure / denial, role assignment, removal and wholesale replacement (which records the roles lost as well as gained), role and group lifecycle, group membership changes, TOTP enrolment and disablement, backup-code generation, MFA bypass issue and use, identity-provider create / update / delete, user create / update / delete, and password change vs. admin-set password. Emission sits *after* each operation's error check, so a rejected attempt never appears as a change. This is deliberately a named list, not "everything": the section previously claimed every admin action was covered, and named a table (`audit_logs`) that does not exist. Governance and PAM keep their own emission paths.
 - **HTTP server timeouts** — `ReadTimeout`, `WriteTimeout`, `IdleTimeout` set on every service's `http.Server` (slow-client / Slowloris-style DoS protection).
 - **Outbound HTTP timeouts** — every SAML metadata / social-login client carries an explicit `Timeout`.
 
@@ -232,23 +232,53 @@ Before flipping any production switch, walk through this:
 
 ## 6. Known gaps (do not block deploy, do not silently ignore)
 
-These are tracked behaviors that surfaced during the v1 integration-test push (PRs #110 and #112). They affect specific flows and are queued for follow-up PRs:
+Every entry below was re-verified against the code before being written down. The
+previous version of this section was wrong in both directions — it listed five
+gaps that had all since been closed, while omitting the security findings the
+IAM audit turned up. A gap list that is not re-checked stops being a plan and
+becomes a rumour, so entries here cite the file that settles them.
+
+### 6.1 Closed since the last revision — no longer gaps
+
+The five items previously listed (from the v1 integration-test push, PRs #110
+and #112) are all implemented. Kept here, briefly, because they were quoted
+elsewhere as open:
+
+| Previously listed as a gap | Actually |
+|---|---|
+| `GET /users/me/sessions` not implemented | Routed to `handleGetMySessions` (`internal/identity/service.go`) |
+| `GET /users/me/mfa/status` returns 404 | Routed to `handleGetMyMFAStatus` (same route block) |
+| `handleRefreshTokenGrant` 400s for the public admin-console client | Fixed in #633; `clientCredentials` accepts form and Basic auth, and a client registered with `token_endpoint_auth_method=none` carries no secret to mismatch (`internal/oauth/client_auth.go`, `dcr.go`) |
+| WebAuthn enrollment paths don't match the integration test | They do: the test calls `/api/v1/identity/mfa/webauthn/register/begin`, which is a registered route (`test/integration/auth_flows_test.go`) |
+| Application provisioning for approved access requests is a no-op | `case "application"` grants the assignment, and the `default` branch now fails loudly rather than marking a request fulfilled without granting anything (`internal/governance/workflows.go`) |
+
+The paragraph that used to follow — "after these land, the integration suite's
+`|| true` will be dropped and `test-integration` added to Required Checks" — is
+also done. Neither the integration job nor the unit-test matrix carries `|| true`
+any more, and `test-integration` is in the Required Checks `needs:` list
+(`.github/workflows/ci.yml`).
+
+### 6.2 Actually open
 
 | Gap | Affected | Mitigation |
 |---|---|---|
-| `GET /api/v1/identity/users/me/sessions` not implemented | Admin console "my sessions" view falls back to admin-listed sessions | Until landed, expose admin sessions UI; users can still log out via `/oauth/logout`. |
-| `handleRefreshTokenGrant` returns 400 for the admin-console (public, no client_secret) refresh flow | SPA token refresh on long-lived sessions | Re-authenticate (silent OAuth) instead of using refresh tokens, OR use a confidential client for the relying party. Refresh tokens themselves are issued and stored correctly. |
-| `GET /api/v1/identity/users/me/mfa/status` returns 404 | The "my MFA status" widget on the user portal | Admin can still view via `/users/:id/mfa/status`. |
-| WebAuthn enrollment endpoints under `/api/v1/identity/mfa/webauthn/...` don't match the integration test's expected shape | Programmatic WebAuthn enrollment | Enrollment via the admin console works (uses different paths). |
-| Application provisioning for approved access-requests is a no-op | An approved `application` resource request marks the row approved but doesn't grant the app | Until P1.1 lands, gate `application`-resource requests behind manual approval, or use role/group fulfillment which is wired end-to-end. |
+| The Ziti controller admin password uses a local AES-256-GCM encrypter rather than `internal/common/secretcrypt` | No KEK rotation for that one secret | Format is authenticated and test-pinned (`internal/access/secret_cipher.go`). Consolidating needs the stored value re-encrypted under a tagged format first — a data migration, not a refactor; `secretcrypt` passes untagged input through unchanged and would otherwise hand the base64 blob to a controller login as the password. |
+| Password hashing is bcrypt (cost 12), not Argon2id | Offline-cracking cost is lower than a memory-hard KDF's | One policy and one cost throughout (`internal/identity/passwords.go`). Adopting Argon2id needs bcrypt verification plus rehash-on-login; the unreachable Argon2id service that could not verify a single real bcrypt hash was deleted in #637 rather than left looking like coverage. |
+| `internal/oauth/oidc.go`'s `OIDCProvider` is unreachable | Nothing at runtime — `/userinfo` routes to `Service.handleUserInfo` | Dead, not wrong. Removing it also removes ~950 lines of tests and touches the shared OIDC test harness, so it is its own change. |
+| RFC 8628 device authorization grant not implemented | CLI / TV / input-constrained clients | Not advertised in discovery, so no client negotiates it. |
+| LDAP referral chasing absent | Multi-domain AD forests where the search base returns referrals | Point the connector at a global catalog, or configure one directory per domain. |
 
-After these land, the integration suite's `|| true` will be dropped from `.github/workflows/ci.yml`, and `test-integration` will be added to Required Checks `needs:` — full integration-test enforcement on every PR.
+### 6.3 Out of scope for v1 (large epics, not blockers)
 
-Also out of scope for v1 (large epics, not blockers):
-
-- Multi-tenant SaaS isolation (would require a data-layer retrofit; tracked separately).
 - Billing / quotas / self-service onboarding.
 - SOC2 Type II / ISO 27001 certification audits.
+
+Multi-tenant SaaS isolation was previously listed here as "would require a
+data-layer retrofit". That retrofit has happened: tenant isolation is enforced
+at the database with `FORCE ROW LEVEL SECURITY`, the GUCs are set at pool
+checkout (`internal/common/database/rls.go`), and `tools/orgscope` runs as a
+hard CI gate that fails the build on a query touching a tenant-scoped table
+without an `org_id` predicate. It is not an open epic.
 
 ---
 

@@ -1736,7 +1736,10 @@ func (s *Service) handleAuthorizeCallback(c *gin.Context) {
 	}
 
 	// Authenticate user
-	user, err := s.identityService.AuthenticateUser(c.Request.Context(), username, password)
+	// The login audit events identity emits are only useful with the caller's
+	// IP on them; the raw request context carries neither actor nor address.
+	user, err := s.identityService.AuthenticateUser(
+		identity.ContextWithActor(c.Request.Context(), "", c.ClientIP()), username, password)
 	if err != nil {
 		errorMsg := "Invalid username or password."
 		if err.Error() == "account is locked" {
@@ -1869,7 +1872,8 @@ func (s *Service) handleLogin(c *gin.Context) {
 	clientIP := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
 
-	user, err := s.identityService.AuthenticateUser(c.Request.Context(), req.Username, req.Password)
+	user, err := s.identityService.AuthenticateUser(
+		identity.ContextWithActor(c.Request.Context(), "", clientIP), req.Username, req.Password)
 	if err != nil {
 		// Log failed login audit event in background with timeout
 		go func() {

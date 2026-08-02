@@ -47,11 +47,22 @@ type ctxKey int
 const (
 	// ctxKeyActorID is the context key for the actor (authenticated user) performing the operation.
 	ctxKeyActorID ctxKey = iota
+	// ctxKeyActorIP is the context key for the client IP the operation arrived from.
+	ctxKeyActorIP
 )
 
 // ContextWithActorID returns a new context that carries the given actor ID.
 func ContextWithActorID(ctx context.Context, actorID string) context.Context {
 	return context.WithValue(ctx, ctxKeyActorID, actorID)
+}
+
+// ContextWithActor carries both the actor ID and the client IP.
+//
+// The IP is what an investigator actually pivots on — "which account was
+// touched" is only half of an access trail, and audit_events.actor_ip was
+// written as the empty string on every row until this existed.
+func ContextWithActor(ctx context.Context, actorID, actorIP string) context.Context {
+	return context.WithValue(ContextWithActorID(ctx, actorID), ctxKeyActorIP, actorIP)
 }
 
 // actorIDFromContext extracts the actor ID from context, returning "system" if not set.
@@ -60,6 +71,17 @@ func actorIDFromContext(ctx context.Context) string {
 		return v
 	}
 	return "system"
+}
+
+// actorIPFromContext extracts the client IP, returning "" when unknown. The
+// column is VARCHAR(45), so an over-long value is truncated rather than
+// failing the insert and losing the event.
+func actorIPFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyActorIP).(string)
+	if len(v) > 45 {
+		return v[:45]
+	}
+	return v
 }
 
 // Session represents an active user session
@@ -725,6 +747,12 @@ func (s *Service) UpdateUser(ctx context.Context, user *User) error {
 		return err
 	}
 
+	s.logAuditEvent(ctx, "identity", "user_management", "user.updated", "success",
+		actorIDFromContext(ctx), user.ID, "user", map[string]interface{}{
+			"username": user.UserName,
+			"enabled":  user.Enabled,
+		})
+
 	// A user set to disabled must lose live access, not just be blocked from new
 	// password logins. deprovisionUser is idempotent, so running it whenever the
 	// resulting state is disabled (without needing the prior value) is safe.
@@ -911,8 +939,20 @@ func (s *Service) CreateIdentityProvider(ctx context.Context, idp *IdentityProvi
 		INSERT INTO identity_providers (id, name, provider_type, issuer_url, client_id, client_secret, scopes, enabled, created_at, updated_at, org_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`, idp.ID, idp.Name, idp.ProviderType, idp.IssuerURL, idp.ClientID, encSecret, idp.Scopes, idp.Enabled, idp.CreatedAt, idp.UpdatedAt, org.ID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// An identity provider is a delegation of authentication: whoever controls
+	// it can assert any subject in this tenant. Never records the client secret.
+	s.logAuditEvent(ctx, "identity", "federation", "identity_provider.created", "success",
+		actorIDFromContext(ctx), idp.ID.String(), "identity_provider", map[string]interface{}{
+			"name":          idp.Name,
+			"provider_type": idp.ProviderType,
+			"issuer_url":    idp.IssuerURL,
+			"enabled":       idp.Enabled,
+		})
+	return nil
 }
 
 // GetIdentityProvider retrieves an identity provider by ID
@@ -1006,8 +1046,18 @@ func (s *Service) UpdateIdentityProvider(ctx context.Context, idp *IdentityProvi
 		SET name = $2, provider_type = $3, issuer_url = $4, client_id = $5, client_secret = $6, scopes = $7, enabled = $8, updated_at = $9
 		WHERE id = $1 AND org_id = $10
 	`, idp.ID, idp.Name, idp.ProviderType, idp.IssuerURL, idp.ClientID, encSecret, idp.Scopes, idp.Enabled, idp.UpdatedAt, org.ID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	s.logAuditEvent(ctx, "identity", "federation", "identity_provider.updated", "success",
+		actorIDFromContext(ctx), idp.ID.String(), "identity_provider", map[string]interface{}{
+			"name":          idp.Name,
+			"provider_type": idp.ProviderType,
+			"issuer_url":    idp.IssuerURL,
+			"enabled":       idp.Enabled,
+		})
+	return nil
 }
 
 // DeleteIdentityProvider deletes an identity provider
@@ -1019,8 +1069,13 @@ func (s *Service) DeleteIdentityProvider(ctx context.Context, idpID string) erro
 		return err
 	}
 
-	_, err = s.db.Pool.Exec(ctx, "DELETE FROM identity_providers WHERE id = $1 AND org_id = $2", idpID, org.ID)
-	return err
+	if _, err := s.db.Pool.Exec(ctx, "DELETE FROM identity_providers WHERE id = $1 AND org_id = $2", idpID, org.ID); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, "identity", "federation", "identity_provider.deleted", "success",
+		actorIDFromContext(ctx), idpID, "identity_provider", nil)
+	return nil
 }
 
 // GetUserSessions retrieves active sessions for a user
@@ -1154,7 +1209,14 @@ func (s *Service) CreateGroup(ctx context.Context, group *Group) error {
 	s.logger.Info("Creating group", zap.String("name", group.GetName()))
 	// Persistence in the repository (primary pool); it writes the generated id +
 	// timestamps back onto `group`.
-	return s.groups.Create(ctx, group)
+	if err := s.groups.Create(ctx, group); err != nil {
+		return err
+	}
+	s.logAuditEvent(ctx, "identity", "group_management", "group.created", "success",
+		actorIDFromContext(ctx), group.ID, "group", map[string]interface{}{
+			"group_name": group.GetName(),
+		})
+	return nil
 }
 
 // UpdateGroup updates an existing group
@@ -1167,7 +1229,12 @@ func (s *Service) UpdateGroup(ctx context.Context, group *Group) error {
 func (s *Service) DeleteGroup(ctx context.Context, groupID string) error {
 	s.logger.Info("Deleting group", zap.String("group_id", groupID))
 	// Repo removes memberships then the group row (primary pool).
-	return s.groups.Delete(ctx, groupID)
+	if err := s.groups.Delete(ctx, groupID); err != nil {
+		return err
+	}
+	s.logAuditEvent(ctx, "identity", "group_management", "group.deleted", "success",
+		actorIDFromContext(ctx), groupID, "group", nil)
+	return nil
 }
 
 // AddGroupMember adds a user to a group
@@ -1222,6 +1289,13 @@ func (s *Service) AddGroupMember(ctx context.Context, groupID, userID string) er
 		return ErrGroupMemberLimit
 	}
 
+	// Group membership is how most privilege is granted in practice — roles
+	// attach to groups, so this is a privilege change even though no role id
+	// appears in it.
+	s.logAuditEvent(ctx, "identity", "group_management", "group.member_added", "success",
+		actorIDFromContext(ctx), userID, "user", map[string]interface{}{
+			"group_id": groupID,
+		})
 	return nil
 }
 
@@ -1246,6 +1320,10 @@ func (s *Service) RemoveGroupMember(ctx context.Context, groupID, userID string)
 		return ErrNotGroupMember
 	}
 
+	s.logAuditEvent(ctx, "identity", "group_management", "group.member_removed", "success",
+		actorIDFromContext(ctx), userID, "user", map[string]interface{}{
+			"group_id": groupID,
+		})
 	return nil
 }
 
@@ -1499,21 +1577,27 @@ func (s *Service) RevokeUserSessionsOnPasswordChange(ctx context.Context, userID
 // The single UPDATE below increments and decides the lockout in one statement,
 // so concurrent attempts serialize on the row and every one of them counts.
 func (s *Service) RecordFailedLogin(ctx context.Context, username string) error {
-	s.logger.Info("Recording failed login", zap.String("username", scrubLogValue(username)))
+	return s.recordFailedLogin(ctx, failedLoginIncrementByUsername, username)
+}
 
-	org, err := orgctx.From(ctx)
-	if err != nil {
-		return err
-	}
+// recordFailedLoginForUser applies the same control keyed by user id.
+//
+// AuthenticateUser resolves the account with `username = $1 OR email = $1`, so
+// it cannot re-key the increment on username: a user who logs in with their
+// email address would update zero rows and never accumulate failures. It has
+// the id already, so it increments by id.
+func (s *Service) recordFailedLoginForUser(ctx context.Context, userID string) error {
+	return s.recordFailedLogin(ctx, failedLoginIncrementByID, userID)
+}
 
-	maxFailures, lockoutDuration := s.lockoutPolicy(ctx)
-
+// The two statements differ only in which column identifies the row. Both are
+// written out in full rather than assembled, so the org_id predicate stays
+// visible to tools/orgscope in a literal it can read.
+const (
 	// failed_login_count + 1 is evaluated by Postgres against the current row
 	// under the UPDATE's row lock, so no increment can be lost. locked_until is
 	// set in the same statement from that same post-increment value.
-	var failures int
-	var lockedUntil *time.Time
-	err = s.db.Pool.QueryRow(ctx, `
+	failedLoginIncrementByUsername = `
 		UPDATE users
 		SET failed_login_count   = failed_login_count + 1,
 		    last_failed_login_at = NOW(),
@@ -1522,15 +1606,40 @@ func (s *Service) RecordFailedLogin(ctx context.Context, username string) error 
 		        ELSE locked_until
 		    END
 		WHERE username = $1 AND org_id = $2
-		RETURNING failed_login_count, locked_until
-	`, username, org.ID, maxFailures, lockoutDuration.String()).Scan(&failures, &lockedUntil)
+		RETURNING failed_login_count, locked_until`
+
+	failedLoginIncrementByID = `
+		UPDATE users
+		SET failed_login_count   = failed_login_count + 1,
+		    last_failed_login_at = NOW(),
+		    locked_until = CASE
+		        WHEN failed_login_count + 1 >= $3 THEN NOW() + $4::interval
+		        ELSE locked_until
+		    END
+		WHERE id = $1 AND org_id = $2
+		RETURNING failed_login_count, locked_until`
+)
+
+func (s *Service) recordFailedLogin(ctx context.Context, query, subject string) error {
+	s.logger.Info("Recording failed login", zap.String("subject", scrubLogValue(subject)))
+
+	org, err := orgctx.From(ctx)
 	if err != nil {
+		return err
+	}
+
+	maxFailures, lockoutDuration := s.lockoutPolicy(ctx)
+
+	var failures int
+	var lockedUntil *time.Time
+	if err := s.db.Pool.QueryRow(ctx, query,
+		subject, org.ID, maxFailures, lockoutDuration.String()).Scan(&failures, &lockedUntil); err != nil {
 		return err
 	}
 
 	if lockedUntil != nil && failures >= maxFailures {
 		s.logger.Warn("Account locked due to failed login attempts",
-			zap.String("username", scrubLogValue(username)), zap.Int("failures", failures))
+			zap.String("subject", scrubLogValue(subject)), zap.Int("failures", failures))
 	}
 	return nil
 }
@@ -1727,16 +1836,20 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 	var userID, passwordHash string
 	var enabled bool
 	var lockedUntil *time.Time
-	var failedLoginCount int
 	var source *string
 	var directoryID *string
 
+	// failed_login_count is deliberately not read here. It used to be, so the
+	// count could be incremented in Go and written back — the lost-update shape
+	// that let parallel guesses share a single increment. The count now only
+	// ever changes inside the UPDATE that reads it.
+	//
 	// Get user by username or email, within the caller's org
 	err = s.db.Pool.QueryRow(ctx, `
-		SELECT id, password_hash, enabled, locked_until, failed_login_count, source, directory_id
+		SELECT id, password_hash, enabled, locked_until, source, directory_id
 		FROM users
 		WHERE (username = $1 OR email = $1) AND org_id = $2
-	`, username, org.ID).Scan(&userID, &passwordHash, &enabled, &lockedUntil, &failedLoginCount, &source, &directoryID)
+	`, username, org.ID).Scan(&userID, &passwordHash, &enabled, &lockedUntil, &source, &directoryID)
 
 	if err != nil {
 		s.logger.Debug("User not found", zap.String("username", username))
@@ -1746,12 +1859,27 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 	// Check if account is disabled
 	if !enabled {
 		s.logger.Warn("Login attempt on disabled account", zap.String("username", username))
+		// Not counted against the lockout — the account is already closed, and
+		// counting would let anyone keep a disabled account's counter pinned.
+		// It is still audited: repeated attempts on a disabled account are a
+		// signal worth seeing.
+		s.logAuditEvent(ctx, "identity", "authentication", "user.login_denied", "failure",
+			userID, userID, "user", map[string]interface{}{
+				"username": scrubLogValue(username),
+				"reason":   "account_disabled",
+			})
 		return nil, ErrAccountDisabled
 	}
 
 	// Check if account is locked
 	if lockedUntil != nil && time.Now().Before(*lockedUntil) {
 		s.logger.Warn("Login attempt on locked account", zap.String("username", username))
+		s.logAuditEvent(ctx, "identity", "authentication", "user.login_denied", "failure",
+			userID, userID, "user", map[string]interface{}{
+				"username":     scrubLogValue(username),
+				"reason":       "account_locked",
+				"locked_until": lockedUntil.UTC().Format(time.RFC3339),
+			})
 		return nil, ErrAccountLocked
 	}
 
@@ -1760,7 +1888,7 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 		s.logger.Debug("Authenticating directory user", zap.String("username", username), zap.String("source", *source), zap.String("directory_id", *directoryID))
 
 		if err := s.directoryService.AuthenticateUser(ctx, *directoryID, username, password); err != nil {
-			s.recordFailedLogin(ctx, userID, failedLoginCount)
+			s.onFailedLogin(ctx, userID, username, "directory_rejected")
 			s.logger.Debug("Directory authentication failed", zap.String("username", username), zap.Error(err))
 			return nil, ErrInvalidCredentials
 		}
@@ -1779,7 +1907,7 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 
 		err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password))
 		if err != nil {
-			s.recordFailedLogin(ctx, userID, failedLoginCount)
+			s.onFailedLogin(ctx, userID, username, "bad_password")
 			s.logger.Debug("Invalid password", zap.String("username", username), zap.Error(err))
 			return nil, ErrInvalidCredentials
 		}
@@ -1796,53 +1924,34 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 		s.logger.Error("Failed to update login stats", zap.Error(err))
 	}
 
+	s.logAuditEvent(ctx, "identity", "authentication", "user.login_succeeded", "success",
+		userID, userID, "user", map[string]interface{}{
+			"username": scrubLogValue(username),
+		})
+
 	// Return full user object
 	return s.GetUser(ctx, userID)
 }
 
-// recordFailedLogin records a failed login attempt and locks account if necessary
-func (s *Service) recordFailedLogin(ctx context.Context, userID string, currentCount int) {
-	org, err := orgctx.From(ctx)
-	if err != nil {
-		s.logger.Error("Failed to record failed login: no org context", zap.Error(err))
-		return
+// onFailedLogin applies the lockout counter and leaves an audit trail for a
+// rejected login.
+//
+// The counter used to be maintained by a second, private implementation that
+// read failed_login_count in AuthenticateUser, added one in Go, and wrote it
+// back. That is the lost-update race the exported RecordFailedLogin was written
+// to remove — but nothing on the live login path ever called the fixed version,
+// so the fix sat unreachable while every real login kept using the racy copy.
+// There is one implementation now.
+func (s *Service) onFailedLogin(ctx context.Context, userID, username, reason string) {
+	if err := s.recordFailedLoginForUser(ctx, userID); err != nil {
+		s.logger.Error("Failed to record failed login",
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
 	}
-
-	newCount := currentCount + 1
-	now := time.Now()
-
-	// Read lockout settings from system_settings
-	maxFailures := 5
-	lockoutMinutes := 15
-	var settingsValue []byte
-	if err := s.db.Pool.QueryRow(ctx, "SELECT value FROM system_settings WHERE key = 'failed_login_lockout_threshold'").Scan(&settingsValue); err == nil {
-		var v int
-		if json.Unmarshal(settingsValue, &v) == nil && v > 0 {
-			maxFailures = v
-		}
-	}
-	if err := s.db.Pool.QueryRow(ctx, "SELECT value FROM system_settings WHERE key = 'failed_login_lockout_duration'").Scan(&settingsValue); err == nil {
-		var v int
-		if json.Unmarshal(settingsValue, &v) == nil && v > 0 {
-			lockoutMinutes = v
-		}
-	}
-
-	var lockedUntil *time.Time
-	if newCount >= maxFailures {
-		lockTime := now.Add(time.Duration(lockoutMinutes) * time.Minute)
-		lockedUntil = &lockTime
-		s.logger.Warn("Account locked due to failed attempts", zap.String("user_id", userID))
-	}
-
-	_, err = s.db.Pool.Exec(ctx, `
-		UPDATE users
-		SET failed_login_count = $2, last_failed_login_at = $3, locked_until = $4
-		WHERE id = $1 AND org_id = $5
-	`, userID, newCount, now, lockedUntil, org.ID)
-	if err != nil {
-		s.logger.Error("Failed to record failed login", zap.Error(err))
-	}
+	s.logAuditEvent(ctx, "identity", "authentication", "user.login_failed", "failure",
+		userID, userID, "user", map[string]interface{}{
+			"username": scrubLogValue(username),
+			"reason":   reason,
+		})
 }
 
 // SetPassword sets a new password for a user (hashes and stores)
@@ -1871,8 +1980,22 @@ func (s *Service) SetPassword(ctx context.Context, userID string, password strin
 		SET password_hash = $2, password_changed_at = $3, password_must_change = false
 		WHERE id = $1 AND org_id = $4
 	`, userID, string(hash), now, org.ID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// SetPassword is the administrative path (reset, admin-set, invitation
+	// accept) as opposed to a user changing their own password, which audits
+	// itself as user.password_changed. The distinction matters: a password set
+	// by someone other than the account holder is the classic takeover step.
+	actor := actorIDFromContext(ctx)
+	outcomeAction := "user.password_set_by_admin"
+	if actor == userID {
+		outcomeAction = "user.password_changed"
+	}
+	s.logAuditEvent(ctx, "identity", "security", outcomeAction, "success",
+		actor, userID, "user", nil)
+	return nil
 }
 
 // GenerateTOTPSecret generates a new TOTP secret and QR code for enrollment
@@ -1959,6 +2082,10 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID, secret, verificationCo
 		return fmt.Errorf("failed to enroll TOTP: %w", err)
 	}
 
+	// Enrollment replaces any previous secret, so this is also how an attacker
+	// re-points a victim's second factor at their own device.
+	s.logAuditEvent(ctx, "identity", "mfa", "mfa.totp_enrolled", "success",
+		actorIDFromContext(ctx), userID, "user", nil)
 	return nil
 }
 
@@ -2091,8 +2218,15 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string) error {
 	_, err = s.db.Pool.Exec(ctx, `
 		UPDATE mfa_totp SET enabled = false, updated_at = $2 WHERE user_id = $1 AND org_id = $3
 	`, userID, time.Now(), org.ID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// Removing a second factor is a security downgrade, and one an attacker who
+	// has already taken an account performs to keep it. It must be visible.
+	s.logAuditEvent(ctx, "identity", "mfa", "mfa.totp_disabled", "success",
+		actorIDFromContext(ctx), userID, "user", nil)
+	return nil
 }
 
 // GetTOTPStatus returns the TOTP status for a user
@@ -2172,6 +2306,12 @@ func (s *Service) GenerateBackupCodes(ctx context.Context, userID string, count 
 		}
 	}
 
+	// The codes themselves never go near the audit trail — only that a fresh
+	// set was minted, which is the fact an investigator needs.
+	s.logAuditEvent(ctx, "identity", "mfa", "mfa.backup_codes_generated", "success",
+		actorIDFromContext(ctx), userID, "user", map[string]interface{}{
+			"count": len(codes),
+		})
 	return codes, nil
 }
 
@@ -2735,6 +2875,10 @@ func (s *Service) DeleteRole(ctx context.Context, roleID string) error {
 		return fmt.Errorf("role not found")
 	}
 
+	// Deleting a role silently revokes it from every user who held it, so the
+	// event is a mass revocation as much as a definition change.
+	s.logAuditEvent(ctx, "identity", "role_management", "role.deleted", "success",
+		actorIDFromContext(ctx), roleID, "role", nil)
 	return nil
 }
 
@@ -3149,8 +3293,31 @@ func (s *Service) AssignUserRole(ctx context.Context, userID, roleID string, ass
 		INSERT INTO user_roles (user_id, role_id, assigned_by, assigned_at, expires_at, org_id)
 		VALUES ($1, $2, $3, NOW(), $4, $5)
 	`, userID, roleID, assignedBy, expiresAt, org.ID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// A role grant is the single most consequential thing this service does:
+	// it is how privilege enters the system. Audited on the write path so SCIM,
+	// the console and any future caller are all covered by construction.
+	details := map[string]interface{}{"role_id": roleID}
+	if expiresAt != nil {
+		details["expires_at"] = expiresAt.UTC().Format(time.RFC3339)
+	}
+	s.logAuditEvent(ctx, "identity", "role_management", "role.assigned", "success",
+		auditActor(ctx, assignedBy), userID, "user", details)
+	return nil
+}
+
+// auditActor prefers an explicitly supplied actor over the context one. Some
+// handlers carry the acting admin in the request body or a gin key rather than
+// on the context; falling back keeps "system" for genuinely internal callers
+// instead of attributing their writes to whoever happens to be in scope.
+func auditActor(ctx context.Context, explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return actorIDFromContext(ctx)
 }
 
 // RemoveUserRole removes a role from a user
@@ -3175,6 +3342,10 @@ func (s *Service) RemoveUserRole(ctx context.Context, userID, roleID string) err
 		return fmt.Errorf("user does not have this role")
 	}
 
+	s.logAuditEvent(ctx, "identity", "role_management", "role.removed", "success",
+		actorIDFromContext(ctx), userID, "user", map[string]interface{}{
+			"role_id": roleID,
+		})
 	return nil
 }
 
@@ -3194,6 +3365,28 @@ func (s *Service) UpdateUserRoles(ctx context.Context, userID string, roleIDs []
 	}
 	defer tx.Rollback(ctx)
 
+	// Read the outgoing set before replacing it. A wholesale replacement is
+	// both a grant and a revocation, and an audit line that records only the
+	// new set cannot answer "what did this user lose?".
+	previous := []string{}
+	rows, err := tx.Query(ctx,
+		"SELECT role_id::text FROM user_roles WHERE user_id = $1 AND org_id = $2", userID, org.ID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		previous = append(previous, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	// Remove all existing roles
 	_, err = tx.Exec(ctx, "DELETE FROM user_roles WHERE user_id = $1 AND org_id = $2", userID, org.ID)
 	if err != nil {
@@ -3211,7 +3404,16 @@ func (s *Service) UpdateUserRoles(ctx context.Context, userID string, roleIDs []
 		}
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, "identity", "role_management", "role.set_replaced", "success",
+		auditActor(ctx, assignedBy), userID, "user", map[string]interface{}{
+			"previous_role_ids": previous,
+			"role_ids":          roleIDs,
+		})
+	return nil
 }
 
 // RegisterRoutes registers identity service routes
@@ -3588,7 +3790,7 @@ func (s *Service) handleUpdateUser(c *gin.Context) {
 	}
 
 	user.ID = userID
-	if err := s.UpdateUser(c.Request.Context(), &user); err != nil {
+	if err := s.UpdateUser(auditCtx(c), &user); err != nil {
 		s.logger.Error("failed to update user", zap.String("user_id", userID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -3659,7 +3861,7 @@ func (s *Service) handleCreateIdentityProvider(c *gin.Context) {
 		return
 	}
 
-	if err := s.CreateIdentityProvider(c.Request.Context(), &idp); err != nil {
+	if err := s.CreateIdentityProvider(auditCtx(c), &idp); err != nil {
 		s.logger.Error("failed to create identity provider", zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -3683,7 +3885,7 @@ func (s *Service) handleUpdateIdentityProvider(c *gin.Context) {
 		return
 	}
 	idp.ID = parsedID
-	if err := s.UpdateIdentityProvider(c.Request.Context(), &idp); err != nil {
+	if err := s.UpdateIdentityProvider(auditCtx(c), &idp); err != nil {
 		s.logger.Error("failed to update identity provider", zap.String("id", idpID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -3695,7 +3897,7 @@ func (s *Service) handleUpdateIdentityProvider(c *gin.Context) {
 func (s *Service) handleDeleteIdentityProvider(c *gin.Context) {
 	idpID := c.Param("id")
 
-	if err := s.DeleteIdentityProvider(c.Request.Context(), idpID); err != nil {
+	if err := s.DeleteIdentityProvider(auditCtx(c), idpID); err != nil {
 		s.logger.Error("failed to delete identity provider", zap.String("id", idpID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -3815,7 +4017,7 @@ func (s *Service) handleUpdateRole(c *gin.Context) {
 func (s *Service) handleDeleteRole(c *gin.Context) {
 	roleID := c.Param("id")
 
-	if err := s.DeleteRole(c.Request.Context(), roleID); err != nil {
+	if err := s.DeleteRole(auditCtx(c), roleID); err != nil {
 		if err.Error() == "role not found" {
 			c.JSON(404, gin.H{"error": "role not found"})
 			return
@@ -3866,7 +4068,7 @@ func (s *Service) handleAssignUserRole(c *gin.Context) {
 		assignedBy = "" // Allow NULL for unauthenticated requests
 	}
 
-	err := s.AssignUserRole(c.Request.Context(), userID, req.RoleID, assignedBy, req.ExpiresAt)
+	err := s.AssignUserRole(auditCtx(c), userID, req.RoleID, assignedBy, req.ExpiresAt)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -3892,7 +4094,7 @@ func (s *Service) handleRemoveUserRole(c *gin.Context) {
 	userID := c.Param("id")
 	roleID := c.Param("roleId")
 
-	err := s.RemoveUserRole(c.Request.Context(), userID, roleID)
+	err := s.RemoveUserRole(auditCtx(c), userID, roleID)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -3930,7 +4132,7 @@ func (s *Service) handleUpdateUserRoles(c *gin.Context) {
 		}
 	}
 
-	err := s.UpdateUserRoles(c.Request.Context(), userID, req.RoleIDs, assignedBy)
+	err := s.UpdateUserRoles(auditCtx(c), userID, req.RoleIDs, assignedBy)
 	if err != nil {
 		s.logger.Error("failed to update user roles", zap.String("user_id", userID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
@@ -4003,7 +4205,7 @@ func (s *Service) handleCreateGroup(c *gin.Context) {
 		return
 	}
 
-	if err := s.CreateGroup(c.Request.Context(), &group); err != nil {
+	if err := s.CreateGroup(auditCtx(c), &group); err != nil {
 		s.logger.Error("failed to create group", zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -4034,7 +4236,7 @@ func (s *Service) handleUpdateGroup(c *gin.Context) {
 func (s *Service) handleDeleteGroup(c *gin.Context) {
 	groupID := c.Param("id")
 
-	if err := s.DeleteGroup(c.Request.Context(), groupID); err != nil {
+	if err := s.DeleteGroup(auditCtx(c), groupID); err != nil {
 		s.logger.Error("failed to delete group", zap.String("group_id", groupID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -4066,7 +4268,7 @@ func (s *Service) handleAddGroupMember(c *gin.Context) {
 		}
 	}
 
-	if err := s.AddGroupMember(c.Request.Context(), groupID, req.UserID); err != nil {
+	if err := s.AddGroupMember(auditCtx(c), groupID, req.UserID); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(404, gin.H{"error": err.Error()})
 			return
@@ -4098,7 +4300,7 @@ func (s *Service) handleRemoveGroupMember(c *gin.Context) {
 		}
 	}
 
-	if err := s.RemoveGroupMember(c.Request.Context(), groupID, userID); err != nil {
+	if err := s.RemoveGroupMember(auditCtx(c), groupID, userID); err != nil {
 		if strings.Contains(err.Error(), "not a member") {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -4186,7 +4388,7 @@ func (s *Service) handleEnrollTOTP(c *gin.Context) {
 		return
 	}
 
-	err := s.EnrollTOTP(c.Request.Context(), userID, req.Secret, req.Code)
+	err := s.EnrollTOTP(auditCtx(c), userID, req.Secret, req.Code)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -4242,7 +4444,7 @@ func (s *Service) handleDisableTOTP(c *gin.Context) {
 		return
 	}
 
-	err := s.DisableTOTP(c.Request.Context(), userID)
+	err := s.DisableTOTP(auditCtx(c), userID)
 	if err != nil {
 		s.logger.Error("failed to disable TOTP", zap.String("user_id", userID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
@@ -4266,7 +4468,7 @@ func (s *Service) handleGenerateBackupCodes(c *gin.Context) {
 		req.Count = 10 // Default
 	}
 
-	codes, err := s.GenerateBackupCodes(c.Request.Context(), userID, req.Count)
+	codes, err := s.GenerateBackupCodes(auditCtx(c), userID, req.Count)
 	if err != nil {
 		s.logger.Error("failed to generate backup codes", zap.String("user_id", userID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
@@ -4392,7 +4594,7 @@ func (s *Service) handleUpdateCurrentUser(c *gin.Context) {
 	user.SetEmail(req.Email)
 	user.Enabled = req.Enabled
 
-	if err := s.UpdateUser(c.Request.Context(), user); err != nil {
+	if err := s.UpdateUser(auditCtx(c), user); err != nil {
 		s.logger.Error("failed to update current user", zap.String("user_id", userID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return
@@ -4585,7 +4787,7 @@ func (s *Service) handleEnableUserMFA(c *gin.Context) {
 		return
 	}
 
-	err := s.EnrollTOTP(c.Request.Context(), userID, secret, req.Code)
+	err := s.EnrollTOTP(auditCtx(c), userID, secret, req.Code)
 	if err != nil {
 		c.JSON(400, gin.H{"error": "invalid verification code"})
 		return
@@ -4595,7 +4797,7 @@ func (s *Service) handleEnableUserMFA(c *gin.Context) {
 	s.redis.Client.Del(c.Request.Context(), cacheKey)
 
 	// Generate backup codes
-	backupCodes, err := s.GenerateBackupCodes(c.Request.Context(), userID, 10)
+	backupCodes, err := s.GenerateBackupCodes(auditCtx(c), userID, 10)
 	if err != nil {
 		s.logger.Warn("Failed to generate backup codes", zap.Error(err))
 	}
@@ -4613,7 +4815,7 @@ func (s *Service) handleDisableUserMFA(c *gin.Context) {
 		return
 	}
 
-	err := s.DisableTOTP(c.Request.Context(), userID)
+	err := s.DisableTOTP(auditCtx(c), userID)
 	if err != nil {
 		s.logger.Error("failed to disable user MFA", zap.String("user_id", userID), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
@@ -6321,6 +6523,8 @@ func (s *Service) logAuditEvent(ctx context.Context, eventType, category, action
 	if org, err := orgctx.From(ctx); err == nil && org.ID != "" {
 		orgID = org.ID
 	}
+	// Same reason as the org: read before the request context is left behind.
+	actorIP := actorIPFromContext(ctx)
 	// No database configured (unit tests, or a service constructed without a
 	// pool): audit is best-effort, so skip rather than nil-panic in a goroutine.
 	if s.db == nil || s.db.Pool == nil {
@@ -6334,8 +6538,8 @@ func (s *Service) logAuditEvent(ctx context.Context, eventType, category, action
 			INSERT INTO audit_events (id, timestamp, event_type, category, action, outcome,
 			                          actor_id, actor_type, actor_ip, target_id, target_type,
 			                          resource_id, details, org_id)
-			VALUES (gen_random_uuid(), NOW(), $1, $2, $3, $4, $5, 'user', '', $6, $7, $6, $8, $9)
-		`, eventType, category, action, outcome, actorID, targetID, targetType, detailsJSON, orgID)
+			VALUES (gen_random_uuid(), NOW(), $1, $2, $3, $4, $5, 'user', $10, $6, $7, $6, $8, $9)
+		`, eventType, category, action, outcome, actorID, targetID, targetType, detailsJSON, orgID, actorIP)
 		if err != nil {
 			s.logger.Warn("failed to record audit event",
 				zap.String("event_type", eventType),
