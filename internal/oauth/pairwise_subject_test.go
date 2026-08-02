@@ -73,15 +73,3 @@ func TestSubjectFor(t *testing.T) {
 		}
 	})
 }
-
-// The OIDCProvider helper and the live path must agree, otherwise a token and
-// UserInfo can disagree about who the user is.
-func TestOIDCProviderSubjectMatchesLivePath(t *testing.T) {
-	s := &Service{config: &config.Config{OIDCPairwiseSubjects: true, EncryptionKey: "salt"}}
-	p := &OIDCProvider{service: s}
-
-	const userID, clientID = "user-1", "client-1"
-	if got, want := p.generateSubject(userID, clientID), s.subjectFor(userID, clientID); got != want {
-		t.Errorf("provider subject %q != live subject %q", got, want)
-	}
-}

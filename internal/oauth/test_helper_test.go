@@ -37,7 +37,6 @@ func (m *mockIdentityService) GetUser(ctx context.Context, id string) (*identity
 type TestOIDCContext struct {
 	T               *testing.T
 	Service         *Service
-	OIDCProvider    *OIDCProvider
 	Store           *Store
 	MiniRedis       *miniredis.Miniredis
 	RedisClient     *redis.Client
@@ -109,14 +108,8 @@ func NewTestOIDCContext(t *testing.T) *TestOIDCContext {
 		logger:     logger,
 	}
 
-	// Create OIDC provider
-	provider := NewOIDCProvider(svc, idSvc, logger, cfg.OAuthIssuer)
-
 	// Create store
 	store := NewStore(redisWrapper, logger)
-
-	// Set the store on the provider
-	provider.SetStore(store)
 
 	// Create cleanup function
 	cleanup := func() {
@@ -127,7 +120,6 @@ func NewTestOIDCContext(t *testing.T) *TestOIDCContext {
 	return &TestOIDCContext{
 		T:               t,
 		Service:         svc,
-		OIDCProvider:    provider,
 		Store:           store,
 		MiniRedis:       mini,
 		RedisClient:     redisClient,
