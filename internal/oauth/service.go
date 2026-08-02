@@ -139,6 +139,7 @@ type OIDCDiscovery struct {
 	UserInfoEndpoint                  string   `json:"userinfo_endpoint"`
 	JwksURI                           string   `json:"jwks_uri"`
 	RegistrationEndpoint              string   `json:"registration_endpoint,omitempty"`
+	DeviceAuthorizationEndpoint       string   `json:"device_authorization_endpoint,omitempty"`
 	ScopesSupported                   []string `json:"scopes_supported"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
 	GrantTypesSupported               []string `json:"grant_types_supported"`
@@ -1298,6 +1299,14 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 		oauth.POST("/token", svc.handleToken)
 		oauth.OPTIONS("/token", svc.handleToken)
 
+		// Device authorization grant (RFC 8628). The device asks here for a code
+		// pair; it then polls /token with grant_type=device_code. The two
+		// verification routes back the page the user opens on a second device.
+		oauth.POST("/device_authorization", svc.handleDeviceAuthorization)
+		oauth.OPTIONS("/device_authorization", svc.handleDeviceAuthorization)
+		oauth.GET("/device/lookup", svc.handleDeviceVerificationLookup)
+		oauth.POST("/device/decision", svc.handleDeviceVerificationDecision)
+
 		// Token introspection & revocation
 		// RFC 7662 §2.1 / RFC 7009 §2.1: both endpoints require client
 		// authentication. They were previously reachable unauthenticated, so
@@ -1404,7 +1413,10 @@ func (s *Service) handleDiscovery(c *gin.Context) {
 		UserInfoEndpoint:      base + "/oauth/userinfo",
 		JwksURI:               base + "/.well-known/jwks.json",
 		RegistrationEndpoint:  base + "/oauth/register",
-		ScopesSupported:       []string{"openid", "profile", "email", "offline_access"},
+		// RFC 8628 §4: advertising this is how an input-constrained client
+		// discovers it can use the device flow instead of giving up on a browser.
+		DeviceAuthorizationEndpoint: base + "/oauth/device_authorization",
+		ScopesSupported:             []string{"openid", "profile", "email", "offline_access"},
 		// Only the authorization code flow is implemented: the authorize path
 		// always issues a code (see the response_type it sets on the consent
 		// redirect), and no handler produces an implicit or hybrid response.
@@ -1412,7 +1424,7 @@ func (s *Service) handleDiscovery(c *gin.Context) {
 		// clients down a flow that silently returns a code instead. Implicit is
 		// also removed outright by OAuth 2.1, so narrowing is the right direction.
 		ResponseTypesSupported:            []string{"code"},
-		GrantTypesSupported:               []string{"authorization_code", "refresh_token", "client_credentials", grantTypeTokenExchange},
+		GrantTypesSupported:               []string{"authorization_code", "refresh_token", "client_credentials", grantTypeTokenExchange, grantTypeDeviceCode},
 		SubjectTypesSupported:             s.discoverySubjectTypes(),
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
@@ -3031,6 +3043,8 @@ func (s *Service) handleToken(c *gin.Context) {
 		s.handleClientCredentialsGrant(c)
 	case grantTypeTokenExchange:
 		s.handleTokenExchangeGrant(c)
+	case grantTypeDeviceCode:
+		s.handleDeviceCodeGrant(c)
 	default:
 		c.JSON(400, gin.H{"error": "unsupported_grant_type"})
 	}

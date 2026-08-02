@@ -36,6 +36,7 @@ import (
 	"github.com/openidx/openidx/internal/common/database"
 	"github.com/openidx/openidx/internal/common/middleware"
 	"github.com/openidx/openidx/internal/common/orgctx"
+	"github.com/openidx/openidx/internal/common/pwhash"
 	"github.com/openidx/openidx/internal/common/secretcrypt"
 	"github.com/openidx/openidx/internal/risk"
 )
@@ -1757,7 +1758,7 @@ func (s *Service) UpdatePassword(ctx context.Context, userID string, newPassword
 		return err
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcryptCost)
+	hashedPassword, err := pwhash.Hash(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -1767,7 +1768,7 @@ func (s *Service) UpdatePassword(ctx context.Context, userID string, newPassword
 		UPDATE users
 		SET password_hash = $2, password_changed_at = $3, password_must_change = false
 		WHERE id = $1 AND org_id = $4
-	`, userID, string(hashedPassword), now, org.ID)
+	`, userID, hashedPassword, now, org.ID)
 
 	if err == nil {
 		actorID := actorIDFromContext(ctx)
@@ -1898,7 +1899,8 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 		s.logger.Debug("Azure AD user attempted password login", zap.String("username", username))
 		return nil, fmt.Errorf("this account uses Azure AD single sign-on")
 	} else {
-		// Local user — verify password with bcrypt
+		// Local user — verify the stored password. Argon2id for anything written
+		// since the switch, bcrypt for credentials not yet upgraded.
 		if passwordHash == "" {
 			s.logger.Debug("User has no password set", zap.String("username", username))
 			return nil, ErrInvalidCredentials
@@ -1906,11 +1908,27 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 
 		s.logger.Debug("Comparing password", zap.String("username", username))
 
-		err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password))
-		if err != nil {
-			s.onFailedLogin(ctx, userID, username, "bad_password")
-			s.logger.Debug("Invalid password", zap.String("username", username), zap.Error(err))
+		ok, needsRehash, verr := pwhash.Verify(passwordHash, password)
+		if verr != nil {
+			// An unreadable stored hash is an operational fault, not a wrong
+			// password. Logging it as a failed login would bury it in noise, so
+			// it is recorded distinctly — the login still fails closed.
+			s.logger.Error("Stored password hash is unreadable",
+				zap.String("user_id", scrubLogValue(userID)), zap.Error(verr))
+			s.onFailedLogin(ctx, userID, username, "unreadable_hash")
 			return nil, ErrInvalidCredentials
+		}
+		if !ok {
+			s.onFailedLogin(ctx, userID, username, "bad_password")
+			s.logger.Debug("Invalid password", zap.String("username", scrubLogValue(username)))
+			return nil, ErrInvalidCredentials
+		}
+		if needsRehash {
+			// Login is the only moment the plaintext is available, so it is the
+			// only place an existing credential can be upgraded. Best-effort: a
+			// failure here must never turn a valid login into a rejected one, so
+			// it is logged and the login proceeds on the old hash.
+			s.upgradePasswordHash(ctx, userID, org.ID, password, passwordHash)
 		}
 	}
 
@@ -1932,6 +1950,39 @@ func (s *Service) AuthenticateUser(ctx context.Context, username, password strin
 
 	// Return full user object
 	return s.GetUser(ctx, userID)
+}
+
+// upgradePasswordHash re-hashes a verified password under the current scheme
+// and stores it, so a credential moves off bcrypt the first time its owner logs
+// in rather than only when they next change it.
+//
+// Deliberately best-effort and non-fatal: the user has already authenticated,
+// and failing their login because a background upgrade could not be written
+// would turn a hardening step into an outage. The write is guarded on the hash
+// we just verified, so two concurrent logins cannot clobber a password that was
+// changed in between.
+func (s *Service) upgradePasswordHash(ctx context.Context, userID, orgID, password, verifiedHash string) {
+	next, err := pwhash.Hash(password)
+	if err != nil {
+		s.logger.Warn("Could not re-hash password for upgrade",
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
+		return
+	}
+	// Compare-and-swap on the exact hash we just verified. If the password was
+	// changed between that check and this write — by the user elsewhere, or by an
+	// admin reset — the WHERE misses and the new credential survives. Re-reading
+	// the row here instead would reintroduce the race it is meant to close.
+	//
+	// password_changed_at is left alone: the credential has not changed, only its
+	// storage, and moving the timestamp would silently extend the account's
+	// password-expiry clock.
+	if _, err := s.db.Pool.Exec(ctx, `
+		UPDATE users SET password_hash = $2
+		WHERE id = $1 AND org_id = $3 AND password_hash = $4
+	`, userID, next, orgID, verifiedHash); err != nil {
+		s.logger.Warn("Could not store upgraded password hash",
+			zap.String("user_id", scrubLogValue(userID)), zap.Error(err))
+	}
 }
 
 // onFailedLogin applies the lockout counter and leaves an audit trail for a
@@ -1970,7 +2021,7 @@ func (s *Service) SetPassword(ctx context.Context, userID string, password strin
 	}
 
 	// Hash password
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	hash, err := pwhash.Hash(password)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -1980,7 +2031,7 @@ func (s *Service) SetPassword(ctx context.Context, userID string, password strin
 		UPDATE users
 		SET password_hash = $2, password_changed_at = $3, password_must_change = false
 		WHERE id = $1 AND org_id = $4
-	`, userID, string(hash), now, org.ID)
+	`, userID, hash, now, org.ID)
 	if err != nil {
 		return err
 	}
@@ -4749,8 +4800,13 @@ func (s *Service) handleChangePassword(c *gin.Context) {
 		return
 	}
 
-	// Local user — verify current password using bcrypt
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.CurrentPassword)); err != nil {
+	// Local user — verify the current password (Argon2id, or bcrypt for a
+	// credential not yet upgraded).
+	if ok, _, verr := pwhash.Verify(passwordHash, req.CurrentPassword); verr != nil || !ok {
+		if verr != nil {
+			s.logger.Error("Stored password hash is unreadable",
+				zap.String("user_id", scrubLogValue(userID)), zap.Error(verr))
+		}
 		c.JSON(400, gin.H{"error": "current password is incorrect"})
 		return
 	}
@@ -5111,10 +5167,10 @@ func (s *Service) handleResetPassword(c *gin.Context) {
 		return
 	}
 
-	// Hash before opening the transaction: bcrypt at cost 12 takes ~300ms, and
-	// holding the token's row lock for that long would serialize unrelated
-	// resets behind it.
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
+	// Hash before opening the transaction: a memory-hard hash takes tens of
+	// milliseconds, and holding the token's row lock for that long would
+	// serialize unrelated resets behind it.
+	hashedPassword, err := pwhash.Hash(req.Password)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to process password"})
 		return
@@ -5159,7 +5215,7 @@ func (s *Service) handleResetPassword(c *gin.Context) {
 
 	if _, err = tx.Exec(ctx,
 		"UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2 AND org_id = $3",
-		string(hashedPassword), userID, org.ID); err != nil {
+		hashedPassword, userID, org.ID); err != nil {
 		c.JSON(500, gin.H{"error": "Failed to update password"})
 		return
 	}
@@ -5808,11 +5864,11 @@ func (s *Service) handleAcceptInvitation(c *gin.Context) {
 	}
 
 	// Set password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
+	hashedPassword, err := pwhash.Hash(req.Password)
 	if err == nil {
 		s.db.Pool.Exec(ctx,
 			"UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2 AND org_id = $3",
-			string(hashedPassword), user.ID, org.ID)
+			hashedPassword, user.ID, org.ID)
 	}
 
 	// Assign roles (only roles within the caller's org)

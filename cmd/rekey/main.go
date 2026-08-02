@@ -10,6 +10,14 @@
 // registry to maintain. Vault secrets (a different ciphertext format) and
 // plaintext are ignored. Idempotent; -dry-run (the default) writes nothing.
 //
+// json/jsonb columns are scanned the same way: the document is walked and every
+// *string* carrying the prefix is re-sealed, at any depth. That keeps the
+// no-registry property — a JSON-embedded secret is recognized by its tag, not by
+// a field name someone has to remember to add here. Without this, a secret in a
+// JSON blob (e.g. the Ziti controller admin password in system_settings.value)
+// was invisible to rotation: the keyring would move forward while that value
+// stayed sealed under a key the operator believed had been retired.
+//
 // Usage:
 //
 //	ENCRYPTION_KEY=... ENCRYPTION_KEYS="1:<b64>,2:<b64>" ENCRYPTION_ACTIVE_KEK_ID=2 \
@@ -19,6 +27,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -84,6 +93,10 @@ func main() {
 	if err != nil {
 		fatal("enumerate columns: %v", err)
 	}
+	jcols, err := jsonColumns(ctx, pool)
+	if err != nil {
+		fatal("enumerate json columns: %v", err)
+	}
 
 	var totalResealed, totalErr, scanned int
 	for _, c := range cols {
@@ -95,6 +108,19 @@ func main() {
 		n, e := rekeyColumn(ctx, pool, cipher, c, active, *batch, *dryRun)
 		if n > 0 || e > 0 {
 			fmt.Printf("  %-48s resealed=%d errors=%d\n", name, n, e)
+		}
+		totalResealed += n
+		totalErr += e
+	}
+	for _, c := range jcols {
+		name := c.table + "." + c.col
+		if skip[name] {
+			continue
+		}
+		scanned++
+		n, e := rekeyJSONColumn(ctx, pool, cipher, c, active, *batch, *dryRun)
+		if n > 0 || e > 0 {
+			fmt.Printf("  %-48s resealed=%d errors=%d (json)\n", name, n, e)
 		}
 		totalResealed += n
 		totalErr += e
@@ -117,6 +143,17 @@ func main() {
 // textColumns returns every text/varchar/char column in the public schema whose
 // table has a single-column primary key (needed to update rows by id).
 func textColumns(ctx context.Context, pool *pgxpool.Pool) ([]colRef, error) {
+	return columnsOfTypes(ctx, pool, []string{"text", "character varying", "character"})
+}
+
+// jsonColumns returns every json/jsonb column under the same PK rule.
+func jsonColumns(ctx context.Context, pool *pgxpool.Pool) ([]colRef, error) {
+	return columnsOfTypes(ctx, pool, []string{"json", "jsonb"})
+}
+
+// columnsOfTypes lists public-schema columns of the given data types belonging
+// to a table with exactly one primary-key column.
+func columnsOfTypes(ctx context.Context, pool *pgxpool.Pool, types []string) ([]colRef, error) {
 	pkRows, err := pool.Query(ctx, `
 		SELECT tc.table_name, kcu.column_name
 		  FROM information_schema.table_constraints tc
@@ -140,8 +177,8 @@ func textColumns(ctx context.Context, pool *pgxpool.Pool) ([]colRef, error) {
 	rows, err := pool.Query(ctx, `
 		SELECT table_name, column_name FROM information_schema.columns
 		 WHERE table_schema = 'public'
-		   AND data_type IN ('text','character varying','character')
-		 ORDER BY table_name, column_name`)
+		   AND data_type = ANY($1)
+		 ORDER BY table_name, column_name`, types)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +260,121 @@ func rekeyColumn(ctx context.Context, pool *pgxpool.Pool, cipher *secretcrypt.Ci
 		if dryRun || len(items) < batch || progress == 0 {
 			return resealed, errs
 		}
+	}
+}
+
+// rekeyJSONColumn re-seals secretcrypt values embedded anywhere inside a
+// json/jsonb column. Rows are pre-filtered in SQL on the tag appearing in the
+// serialized document — the tag and its base64 payload are never JSON-escaped,
+// so a tagged value always shows up literally — and the decision for each
+// individual string is made during the walk, not by the LIKE.
+func rekeyJSONColumn(ctx context.Context, pool *pgxpool.Pool, cipher *secretcrypt.Cipher, c colRef, active, batch int, dryRun bool) (resealed, errs int) {
+	tbl := pgx.Identifier{c.table}.Sanitize()
+	col := pgx.Identifier{c.col}.Sanitize()
+	pk := pgx.Identifier{c.pk}.Sanitize()
+	activePrefix := fmt.Sprintf("encv2:%d:", active)
+
+	q := fmt.Sprintf(`SELECT %s::text, %s::text FROM %s
+		 WHERE %s::text LIKE '%%encv1:%%' OR %s::text LIKE '%%encv2:%%'
+		 LIMIT %d`, pk, col, tbl, col, col, batch)
+
+	for {
+		rows, err := pool.Query(ctx, q)
+		if err != nil {
+			return resealed, errs + 1
+		}
+		type item struct{ id, doc string }
+		var items []item
+		for rows.Next() {
+			var id, d string
+			if rows.Scan(&id, &d) == nil {
+				items = append(items, item{id, d})
+			}
+		}
+		rows.Close()
+		if len(items) == 0 {
+			return resealed, errs
+		}
+
+		u := fmt.Sprintf("UPDATE %s SET %s = $1 WHERE %s::text = $2", tbl, col, pk)
+		progress := 0
+		for _, it := range items {
+			// UseNumber keeps integers exact: decoding into float64 would rewrite
+			// a large id as 1.2345678901234568e+18 and corrupt untouched data.
+			dec := json.NewDecoder(strings.NewReader(it.doc))
+			dec.UseNumber()
+			var doc any
+			if err := dec.Decode(&doc); err != nil {
+				errs++
+				continue
+			}
+			next, n, e := resealJSON(doc, cipher, activePrefix)
+			errs += e
+			if n == 0 {
+				continue
+			}
+			blob, merr := json.Marshal(next)
+			if merr != nil {
+				errs++
+				continue
+			}
+			if dryRun {
+				resealed += n
+				progress++
+				continue
+			}
+			if _, uerr := pool.Exec(ctx, u, string(blob), it.id); uerr != nil {
+				errs++
+				continue
+			}
+			resealed += n
+			progress++
+		}
+		if dryRun || len(items) < batch || progress == 0 {
+			return resealed, errs
+		}
+	}
+}
+
+// resealJSON walks a decoded JSON value and re-seals every string that carries a
+// secretcrypt tag and is not already under the active KEK. Non-string leaves are
+// returned untouched, so unrelated fields survive the round trip byte-for-byte.
+func resealJSON(v any, cipher *secretcrypt.Cipher, activePrefix string) (out any, resealed, errs int) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, val := range t {
+			nv, n, e := resealJSON(val, cipher, activePrefix)
+			t[k] = nv
+			resealed += n
+			errs += e
+		}
+		return t, resealed, errs
+	case []any:
+		for i, val := range t {
+			nv, n, e := resealJSON(val, cipher, activePrefix)
+			t[i] = nv
+			resealed += n
+			errs += e
+		}
+		return t, resealed, errs
+	case string:
+		if !secretcrypt.IsEncrypted(t) || strings.HasPrefix(t, activePrefix) {
+			return t, 0, 0
+		}
+		pt, derr := cipher.Decrypt(t)
+		if derr != nil {
+			return t, 0, 1
+		}
+		nv, eerr := cipher.Encrypt(pt)
+		if eerr != nil {
+			return t, 0, 1
+		}
+		if nv == t {
+			return t, 0, 0
+		}
+		return nv, 1, 0
+	default:
+		return v, 0, 0
 	}
 }
 

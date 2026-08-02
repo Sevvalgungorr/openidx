@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/pquerna/otp/totp"
-	"golang.org/x/crypto/bcrypt"
+
+	"github.com/openidx/openidx/internal/common/pwhash"
 )
 
 // Multi-statement writes that were not transactions.
@@ -114,8 +115,11 @@ func TestResetTokenIsSpentExactlyOnceUnderConcurrency(t *testing.T) {
 		`SELECT password_hash FROM users WHERE id = $1 AND org_id = $2`, userID, authOrgA).Scan(&hash); err != nil {
 		t.Fatalf("read hash: %v", err)
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte("BrandNewPass1!")) != nil {
-		t.Error("password was not updated by the accepted reset")
+	// Verified through pwhash rather than bcrypt directly: the reset path now
+	// writes Argon2id, and asserting one specific algorithm here would make this
+	// test a check on the hashing scheme instead of on the reset committing.
+	if ok, _, err := pwhash.Verify(hash, "BrandNewPass1!"); err != nil || !ok {
+		t.Errorf("password was not updated by the accepted reset (ok=%v err=%v)", ok, err)
 	}
 }
 

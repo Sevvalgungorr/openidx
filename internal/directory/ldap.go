@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode/utf16"
 
@@ -472,8 +473,21 @@ func (c *LDAPConnector) userAttributes() []string {
 	return attrs
 }
 
-// pagedSearch performs a paged LDAP search
+// defaultReferralHopLimit bounds referral chasing when the config leaves it 0.
+// Real forests nest a couple of levels; anything deeper is far more likely to be
+// a loop than a topology.
+const defaultReferralHopLimit = 3
+
+// pagedSearch performs a paged LDAP search, following continuation references
+// when the directory is configured to allow it.
 func (c *LDAPConnector) pagedSearch(conn *ldap.Conn, baseDN, filter string, attrs []string, pageSize int) ([]*ldap.Entry, error) {
+	return c.pagedSearchOn(conn, baseDN, filter, attrs, pageSize, map[string]bool{}, 0)
+}
+
+// pagedSearchOn is pagedSearch plus the referral-chasing state: visited records
+// the referral URLs already followed (so a forest that points back at itself
+// terminates), and depth counts hops against the limit.
+func (c *LDAPConnector) pagedSearchOn(conn *ldap.Conn, baseDN, filter string, attrs []string, pageSize int, visited map[string]bool, depth int) ([]*ldap.Entry, error) {
 	searchReq := ldap.NewSearchRequest(
 		baseDN,
 		ldap.ScopeWholeSubtree,
@@ -485,6 +499,7 @@ func (c *LDAPConnector) pagedSearch(conn *ldap.Conn, baseDN, filter string, attr
 	)
 
 	var allEntries []*ldap.Entry
+	var referrals []string
 
 	for {
 		result, err := conn.Search(searchReq)
@@ -493,6 +508,7 @@ func (c *LDAPConnector) pagedSearch(conn *ldap.Conn, baseDN, filter string, attr
 		}
 
 		allEntries = append(allEntries, result.Entries...)
+		referrals = append(referrals, result.Referrals...)
 
 		pagingControl := ldap.FindControl(result.Controls, ldap.ControlTypePaging)
 		if pagingControl == nil {
@@ -509,11 +525,135 @@ func (c *LDAPConnector) pagedSearch(conn *ldap.Conn, baseDN, filter string, attr
 		searchReq.Controls[0].(*ldap.ControlPaging).SetCookie(paging.Cookie)
 	}
 
+	if len(referrals) > 0 {
+		allEntries = append(allEntries,
+			c.chaseReferrals(referrals, filter, attrs, pageSize, visited, depth)...)
+	}
+
 	c.logger.Debug("LDAP search completed",
 		zap.String("baseDN", baseDN),
 		zap.String("filter", filter),
 		zap.Int("results", len(allEntries)),
+		zap.Int("referrals", len(referrals)),
 	)
 
 	return allEntries, nil
+}
+
+// chaseReferrals follows continuation references and returns the entries found
+// behind them.
+//
+// A referral is how a directory says "the rest of what you asked for lives over
+// there" — Active Directory emits one per subordinate naming context when a
+// search crosses a domain boundary. Ignoring them does not fail the search; it
+// returns a subset with no indication that anything is missing, which for a sync
+// means users silently absent from the directory import and, with a deprovision
+// action of "disable" or "delete", potentially disabled for having "vanished".
+//
+// Failures here are logged and skipped rather than returned: a referred server
+// being unreachable should degrade the search to what was actually retrievable,
+// not discard the entries the primary server already returned.
+func (c *LDAPConnector) chaseReferrals(refs []string, filter string, attrs []string, pageSize int, visited map[string]bool, depth int) []*ldap.Entry {
+	if !c.cfg.FollowReferrals {
+		c.logger.Debug("LDAP referrals ignored (follow_referrals is off); results may be partial",
+			zap.Int("referrals", len(refs)))
+		return nil
+	}
+
+	limit := c.cfg.ReferralHopLimit
+	if limit <= 0 {
+		limit = defaultReferralHopLimit
+	}
+	if depth >= limit {
+		c.logger.Warn("LDAP referral hop limit reached; not following further",
+			zap.Int("depth", depth), zap.Int("limit", limit))
+		return nil
+	}
+
+	var out []*ldap.Entry
+	for _, ref := range refs {
+		if visited[ref] {
+			continue
+		}
+		visited[ref] = true
+
+		u, refBase, err := parseReferral(ref)
+		if err != nil {
+			c.logger.Warn("Skipping unusable LDAP referral",
+				zap.String("referral", ref), zap.Error(err))
+			continue
+		}
+
+		entries, err := c.searchReferral(u, refBase, filter, attrs, pageSize, visited, depth)
+		if err != nil {
+			c.logger.Warn("LDAP referral could not be followed; results may be partial",
+				zap.String("referral", ref), zap.Error(err))
+			continue
+		}
+		out = append(out, entries...)
+	}
+	return out
+}
+
+// parseReferral validates an LDAP referral URL and extracts its base DN.
+//
+// The form is "ldap://host[:port]/<base-dn>[?attrs?scope?filter]" (RFC 4516).
+// Only the host and base DN are taken: the attribute list, scope and filter a
+// referral may carry are the referring server's suggestion, and honouring them
+// would let the directory redefine what the sync asks for.
+//
+// A referral with no base DN is rejected rather than defaulted. "Same base on
+// another host" is what a server that refers to itself produces, and following
+// it re-runs the identical search until the hop limit instead of finding
+// anything new.
+func parseReferral(ref string) (*url.URL, string, error) {
+	u, err := url.Parse(ref)
+	if err != nil {
+		return nil, "", fmt.Errorf("malformed referral URL: %w", err)
+	}
+	if u.Scheme != "ldap" && u.Scheme != "ldaps" {
+		return nil, "", fmt.Errorf("referral scheme %q is not ldap/ldaps", u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, "", errors.New("referral has no host")
+	}
+	base, err := url.PathUnescape(strings.TrimPrefix(u.Path, "/"))
+	if err != nil {
+		return nil, "", fmt.Errorf("referral base DN is not decodable: %w", err)
+	}
+	if base == "" {
+		return nil, "", errors.New("referral has no base DN")
+	}
+	return u, base, nil
+}
+
+// searchReferral dials one referral, binds with the configured service
+// credentials and runs the same search against the referred base DN.
+func (c *LDAPConnector) searchReferral(u *url.URL, refBase, filter string, attrs []string, pageSize int, visited map[string]bool, depth int) ([]*ldap.Entry, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.cfg.SkipTLSVerify, //nolint:gosec // mirrors the primary connection's configured policy
+		ServerName:         u.Hostname(),
+	}
+
+	conn, err := ldap.DialURL(u.Scheme+"://"+u.Host, ldap.DialWithTLSConfig(tlsConfig))
+	if err != nil {
+		return nil, fmt.Errorf("dial referral: %w", err)
+	}
+	defer conn.Close()
+
+	// StartTLS on a plain referral when the primary connection uses it, so a
+	// referral cannot quietly downgrade the bind credentials onto cleartext.
+	if u.Scheme == "ldap" && c.cfg.StartTLS {
+		if err := conn.StartTLS(tlsConfig); err != nil {
+			return nil, fmt.Errorf("referral StartTLS: %w", err)
+		}
+	}
+
+	if c.cfg.BindDN != "" {
+		if err := conn.Bind(c.cfg.BindDN, c.cfg.BindPassword); err != nil {
+			return nil, fmt.Errorf("bind on referral: %w", err)
+		}
+	}
+
+	return c.pagedSearchOn(conn, refBase, filter, attrs, pageSize, visited, depth+1)
 }

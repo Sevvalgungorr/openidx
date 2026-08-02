@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+
+	"github.com/openidx/openidx/internal/common/secretcrypt"
 )
 
 // AES-256-GCM for the stored Ziti controller admin password.
@@ -16,20 +18,14 @@ import (
 // code existed to supply one encrypter. It lives next to its only consumer now
 // rather than in a shared package, because one caller is not a library.
 //
-// It is deliberately NOT internal/common/secretcrypt, which is the better
-// facility (KEK keyring, rotation, noop mode) and would otherwise be the
-// obvious home. The formats are incompatible in a way that fails silently:
-// this encrypter writes an untagged base64(nonce||ciphertext), while
-// secretcrypt tags its output ("encv1:"/"encv2:<id>:") and, by design, passes
-// an *untagged* value through Decrypt unchanged so that plaintext survives a
-// rollout. Feeding an already-encrypted Ziti password to secretcrypt would
-// therefore return the base64 blob as if it were the password — no error, just
-// a wrong secret handed to a controller login. Migrating to secretcrypt means
-// re-encrypting the stored value under a tagged format first; that is a data
-// migration, not a refactor, and is left as follow-up.
+// As of migration v124 this type is the LEGACY READER only: new values are
+// written through internal/common/secretcrypt by zitiSecretCipher below, so the
+// Ziti password uses the same tagged format and the same KEK keyring as every
+// other secret column. Encrypt is kept because reconstructing a pre-v124 value
+// is exactly what the migration and its tests need.
 //
 // The wire format is preserved byte-for-byte so that passwords encrypted
-// before this move keep decrypting.
+// before that move keep decrypting.
 
 // secretCipher encrypts a single secret with AES-256-GCM under a fixed key.
 type secretCipher struct {
@@ -96,4 +92,61 @@ func (c *secretCipher) gcm() (cipher.AEAD, error) {
 		return nil, fmt.Errorf("failed to create GCM: %w", err)
 	}
 	return gcm, nil
+}
+
+// zitiSecretCipher stores the Ziti controller admin password through
+// internal/common/secretcrypt while still reading the untagged values written
+// before migration v124.
+//
+// Dispatching reads on the version tag is the whole point, not a courtesy.
+// secretcrypt.Decrypt returns an *untagged* value unchanged by design, so that
+// a column mid-rollout still yields its plaintext. Point that at a legacy Ziti
+// ciphertext and it hands back the base64 blob as the password: no error, no
+// log line, just a wrong secret posted to a controller login. So an untagged
+// value is routed to the legacy opener, which authenticates it, rather than to
+// secretcrypt, which would wave it through.
+//
+// Writes always go through secretcrypt, so a saved password is tagged (encv1,
+// or encv2 under the active KEK when ENCRYPTION_KEYS is configured).
+//
+// The tag is also what makes this value reachable by rotation: cmd/rekey walks
+// json/jsonb columns and re-seals any string carrying the prefix, so a password
+// living inside system_settings.value is swept by a key retirement like any
+// other secret column. An untagged write would silently drop back out of that
+// sweep, which is the second reason writes never bypass secretcrypt.
+type zitiSecretCipher struct {
+	sc     *secretcrypt.Cipher
+	legacy *secretCipher
+}
+
+// newZitiSecretCipher builds the cipher pair from the 32-byte encryption key.
+// Both halves take the same key: the formats differ only by the tag, so the
+// legacy reader and secretcrypt's encv1 reader are the same AES-256-GCM.
+func newZitiSecretCipher(key string) (*zitiSecretCipher, error) {
+	legacy, err := newSecretCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	sc, err := secretcrypt.New(key)
+	if err != nil {
+		return nil, err
+	}
+	return &zitiSecretCipher{sc: sc, legacy: legacy}, nil
+}
+
+// Encrypt seals the password under secretcrypt, producing a tagged value.
+func (c *zitiSecretCipher) Encrypt(plaintext string) (string, error) {
+	return c.sc.Encrypt(plaintext)
+}
+
+// Decrypt reads either shape: tagged values via secretcrypt, untagged ones as
+// pre-v124 legacy ciphertext.
+func (c *zitiSecretCipher) Decrypt(stored string) (string, error) {
+	if stored == "" {
+		return "", nil
+	}
+	if secretcrypt.IsEncrypted(stored) {
+		return c.sc.Decrypt(stored)
+	}
+	return c.legacy.Decrypt(stored)
 }

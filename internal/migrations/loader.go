@@ -873,5 +873,19 @@ func allMigrations() []*Migration {
 			UpSQL:       totpThrottleUp,
 			DownSQL:     totpThrottleDown,
 		},
+		{
+			Version:     124,
+			Name:        "ziti_admin_password_secretcrypt_tag",
+			Description: "Tag the stored Ziti controller admin password as secretcrypt \"encv1:\" so it moves onto the shared secret facility instead of the private AES-256-GCM helper in internal/access. The two formats are byte-identical apart from the tag — base64(nonce||ciphertext), AES-256-GCM, no AAD, same ENCRYPTION_KEY — so this is a keyless re-tag, not a re-encryption. The tag is what makes the move safe: secretcrypt passes an untagged value through Decrypt unchanged so plaintext survives a rollout, so an untagged Ziti ciphertext would otherwise have come back as the base64 blob itself and been sent to a controller login as the password, with no error anywhere. Idempotent; rows already tagged are skipped. Reads accept both shapes, so this converges the data rather than gating correctness. Tagging is also what puts the password inside the rotation sweep: cmd/rekey re-seals tagged strings found anywhere in a json/jsonb document, so this value — which lives inside system_settings.value — is carried forward by a key retirement instead of being stranded under a key the operator believes was retired.",
+			UpSQL:       zitiAdminPwTagUp,
+			DownSQL:     zitiAdminPwTagDown,
+		},
+		{
+			Version:     125,
+			Name:        "oauth_device_codes",
+			Description: "Add oauth_device_codes for the RFC 8628 device authorization grant, so input-constrained clients (TV apps, headless CLIs, kiosks) can authorize against a second device instead of being pushed onto a password grant or a copy-pasted token. Stores the device_code only as a SHA-256 hash — it is a bearer credential the client polls with, and a database disclosure should not hand the reader a set of redeemable grants — while user_code is normalized plaintext because the verification page has to look it up from what a human typed; its defence is entropy plus a short lifetime plus throttling, not storage. The unique index on (org_id, user_code) is what makes that lookup unambiguous and deliberately covers expired rows, so a code is never reissued while its previous owner may still be reading it off a screen.",
+			UpSQL:       deviceCodesUp,
+			DownSQL:     deviceCodesDown,
+		},
 	}
 }

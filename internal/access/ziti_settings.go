@@ -61,7 +61,7 @@ func (s ZitiConnSettings) decryptPassword(encKey string) (string, error) {
 	if s.AdminPasswordEnc == "" {
 		return "", nil
 	}
-	enc, err := newSecretCipher(encKey)
+	enc, err := newZitiSecretCipher(encKey)
 	if err != nil {
 		return "", fmt.Errorf("ziti settings: %w", err)
 	}
@@ -102,7 +102,7 @@ func saveZitiConnSettings(ctx context.Context, db *database.PostgresDB, encKey s
 		AdminPasswordEnc:   cur.AdminPasswordEnc, // keep by default (merge)
 	}
 	if in.AdminPassword != "" && in.AdminPassword != maskedSecret {
-		enc, eerr := newSecretCipher(encKey)
+		enc, eerr := newZitiSecretCipher(encKey)
 		if eerr != nil {
 			// Never silently store plaintext — refuse.
 			return fmt.Errorf("ziti settings: cannot encrypt password: %w", eerr)

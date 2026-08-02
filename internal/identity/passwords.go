@@ -14,7 +14,7 @@ import (
 	"github.com/openidx/openidx/internal/common/netutil"
 	"github.com/openidx/openidx/internal/common/orgctx"
 
-	"golang.org/x/crypto/bcrypt"
+	"github.com/openidx/openidx/internal/common/pwhash"
 )
 
 // Password policy.
@@ -103,7 +103,14 @@ func (s *Service) CheckPasswordHistory(ctx context.Context, userID, newPassword 
 		if err := rows.Scan(&hash); err != nil {
 			return false, fmt.Errorf("failed to scan password history row: %w", err)
 		}
-		if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(newPassword)); err == nil {
+		// History rows predate the Argon2id switch, so both forms appear here.
+		// A row we cannot read must not silently count as "not reused" — that
+		// would quietly disable reuse prevention — so it is surfaced.
+		ok, _, verr := pwhash.Verify(hash, newPassword)
+		if verr != nil {
+			return false, fmt.Errorf("failed to compare password history entry: %w", verr)
+		}
+		if ok {
 			return true, nil
 		}
 	}
@@ -216,7 +223,16 @@ func (s *Service) CheckPasswordExpiration(ctx context.Context, userID string) (b
 	return expired, daysRemaining, nil
 }
 
-// bcryptCost is the work factor for every bcrypt hash this service writes.
+// bcryptCost is the work factor for the bcrypt hashes this service still
+// writes: MFA bypass codes, phone-call MFA codes, passwordless tokens and
+// backup codes. User login passwords moved to Argon2id (internal/common/pwhash)
+// and no longer come through here.
+//
+// Those remaining secrets are server-generated, short-lived and single-use, and
+// several are numeric codes whose keyspace — not the hash — is what bounds an
+// offline attack, so memory-hardness buys little while the per-verification
+// memory cost would be paid on every MFA step. bcrypt at a fixed cost remains
+// the right trade for them.
 //
 // Costs were previously mixed: one call site used a hardcoded 12 while every
 // other used bcrypt.DefaultCost (10). Two costs in one system is not a policy,

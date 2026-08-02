@@ -24,6 +24,7 @@ type DiscoveryDocument struct {
 	// Optional but recommended fields
 	UserInfoEndpoint                  string   `json:"userinfo_endpoint,omitempty"`                     // Optional
 	RegistrationEndpoint              string   `json:"registration_endpoint,omitempty"`                 // Optional
+	DeviceAuthorizationEndpoint       string   `json:"device_authorization_endpoint,omitempty"`         // Optional (RFC 8628)
 	ScopesSupported                   []string `json:"scopes_supported,omitempty"`                      // Optional
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported,omitempty"` // Optional
 	ClaimsSupported                   []string `json:"claims_supported,omitempty"`                      // Optional
@@ -113,6 +114,8 @@ func buildDiscoveryDocument(issuer string) *DiscoveryDocument {
 		TokenEndpoint:         issuer + "/oauth/token",
 		JWKSURI:               issuer + "/.well-known/jwks.json",
 		RegistrationEndpoint:  issuer + "/oauth/register",
+		// RFC 8628 §4 — how an input-constrained client discovers the device flow.
+		DeviceAuthorizationEndpoint: issuer + "/oauth/device_authorization",
 		// Authorization Code Flow only. The implicit and hybrid entries that
 		// used to be listed here were never implemented — the comments calling
 		// them "deprecated but supported" were half right.
@@ -192,8 +195,16 @@ func buildDiscoveryDocument(issuer string) *DiscoveryDocument {
 			"authorization_code", // Authorization code flow (recommended)
 			"refresh_token",      // Refresh token
 			"client_credentials", // Client credentials
-			"password",           // Resource owner password credentials (not recommended)
+			// "password" used to be listed here and is not implemented: the token
+			// endpoint has no such case, so a client that believed this
+			// advertisement got unsupported_grant_type. Same class of mistake as
+			// the implicit/hybrid response types removed above — advertising a
+			// flow does not create it, it just sends conforming clients down a
+			// path that fails. Removed rather than implemented: the device grant
+			// below is what input-constrained clients should use instead, and
+			// OAuth 2.1 drops the password grant outright.
 			"urn:ietf:params:oauth:grant-type:token-exchange", // RFC 8693 token exchange
+			"urn:ietf:params:oauth:grant-type:device_code",    // RFC 8628 device grant
 		},
 		CodeChallengeMethodsSupported: []string{
 			"S256", // SHA-256 — the only advertised PKCE method. "plain" offers no

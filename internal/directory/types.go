@@ -27,6 +27,18 @@ type LDAPConfig struct {
 	DeprovisionAction string           `json:"deprovision_action"` // "disable" or "delete"
 	DirectoryType     string           `json:"directory_type"`     // "active_directory" or "openldap"
 	AttributeMapping  AttributeMapping `json:"attribute_mapping"`
+
+	// FollowReferrals enables chasing LDAP continuation references returned by a
+	// search. It is opt-in because chasing one means opening a connection to a
+	// host named by the directory server rather than by this configuration: a
+	// forest that is misconfigured — or a directory an attacker can write a
+	// referral into — can point the sync at an arbitrary address. Off, a search
+	// spanning multiple naming contexts silently returns only the local slice.
+	FollowReferrals bool `json:"follow_referrals"`
+	// ReferralHopLimit bounds how deep referrals are chased. 0 uses
+	// defaultReferralHopLimit. A referred server can itself return referrals, so
+	// without a bound a cycle would loop until the sync times out.
+	ReferralHopLimit int `json:"referral_hop_limit"`
 }
 
 // AzureADConfig holds Azure AD / Entra ID connection and sync configuration
