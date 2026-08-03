@@ -352,21 +352,42 @@ func (s *Service) GetDeviceTrustSettings(ctx context.Context) (*DeviceTrustSetti
 	return &settings, nil
 }
 
-// UpdateDeviceTrustSettings updates the settings
+// UpdateDeviceTrustSettings upserts the org's device-trust settings. On a fresh
+// install there is no row yet, so a plain UPDATE would silently affect zero rows
+// and the admin's changes (e.g. enabling auto-approve for known IPs) would never
+// persist. This inserts when absent and updates when present, scoped to the
+// caller's org.
 func (s *Service) UpdateDeviceTrustSettings(ctx context.Context, settings *DeviceTrustSettings) error {
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return err
+	}
+
+	if settings.RequestExpiryHours <= 0 {
+		settings.RequestExpiryHours = 72
+	}
+
+	// Upsert the single per-org settings row. Use the deterministic
+	// (org_id) match so repeated saves update the same row.
 	query := `
-		UPDATE device_trust_settings
-		SET require_approval = $1, auto_approve_known_ips = $2, auto_approve_corporate_devices = $3,
-			request_expiry_hours = $4, notify_admins = $5, notify_user_on_decision = $6, updated_at = NOW()
-		WHERE id = $7
+		INSERT INTO device_trust_settings (
+			id, org_id, require_approval, auto_approve_known_ips, auto_approve_corporate_devices,
+			request_expiry_hours, notify_admins, notify_user_on_decision, updated_at
+		) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW())
+		ON CONFLICT (org_id) DO UPDATE SET
+			require_approval = EXCLUDED.require_approval,
+			auto_approve_known_ips = EXCLUDED.auto_approve_known_ips,
+			auto_approve_corporate_devices = EXCLUDED.auto_approve_corporate_devices,
+			request_expiry_hours = EXCLUDED.request_expiry_hours,
+			notify_admins = EXCLUDED.notify_admins,
+			notify_user_on_decision = EXCLUDED.notify_user_on_decision,
+			updated_at = NOW()
 	`
 
-	_, err := s.db.Pool.Exec(ctx, query,
-		settings.RequireApproval, settings.AutoApproveKnownIPs, settings.AutoApproveCorporateDevs,
+	_, err = s.db.Pool.Exec(ctx, query,
+		org.ID, settings.RequireApproval, settings.AutoApproveKnownIPs, settings.AutoApproveCorporateDevs,
 		settings.RequestExpiryHours, settings.NotifyAdmins, settings.NotifyUserOnDecision,
-		settings.ID,
 	)
-
 	return err
 }
 

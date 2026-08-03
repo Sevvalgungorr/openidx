@@ -887,5 +887,12 @@ func allMigrations() []*Migration {
 			UpSQL:       deviceCodesUp,
 			DownSQL:     deviceCodesDown,
 		},
+		{
+			Version:     126,
+			Name:        "device_trust_settings_unique_org",
+			Description: "Add a unique index on device_trust_settings.org_id so UpdateDeviceTrustSettings can upsert (ON CONFLICT (org_id)). The table is a per-org singleton but only had a PK on id; on a fresh install with no settings row the old UPDATE ... WHERE id=? affected zero rows, so an admin enabling auto-approve-known-IPs (etc.) never persisted, leaving clientless BrowZer logins stuck behind manual device approval. Collapses any accidental duplicate org rows (keeping the newest) before creating the index.",
+			UpSQL:       deviceTrustSettingsUniqueOrgUp,
+			DownSQL:     deviceTrustSettingsUniqueOrgDown,
+		},
 	}
 }
