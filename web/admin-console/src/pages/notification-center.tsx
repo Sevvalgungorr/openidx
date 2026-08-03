@@ -103,7 +103,7 @@ export function NotificationCenterPage() {
   // Mark as read mutation
   const markReadMutation = useMutation({
     mutationFn: (ids: string[]) =>
-      api.post('/api/v1/notifications/mark-read', { ids }),
+      api.post('/api/v1/notifications/mark-read', { notification_ids: ids }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-history'] })
       toast({ title: 'Notification marked as read' })
@@ -115,7 +115,10 @@ export function NotificationCenterPage() {
   const markAllReadMutation = useMutation({
     mutationFn: () => {
       const unreadIds = notifications.filter(n => !n.read).map(n => n.id)
-      return api.post('/api/v1/notifications/mark-read', { ids: unreadIds })
+      if (unreadIds.length === 0) {
+        return Promise.resolve(null)
+      }
+      return api.post('/api/v1/notifications/mark-read', { notification_ids: unreadIds })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-history'] })
