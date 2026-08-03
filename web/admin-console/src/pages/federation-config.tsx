@@ -653,10 +653,10 @@ function ClaimsMappingTab() {
   const { data: appsData } = useQuery({
     queryKey: ['applications-list'],
     queryFn: () =>
-      api.get<{ data: SimpleApplication[] }>('/api/v1/applications'),
+      api.get<SimpleApplication[]>('/api/v1/applications'),
   })
 
-  const applications = appsData?.data || []
+  const applications = appsData || []
 
   const { data: claimsData, isLoading: claimsLoading } = useQuery({
     queryKey: ['custom-claims', selectedAppId],

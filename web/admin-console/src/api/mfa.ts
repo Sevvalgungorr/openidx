@@ -101,10 +101,12 @@ export const mfaApi = {
    */
   listWebAuthnCredentials: async (): Promise<WebAuthnCredential[]> => {
     try {
-      const response = await api.get<{ credentials: WebAuthnCredential[]; count: number }>(
+      // Backend returns a bare array (and the WebAuthnCredentials page reads it
+      // as WebAuthnCredential[]); read it the same way here.
+      const response = await api.get<WebAuthnCredential[]>(
         '/api/v1/identity/mfa/webauthn/credentials'
       )
-      return response.credentials || []
+      return response || []
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         throw new Error('Authentication required. Please log in again.')

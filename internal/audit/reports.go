@@ -623,7 +623,12 @@ func (s *Service) handleListExports(c *gin.Context) {
 	}
 
 	c.Header("X-Total-Count", strconv.Itoa(total))
-	c.JSON(http.StatusOK, exports)
+	// Frontend (reports page) and its test read {exports, total}; a bare array
+	// left exportsData?.exports undefined and the list empty.
+	if exports == nil {
+		exports = []ReportExport{}
+	}
+	c.JSON(http.StatusOK, gin.H{"exports": exports, "total": total})
 }
 
 func (s *Service) handleDownloadExport(c *gin.Context) {
@@ -658,7 +663,12 @@ func (s *Service) handleListScheduledReports(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reports)
+	// Frontend (reports page) and its test read {reports}; a bare array left
+	// scheduledData?.reports undefined and the list empty.
+	if reports == nil {
+		reports = []ScheduledReport{}
+	}
+	c.JSON(http.StatusOK, gin.H{"reports": reports})
 }
 
 func (s *Service) handleCreateScheduledReport(c *gin.Context) {

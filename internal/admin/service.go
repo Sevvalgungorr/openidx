@@ -2661,42 +2661,97 @@ func (s *Service) handleRiskAnalytics(c *gin.Context) {
 		return
 	}
 	interval := parsePeriod(c.Query("period"))
+	ctx := c.Request.Context()
 
-	rows, err := s.db.Pool.Query(c.Request.Context(), `
-		SELECT
-			CASE
-				WHEN risk_score BETWEEN 0 AND 25 THEN 'low'
-				WHEN risk_score BETWEEN 26 AND 50 THEN 'medium'
-				WHEN risk_score BETWEEN 51 AND 75 THEN 'high'
-				ELSE 'critical'
-			END as level,
-			COUNT(*) as count
-		FROM login_history
-		WHERE org_id = $2 AND created_at > NOW() - $1::interval
-		GROUP BY 1
-	`, interval, org.ID)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to query risk analytics"})
-		return
+	// The risk-dashboard page reads {risk: RiskOverview}. It previously received
+	// a bare [{level,count}] array, so risk was undefined and the whole page
+	// rendered empty. Build the full overview the UI expects.
+
+	// Average risk score + high-risk logins in the last 24h.
+	var avgRiskScore float64
+	_ = s.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(AVG(risk_score),0) FROM login_history
+		 WHERE org_id = $2 AND created_at > NOW() - $1::interval`, interval, org.ID).Scan(&avgRiskScore)
+
+	var highRiskLogins24h int
+	_ = s.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM login_history
+		 WHERE org_id = $1 AND created_at > NOW() - INTERVAL '24 hours' AND risk_score >= 51`, org.ID).Scan(&highRiskLogins24h)
+
+	// Active (unresolved) security alerts.
+	var activeAlerts int
+	_ = s.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM security_alerts
+		 WHERE org_id = $1 AND status <> 'resolved'`, org.ID).Scan(&activeAlerts)
+
+	// Risk score distribution into fixed buckets (0-20, 21-40, ...).
+	type bucket struct {
+		Bucket string `json:"bucket"`
+		Min    int    `json:"min"`
+		Max    int    `json:"max"`
+		Count  int    `json:"count"`
 	}
-	defer rows.Close()
-
-	var results []map[string]interface{}
-	for rows.Next() {
-		var level string
-		var count int
-		if err := rows.Scan(&level, &count); err != nil {
-			continue
+	buckets := []bucket{
+		{"0-20", 0, 20, 0}, {"21-40", 21, 40, 0}, {"41-60", 41, 60, 0},
+		{"61-80", 61, 80, 0}, {"81-100", 81, 100, 0},
+	}
+	drows, derr := s.db.Pool.Query(ctx,
+		`SELECT LEAST(FLOOR(risk_score/20)::int,4) AS b, COUNT(*)
+		   FROM login_history
+		  WHERE org_id = $2 AND created_at > NOW() - $1::interval
+		  GROUP BY 1`, interval, org.ID)
+	if derr == nil {
+		defer drows.Close()
+		for drows.Next() {
+			var b, cnt int
+			if drows.Scan(&b, &cnt) == nil && b >= 0 && b < len(buckets) {
+				buckets[b].Count = cnt
+			}
 		}
-		results = append(results, map[string]interface{}{
-			"level": level,
-			"count": count,
-		})
 	}
-	if results == nil {
-		results = []map[string]interface{}{}
+
+	// Top risky users by average risk score in the window.
+	type riskyUser struct {
+		UserID       string  `json:"user_id"`
+		Email        string  `json:"email"`
+		Username     string  `json:"username"`
+		AvgRiskScore float64 `json:"avg_risk_score"`
+		LastLogin    string  `json:"last_login"`
+		AnomalyCount int     `json:"anomaly_count"`
 	}
-	c.JSON(200, results)
+	topUsers := []riskyUser{}
+	urows, uerr := s.db.Pool.Query(ctx,
+		`SELECT lh.user_id,
+		        COALESCE(u.email,''), COALESCE(u.username,''),
+		        AVG(lh.risk_score) AS avg_score,
+		        MAX(lh.created_at) AS last_login,
+		        COUNT(*) FILTER (WHERE lh.risk_score >= 51) AS anomalies
+		   FROM login_history lh
+		   LEFT JOIN users u ON u.id = lh.user_id AND u.org_id = lh.org_id
+		  WHERE lh.org_id = $2 AND lh.created_at > NOW() - $1::interval
+		  GROUP BY lh.user_id, u.email, u.username
+		  ORDER BY avg_score DESC
+		  LIMIT 10`, interval, org.ID)
+	if uerr == nil {
+		defer urows.Close()
+		for urows.Next() {
+			var ru riskyUser
+			var last time.Time
+			if urows.Scan(&ru.UserID, &ru.Email, &ru.Username, &ru.AvgRiskScore, &last, &ru.AnomalyCount) == nil {
+				ru.LastLogin = last.Format(time.RFC3339)
+				topUsers = append(topUsers, ru)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"risk": gin.H{
+		"avg_risk_score":           avgRiskScore,
+		"high_risk_logins_24h":     highRiskLogins24h,
+		"active_alerts":            activeAlerts,
+		"impossible_travel_events": 0, // not tracked yet
+		"risk_distribution":        buckets,
+		"top_risky_users":          topUsers,
+	}})
 }
 
 func (s *Service) handleUserAnalytics(c *gin.Context) {

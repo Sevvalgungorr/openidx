@@ -46,9 +46,9 @@ export function BrandingPage() {
   // platform admin (super_admin) sees all and can pick which tenant to brand.
   const { data: orgData, isLoading: orgsLoading } = useQuery({
     queryKey: ['organizations', 'branding'],
-    queryFn: () => api.get<{ organizations: Organization[]; total: number }>('/api/v1/organizations'),
+    queryFn: () => api.get<Organization[]>('/api/v1/organizations'),
   })
-  const orgs = orgData?.organizations ?? []
+  const orgs = orgData ?? []
 
   useEffect(() => {
     if (!orgID && orgs.length > 0) setOrgID(orgs[0].id)

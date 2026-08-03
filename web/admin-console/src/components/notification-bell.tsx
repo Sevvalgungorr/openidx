@@ -28,10 +28,10 @@ export function NotificationBell() {
 
   const { data: countData } = useQuery({
     queryKey: ['notification-count'],
-    queryFn: () => api.get<{ count: number }>('/api/v1/identity/notifications/unread-count'),
+    queryFn: () => api.get<{ unread_count: number }>('/api/v1/identity/notifications/unread-count'),
     refetchInterval: 30000,
   })
-  const unreadCount = countData?.count || 0
+  const unreadCount = countData?.unread_count || 0
 
   const { data: notifData } = useQuery({
     queryKey: ['recent-notifications'],

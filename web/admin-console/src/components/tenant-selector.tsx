@@ -33,10 +33,10 @@ export function TenantSelector() {
 
   const { data } = useQuery({
     queryKey: ['organizations', 'selector'],
-    queryFn: () => api.get<{ organizations: Organization[]; total: number }>('/api/v1/organizations'),
+    queryFn: () => api.get<Organization[]>('/api/v1/organizations'),
   })
 
-  const orgs = data?.organizations ?? []
+  const orgs = data ?? []
 
   return (
     <div className="flex items-center gap-2">

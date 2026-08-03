@@ -228,7 +228,9 @@ func (s *Service) handleUsageAnalytics(c *gin.Context) {
 	`, org.ID).Scan(&activeSessions)
 	result["active_sessions_count"] = activeSessions
 
-	c.JSON(http.StatusOK, result)
+	// Frontend (usage-analytics page) and its unit test read {usage: {...}};
+	// returning the flat object left the whole page blank.
+	c.JSON(http.StatusOK, gin.H{"usage": result})
 }
 
 // handleAPIUsageMetrics returns API usage statistics from the api_usage_metrics table.
@@ -304,7 +306,8 @@ func (s *Service) handleAPIUsageMetrics(c *gin.Context) {
 	result["avg_latency_ms"] = avgLatency
 	result["period"] = period
 
-	c.JSON(http.StatusOK, result)
+	// Frontend reads {api_usage: {...}}.
+	c.JSON(http.StatusOK, gin.H{"api_usage": result})
 }
 
 // handleFeatureAdoption returns feature adoption metrics from the feature_adoption table.
@@ -391,8 +394,11 @@ func (s *Service) handleFeatureAdoption(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_users": totalUsers,
-		"features":    features,
+		// Frontend reads {adoption: {features: [...]}}.
+		"adoption": gin.H{
+			"total_users": totalUsers,
+			"features":    features,
+		},
 	})
 }
 
