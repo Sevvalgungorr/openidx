@@ -894,5 +894,12 @@ func allMigrations() []*Migration {
 			UpSQL:       deviceTrustSettingsUniqueOrgUp,
 			DownSQL:     deviceTrustSettingsUniqueOrgDown,
 		},
+		{
+			Version:     127,
+			Name:        "social_providers_nullable_provider_id",
+			Description: "Drop NOT NULL on social_providers.provider_id. The column is a FK to identity_providers, but the admin console's create-social-provider flow only supplies a provider_key (google/github/...) and no identity_providers UUID, so every create failed with 500 'invalid input syntax for type uuid' (22P02). Nullable provider_id lets an admin register a social-login button and link it to a configured identity provider later.",
+			UpSQL:       socialProvidersNullableProviderIDUp,
+			DownSQL:     socialProvidersNullableProviderIDDown,
+		},
 	}
 }

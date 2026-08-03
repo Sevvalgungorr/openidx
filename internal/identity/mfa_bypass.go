@@ -4,6 +4,7 @@ package identity
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -298,15 +299,25 @@ func (s *Service) ListBypassCodes(ctx context.Context, userID, status string, ac
 	var codes []MFABypassCode
 	for rows.Next() {
 		var c MFABypassCode
+		// used_from_ip is nullable; scanning a NULL into a plain string fails and
+		// would (previously) be silently swallowed by the continue below, so the
+		// whole list came back empty even though total > 0. Scan nullable columns
+		// into sql.Null* and project them onto the struct.
+		var usedFromIP sql.NullString
 		err := rows.Scan(
 			&c.ID, &c.UserID, &c.UserEmail, &c.Reason, &c.GeneratedBy, &c.GeneratorEmail,
 			&c.ValidFrom, &c.ValidUntil, &c.MaxUses, &c.UseCount, &c.Status,
-			&c.UsedAt, &c.UsedFromIP, &c.RevokedAt, &c.RevokedBy, &c.CreatedAt,
+			&c.UsedAt, &usedFromIP, &c.RevokedAt, &c.RevokedBy, &c.CreatedAt,
 		)
 		if err != nil {
+			s.logger.Warn("ListBypassCodes: skipping row that failed to scan", zap.Error(err))
 			continue
 		}
+		c.UsedFromIP = usedFromIP.String
 		codes = append(codes, c)
+	}
+	if codes == nil {
+		codes = []MFABypassCode{}
 	}
 
 	return codes, total, nil

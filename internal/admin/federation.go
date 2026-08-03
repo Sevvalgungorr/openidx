@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -94,7 +95,7 @@ func (s *Service) handleListSocialProviders(c *gin.Context) {
 	}
 
 	rows, err := s.db.Pool.Query(c.Request.Context(),
-		`SELECT sp.id, sp.provider_id, sp.provider_key, sp.display_name, sp.icon_url,
+		`SELECT sp.id, COALESCE(sp.provider_id::text, ''), sp.provider_key, sp.display_name, sp.icon_url,
 		        sp.button_color, sp.button_text, sp.auto_create_users, sp.auto_link_by_email,
 		        sp.default_role, sp.allowed_domains, sp.attribute_mapping, sp.enabled,
 		        sp.sort_order, sp.created_at, sp.updated_at,
@@ -155,6 +156,15 @@ func (s *Service) handleCreateSocialProvider(c *gin.Context) {
 		return
 	}
 
+	// provider_id is an optional FK to identity_providers. The console's create
+	// flow supplies only provider_key, so insert NULL when no UUID is given
+	// (the column is nullable as of migration v127) rather than passing "" into
+	// a uuid column, which 500'd with "invalid input syntax for type uuid".
+	var providerIDArg interface{}
+	if strings.TrimSpace(req.ProviderID) != "" {
+		providerIDArg = req.ProviderID
+	}
+
 	var id string
 	err := s.db.Pool.QueryRow(c.Request.Context(),
 		`INSERT INTO social_providers (provider_id, provider_key, display_name, icon_url,
@@ -162,7 +172,7 @@ func (s *Service) handleCreateSocialProvider(c *gin.Context) {
 		  default_role, allowed_domains, attribute_mapping, enabled, sort_order)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING id`,
-		req.ProviderID, req.ProviderKey, req.DisplayName, req.IconURL,
+		providerIDArg, req.ProviderKey, req.DisplayName, req.IconURL,
 		req.ButtonColor, req.ButtonText, req.AutoCreateUsers, req.AutoLinkByEmail,
 		req.DefaultRole, req.AllowedDomains, req.AttributeMapping, req.Enabled, req.SortOrder,
 	).Scan(&id)
@@ -182,7 +192,7 @@ func (s *Service) handleGetSocialProvider(c *gin.Context) {
 	id := c.Param("id")
 	var p SocialProvider
 	err := s.db.Pool.QueryRow(c.Request.Context(),
-		`SELECT id, provider_id, provider_key, display_name, icon_url,
+		`SELECT id, COALESCE(provider_id::text, ''), provider_key, display_name, icon_url,
 		        button_color, button_text, auto_create_users, auto_link_by_email,
 		        default_role, allowed_domains, attribute_mapping, enabled,
 		        sort_order, created_at, updated_at

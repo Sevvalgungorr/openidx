@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
 
@@ -712,10 +713,54 @@ func (s *Service) deleteSAMLServiceProvider(ctx context.Context, id string) erro
 // Helper functions
 
 // scanSAMLServiceProviders scans a rowset into SAMLServiceProvider structs
-func scanSAMLServiceProviders(rows interface{}) ([]SAMLServiceProvider, error) {
-	// This is a placeholder - actual implementation depends on the row type
-	// The actual implementation is inline in the handler
-	return nil, nil
+func scanSAMLServiceProviders(rows pgx.Rows) ([]SAMLServiceProvider, error) {
+	// The list query selects, in order:
+	//   id, name, description, entity_id, acs_url, slo_url, metadata_url,
+	//   certificate, name_id_format, attribute_mappings, want_assertions_signed,
+	//   encryption_enabled, enabled, created_at, updated_at, last_used_at
+	// slo_url / metadata_url / certificate / last_used_at are nullable, and
+	// description may be NULL — scan them via pointers/COALESCE-equivalents so a
+	// NULL doesn't fail the scan (which previously left the whole list nil).
+	providers := []SAMLServiceProvider{}
+	for rows.Next() {
+		var sp SAMLServiceProvider
+		var description, sloURL, metadataURL, certificate *string
+		var attrMappingsJSON []byte
+		var lastUsedAt *time.Time
+
+		if err := rows.Scan(
+			&sp.ID, &sp.Name, &description, &sp.EntityID, &sp.ACSURL, &sloURL,
+			&metadataURL, &certificate, &sp.NameIDFormat, &attrMappingsJSON,
+			&sp.WantAssertionsSigned, &sp.EncryptionEnabled, &sp.Enabled,
+			&sp.CreatedAt, &sp.UpdatedAt, &lastUsedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if description != nil {
+			sp.Description = *description
+		}
+		if sloURL != nil {
+			sp.SLOURL = *sloURL
+		}
+		if metadataURL != nil {
+			sp.MetadataURL = *metadataURL
+		}
+		if certificate != nil {
+			sp.Certificate = *certificate
+		}
+		if lastUsedAt != nil {
+			sp.LastUsedAt = lastUsedAt
+		}
+		if len(attrMappingsJSON) > 0 {
+			_ = json.Unmarshal(attrMappingsJSON, &sp.AttributeMappings)
+		}
+		providers = append(providers, sp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return providers, nil
 }
 
 // parseMetadataIntoRequest extracts SP configuration from metadata XML
