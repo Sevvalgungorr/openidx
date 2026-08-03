@@ -594,14 +594,22 @@ func (s *Service) getWebAuthnCredentials(ctx context.Context, userID string) ([]
 }
 
 func (s *Service) storeWebAuthnCredential(ctx context.Context, cred *WebAuthnCredential) error {
+	// mfa_webauthn.org_id is NOT NULL. Omitting it made every registration's
+	// final INSERT fail, surfacing to the user as a 500 "finish web authn
+	// registration" after the browser had already created the passkey.
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return fmt.Errorf("organization context required to store webauthn credential: %w", err)
+	}
+
 	query := `
 		INSERT INTO mfa_webauthn
 		(id, user_id, credential_id, public_key, sign_count, aaguid, transports,
-		 name, backup_eligible, backup_state, attestation_format, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		 name, backup_eligible, backup_state, attestation_format, created_at, org_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
-	_, err := s.db.Pool.Exec(ctx, query,
+	_, err = s.db.Pool.Exec(ctx, query,
 		cred.ID,
 		cred.UserID,
 		cred.CredentialID,
@@ -614,6 +622,7 @@ func (s *Service) storeWebAuthnCredential(ctx context.Context, cred *WebAuthnCre
 		cred.BackupState,
 		cred.AttestationFormat,
 		cred.CreatedAt,
+		org.ID,
 	)
 
 	return err
