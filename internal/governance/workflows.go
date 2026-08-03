@@ -204,6 +204,18 @@ func (s *Service) createApprovalRows(ctx context.Context, requestID, resourceTyp
 		return
 	}
 
+	// Resolve the requester up front so approver steps can EXCLUDE them:
+	// four-eyes means a user must never end up as an approver of their own
+	// request. A role- or group-based approver step would otherwise insert an
+	// approval row for the requester whenever they hold the approver role/group
+	// (e.g. a manager requesting access where "managers" is the approver role),
+	// letting them self-approve. Empty on lookup failure — the per-step guard
+	// then simply doesn't exclude, matching prior behavior on error.
+	var requesterID string
+	_ = s.db.Pool.QueryRow(ctx,
+		`SELECT requester_id FROM access_requests WHERE id = $1 AND org_id = $2`, requestID, org.ID,
+	).Scan(&requesterID)
+
 	// Try to find a matching policy (specific resource first, then generic)
 	var stepsJSON, condJSON []byte
 	err = s.db.Pool.QueryRow(ctx,
@@ -273,6 +285,9 @@ func (s *Service) createApprovalRows(ctx context.Context, requestID, resourceTyp
 							s.logger.Error("Failed to scan role user", zap.Error(err))
 							continue
 						}
+						if userID == requesterID {
+							continue // four-eyes: never make the requester their own approver
+						}
 						_, _ = s.db.Pool.Exec(ctx,
 							`INSERT INTO access_request_approvals (id, request_id, approver_id, step_order, decision, created_at, org_id)
 							 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -295,6 +310,9 @@ func (s *Service) createApprovalRows(ctx context.Context, requestID, resourceTyp
 						if err := groupRows.Scan(&userID); err != nil {
 							s.logger.Error("Failed to scan group member", zap.Error(err))
 							continue
+						}
+						if userID == requesterID {
+							continue // four-eyes: never make the requester their own approver
 						}
 						_, _ = s.db.Pool.Exec(ctx,
 							`INSERT INTO access_request_approvals (id, request_id, approver_id, step_order, decision, created_at, org_id)

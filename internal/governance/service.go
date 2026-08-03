@@ -1805,6 +1805,47 @@ func (s *Service) handleListReviewItems(c *gin.Context) {
 	c.JSON(200, items)
 }
 
+// authorizeReviewDecision enforces that the caller may decide items in the
+// given access review. Access reviews are a SOX/ISO detective control: only the
+// ASSIGNED reviewer (access_reviews.reviewer_id) or an administrator may record
+// or override a decision. The governance route group is authenticated but not
+// admin-gated, so without this check any authenticated org user could approve or
+// revoke any review item (self-approve their own access, or silently rubber-stamp
+// someone else's certification). Returns true if authorized; otherwise it writes
+// the HTTP error and returns false.
+func (s *Service) authorizeReviewDecision(c *gin.Context, reviewID string) bool {
+	if isAdmin, _ := auth.HasRoleInContext(c, auth.RoleAdmin); isAdmin {
+		return true
+	}
+	userID, _ := c.Get("user_id")
+	callerID, _ := userID.(string)
+	if callerID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return false
+	}
+
+	org, err := orgctx.From(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "organization context required"})
+		return false
+	}
+
+	var reviewerID string
+	err = s.db.Pool.QueryRow(c.Request.Context(),
+		`SELECT COALESCE(reviewer_id::text, '') FROM access_reviews WHERE id = $1 AND org_id = $2`,
+		reviewID, org.ID).Scan(&reviewerID)
+	if err != nil {
+		// Not found (or scoped out) — do not leak which; treat as forbidden.
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to decide this review"})
+		return false
+	}
+	if reviewerID == "" || reviewerID != callerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the assigned reviewer or an administrator may decide this review"})
+		return false
+	}
+	return true
+}
+
 func (s *Service) handleBatchDecision(c *gin.Context) {
 	var req struct {
 		ItemIDs  []string       `json:"item_ids"`
@@ -1813,6 +1854,10 @@ func (s *Service) handleBatchDecision(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !s.authorizeReviewDecision(c, c.Param("id")) {
 		return
 	}
 
@@ -1851,6 +1896,9 @@ func (s *Service) handleSubmitDecision(c *gin.Context) {
 	userIDStr, ok := userID.(string)
 	if !ok {
 		c.JSON(500, gin.H{"error": "invalid user ID format"})
+		return
+	}
+	if !s.authorizeReviewDecision(c, c.Param("id")) {
 		return
 	}
 	if err := s.SubmitReviewDecision(c.Request.Context(), c.Param("itemId"), req.Decision, req.Comments, userIDStr); err != nil {

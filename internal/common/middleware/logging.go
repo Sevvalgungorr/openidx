@@ -209,24 +209,16 @@ func RequestLoggerWithConfig(config LoggingConfig) gin.HandlerFunc {
 	}
 }
 
-// getClientIP extracts the real client IP from request headers
-// It checks X-Forwarded-For, X-Real-IP, and falls back to RemoteAddr
+// getClientIP returns the real client IP for logging.
+//
+// SECURITY: this used to read the LEFTMOST X-Forwarded-For entry directly, which
+// is entirely attacker-controllable (any client can send an arbitrary
+// X-Forwarded-For), letting an attacker forge the client IP in audit/access logs
+// and defeating the whole point of recording it. We now delegate to
+// c.ClientIP(), which honors the engine's trusted-proxy configuration
+// (ConfigureTrustedProxies) and resolves the real client IP the trusted edge saw
+// rather than any client-supplied header. Do NOT reintroduce raw header parsing.
 func getClientIP(c *gin.Context) string {
-	// Check X-Forwarded-For header (can contain multiple IPs)
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		// Take the first IP (original client)
-		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
-		}
-		return xff
-	}
-
-	// Check X-Real-IP header
-	if xri := c.GetHeader("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
 	return c.ClientIP()
 }
 

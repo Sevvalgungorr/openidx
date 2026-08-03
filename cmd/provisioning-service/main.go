@@ -121,6 +121,10 @@ func main() {
 	}
 
 	router := gin.New()
+	// Restrict which proxy hops gin trusts when resolving the client IP from
+	// X-Forwarded-For. Default trusts all proxies, making c.ClientIP() spoofable
+	// (bypasses device-trust known-IP auto-approve, geo-block, spoofs audit IPs).
+	middleware.ConfigureTrustedProxies(router, log)
 	router.Use(gin.Recovery())
 	router.Use(otelgin.Middleware("provisioning-service"))
 	router.Use(middleware.SecurityHeadersForEnv(cfg.IsProduction()))

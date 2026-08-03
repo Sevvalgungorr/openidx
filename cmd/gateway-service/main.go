@@ -20,6 +20,7 @@ import (
 	"github.com/openidx/openidx/internal/common/config"
 	"github.com/openidx/openidx/internal/common/database"
 	"github.com/openidx/openidx/internal/common/logger"
+	commonmiddleware "github.com/openidx/openidx/internal/common/middleware"
 	"github.com/openidx/openidx/internal/common/tlsutil"
 	"github.com/openidx/openidx/internal/common/tracing"
 	"github.com/openidx/openidx/internal/gateway"
@@ -91,6 +92,10 @@ func main() {
 
 	// Initialize router
 	router := gin.New()
+	// Restrict which proxy hops gin trusts when resolving the client IP from
+	// X-Forwarded-For. Default trusts all proxies, making c.ClientIP() spoofable
+	// (bypasses device-trust known-IP auto-approve, geo-block, spoofs audit IPs).
+	commonmiddleware.ConfigureTrustedProxies(router, log)
 	router.Use(gin.Recovery())
 	router.Use(otelgin.Middleware("gateway-service"))
 	router.Use(logger.GinMiddleware(log))

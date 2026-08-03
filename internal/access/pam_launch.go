@@ -677,10 +677,19 @@ func (s *Service) decidePamRequest(c *gin.Context, newStatus, auditAction string
 		return
 	}
 
+	// Four-eyes: an admin who filed a PAM access request must not approve their
+	// OWN request. Deny is allowed (a requester can effectively withdraw), but
+	// approval requires a different person. Enforced in SQL via requester_id
+	// <> approver so it is atomic with the status check.
+	selfGuard := ""
+	if newStatus == "approved" {
+		selfGuard = " AND requester_id <> NULLIF($2,'')::uuid"
+	}
+
 	tag, err := s.db.Pool.Exec(ctx,
 		`UPDATE pam_entry_access_requests
 		    SET status = $1, approver_id = NULLIF($2,'')::uuid, decided_at = NOW()
-		  WHERE id = $3 AND org_id = $4 AND status = 'pending'`,
+		  WHERE id = $3 AND org_id = $4 AND status = 'pending'`+selfGuard,
 		newStatus, approverID, requestID, org.ID)
 	if err != nil {
 		s.logger.Error("decidePamRequest: update failed",
@@ -689,6 +698,17 @@ func (s *Service) decidePamRequest(c *gin.Context, newStatus, auditAction string
 		return
 	}
 	if tag.RowsAffected() == 0 {
+		// Distinguish self-approval rejection from not-found for a clear message.
+		if newStatus == "approved" {
+			var requesterID string
+			_ = s.db.Pool.QueryRow(ctx,
+				`SELECT requester_id::text FROM pam_entry_access_requests WHERE id=$1 AND org_id=$2 AND status='pending'`,
+				requestID, org.ID).Scan(&requesterID)
+			if requesterID != "" && requesterID == approverID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "you cannot approve your own access request (four-eyes)"})
+				return
+			}
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "request not found or not pending"})
 		return
 	}
