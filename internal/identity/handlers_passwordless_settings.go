@@ -78,7 +78,7 @@ func (s *Service) handleGetPasswordlessSettings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, gin.H{"settings": settings})
 }
 
 // handleUpdatePasswordlessSettings fully replaces the passwordless system settings.
@@ -96,7 +96,7 @@ func (s *Service) handleUpdatePasswordlessSettings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, gin.H{"settings": settings})
 }
 
 // handlePatchPasswordlessSettings partially updates the passwordless system settings.
@@ -130,7 +130,7 @@ func (s *Service) handlePatchPasswordlessSettings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, gin.H{"settings": settings})
 }
 
 // handleGetPasswordlessStats returns usage statistics for passwordless authentication.
@@ -191,13 +191,13 @@ func (s *Service) handleGetPasswordlessStats(c *gin.Context) {
 		adoptionRate = float64(biometricOnlyUsers) / float64(totalUsers) * 100
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{"stats": gin.H{
 		"magic_links_today":    magicLinksToday,
 		"qr_logins_today":      qrLoginsToday,
 		"biometric_only_users": biometricOnlyUsers,
 		"adoption_rate":        adoptionRate,
 		"total_users":          totalUsers,
-	})
+	}})
 }
 
 // handleTestMagicLink sends a test magic link to the specified email address.

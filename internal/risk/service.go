@@ -729,6 +729,9 @@ func (s *Service) GetRiskPolicy(ctx context.Context, policyID string) (*RiskPoli
 		return nil, fmt.Errorf("policy not found")
 	}
 
+	p.Priority = priority
+	p.Conditions = conditionsJSON
+	p.Actions = actionsJSON
 	parseThresholdsFromJSON(conditionsJSON, actionsJSON, &p)
 	return &p, nil
 }
@@ -742,6 +745,10 @@ func (s *Service) CreateRiskPolicy(ctx context.Context, req CreateRiskPolicyRequ
 
 	conditions := buildConditionsJSON(req)
 	actions := buildActionsJSON(req)
+	priorityIn := 100
+	if req.Priority != nil {
+		priorityIn = *req.Priority
+	}
 
 	var p RiskPolicy
 	var priority int
@@ -751,15 +758,20 @@ func (s *Service) CreateRiskPolicy(ctx context.Context, req CreateRiskPolicyRequ
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, name, COALESCE(description,''), enabled, COALESCE(priority,100),
 		           COALESCE(conditions,'{}'), COALESCE(actions,'{}'), created_at, updated_at`,
-		req.Name, req.Description, enabled, 100, conditions, actions,
+		req.Name, req.Description, enabled, priorityIn, conditions, actions,
 	).Scan(&p.ID, &p.Name, &p.Description, &p.Enabled, &priority,
 		&conditionsOut, &actionsOut, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create risk policy: %w", err)
 	}
 
+	p.Priority = priority
+	p.Conditions = conditionsOut
+	p.Actions = actionsOut
 	parseThresholdsFromJSON(conditionsOut, actionsOut, &p)
-	p.TenantID = req.TenantID
+	if req.TenantID != "" {
+		p.TenantID = req.TenantID
+	}
 
 	s.logger.Info("Risk policy created",
 		zap.String("id", p.ID),
@@ -798,6 +810,22 @@ func (s *Service) UpdateRiskPolicy(ctx context.Context, policyID string, req Cre
 	if req.Description == "" {
 		req.Description = existing.Description
 	}
+	// Preserve existing conditions/actions/priority when the request omits them,
+	// so a partial edit (e.g. just toggling enabled) does not wipe the policy's
+	// stored condition/action model.
+	if isJSONNull(req.Conditions) && len(existing.Conditions) > 0 {
+		req.Conditions = existing.Conditions
+	}
+	if isJSONNull(req.Actions) && len(existing.Actions) > 0 {
+		req.Actions = existing.Actions
+	}
+	if req.Priority == nil {
+		req.Priority = &existing.Priority
+	}
+	priorityIn := 100
+	if req.Priority != nil {
+		priorityIn = *req.Priority
+	}
 
 	conditions := buildConditionsJSON(req)
 	actions := buildActionsJSON(req)
@@ -807,19 +835,24 @@ func (s *Service) UpdateRiskPolicy(ctx context.Context, policyID string, req Cre
 	var conditionsOut, actionsOut []byte
 	err = s.db.Pool.QueryRow(ctx,
 		`UPDATE risk_policies
-		 SET name = $2, description = $3, enabled = $4, conditions = $5, actions = $6, updated_at = NOW()
+		 SET name = $2, description = $3, enabled = $4, priority = $5, conditions = $6, actions = $7, updated_at = NOW()
 		 WHERE id = $1
 		 RETURNING id, name, COALESCE(description,''), enabled, COALESCE(priority,100),
 		           COALESCE(conditions,'{}'), COALESCE(actions,'{}'), created_at, updated_at`,
-		policyID, req.Name, req.Description, *req.Enabled, conditions, actions,
+		policyID, req.Name, req.Description, *req.Enabled, priorityIn, conditions, actions,
 	).Scan(&p.ID, &p.Name, &p.Description, &p.Enabled, &priority,
 		&conditionsOut, &actionsOut, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update risk policy: %w", err)
 	}
 
+	p.Priority = priority
+	p.Conditions = conditionsOut
+	p.Actions = actionsOut
 	parseThresholdsFromJSON(conditionsOut, actionsOut, &p)
-	p.TenantID = req.TenantID
+	if req.TenantID != "" {
+		p.TenantID = req.TenantID
+	}
 
 	s.logger.Info("Risk policy updated",
 		zap.String("id", p.ID),
@@ -874,6 +907,9 @@ func scanRiskPolicy(rows interface {
 	if err != nil {
 		return nil, err
 	}
+	p.Priority = priority
+	p.Conditions = conditionsJSON
+	p.Actions = actionsJSON
 	parseThresholdsFromJSON(conditionsJSON, actionsJSON, &p)
 	return &p, nil
 }
@@ -914,8 +950,13 @@ func parseThresholdsFromJSON(conditionsJSON, actionsJSON []byte, p *RiskPolicy) 
 	}
 }
 
-// buildConditionsJSON creates the conditions JSONB value from request thresholds
+// buildConditionsJSON creates the conditions JSONB value. When the request
+// carries a conditions object (the admin console model) it is persisted
+// verbatim; otherwise it is synthesized from the legacy threshold fields.
 func buildConditionsJSON(req CreateRiskPolicyRequest) []byte {
+	if len(req.Conditions) > 0 && !isJSONNull(req.Conditions) {
+		return req.Conditions
+	}
 	conditions := map[string]interface{}{}
 	if req.LowThreshold != nil {
 		conditions["low_threshold"] = *req.LowThreshold
@@ -933,14 +974,24 @@ func buildConditionsJSON(req CreateRiskPolicyRequest) []byte {
 	return data
 }
 
-// buildActionsJSON creates the actions JSONB value from request fields
+// buildActionsJSON creates the actions JSONB value. Prefers the request's
+// actions object (admin console model); falls back to storing the tenant id.
 func buildActionsJSON(req CreateRiskPolicyRequest) []byte {
+	if len(req.Actions) > 0 && !isJSONNull(req.Actions) {
+		return req.Actions
+	}
 	actions := map[string]interface{}{}
 	if req.TenantID != "" {
 		actions["tenant_id"] = req.TenantID
 	}
 	data, _ := json.Marshal(actions)
 	return data
+}
+
+// isJSONNull reports whether a raw JSON value is empty or the literal null.
+func isJSONNull(raw json.RawMessage) bool {
+	s := strings.TrimSpace(string(raw))
+	return s == "" || s == "null"
 }
 
 // EvaluateRiskPolicies evaluates risk for a given login context (placeholder for compatibility)

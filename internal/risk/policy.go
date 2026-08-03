@@ -2,6 +2,7 @@
 package risk
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -21,29 +22,44 @@ const (
 
 // RiskPolicy represents a configurable risk policy (used by identity service)
 type RiskPolicy struct {
-	ID                string    `json:"id"`
-	Name              string    `json:"name"`
-	Description       string    `json:"description"`
-	TenantID          string    `json:"tenant_id"`
-	LowThreshold      int       `json:"low_threshold"`
-	MediumThreshold   int       `json:"medium_threshold"`
-	HighThreshold     int       `json:"high_threshold"`
-	CriticalThreshold int       `json:"critical_threshold"`
-	Enabled           bool      `json:"enabled"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	TenantID    string `json:"tenant_id"`
+	// Priority, Conditions and Actions mirror the risk_policies columns and the
+	// admin console's policy model. They are surfaced so the UI can list, edit
+	// and toggle policies it created; the threshold fields below remain for
+	// backward compatibility.
+	Priority          int             `json:"priority"`
+	Conditions        json.RawMessage `json:"conditions,omitempty"`
+	Actions           json.RawMessage `json:"actions,omitempty"`
+	LowThreshold      int             `json:"low_threshold"`
+	MediumThreshold   int             `json:"medium_threshold"`
+	HighThreshold     int             `json:"high_threshold"`
+	CriticalThreshold int             `json:"critical_threshold"`
+	Enabled           bool            `json:"enabled"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 // CreateRiskPolicyRequest represents a request to create or update a risk policy
 type CreateRiskPolicyRequest struct {
-	Name              string `json:"name" binding:"required"`
-	Description       string `json:"description"`
-	TenantID          string `json:"tenant_id" binding:"required"`
-	LowThreshold      *int   `json:"low_threshold"`
-	MediumThreshold   *int   `json:"medium_threshold"`
-	HighThreshold     *int   `json:"high_threshold"`
-	CriticalThreshold *int   `json:"critical_threshold"`
-	Enabled           *bool  `json:"enabled"`
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description"`
+	// TenantID is optional. The policy is org-scoped by the request context; the
+	// admin console does not send a tenant_id, so requiring it produced a 400 on
+	// every create. Kept for API compatibility / cross-tenant tooling.
+	TenantID string `json:"tenant_id"`
+	// Priority, Conditions and Actions are the model the admin console actually
+	// sends. When present they are persisted verbatim into the JSONB columns.
+	Priority          *int            `json:"priority"`
+	Conditions        json.RawMessage `json:"conditions"`
+	Actions           json.RawMessage `json:"actions"`
+	LowThreshold      *int            `json:"low_threshold"`
+	MediumThreshold   *int            `json:"medium_threshold"`
+	HighThreshold     *int            `json:"high_threshold"`
+	CriticalThreshold *int            `json:"critical_threshold"`
+	Enabled           *bool           `json:"enabled"`
 }
 
 // EvaluateLoginContext represents the context for evaluating login risk

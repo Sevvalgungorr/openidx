@@ -29,8 +29,11 @@ type MFAPolicy struct {
 
 // MFAEnrollmentStats represents aggregate MFA enrollment statistics
 type MFAEnrollmentStats struct {
-	TotalUsers    int `json:"total_users"`
-	AnyMFA        int `json:"any_mfa"`
+	TotalUsers int `json:"total_users"`
+	// MFAEnabledCount is the number of users with at least one MFA method. The
+	// frontend dashboard reads "mfa_enabled_count" for both the count and the
+	// enabled-percentage; a mismatched tag makes the percentage render as NaN%.
+	AnyMFA        int `json:"mfa_enabled_count"`
 	TOTPCount     int `json:"totp_count"`
 	SMSCount      int `json:"sms_count"`
 	EmailOTPCount int `json:"email_otp_count"`
@@ -110,9 +113,30 @@ func (s *Service) handleListMFAPolicies(c *gin.Context) {
 		return
 	}
 
+	// The dashboard paginates with page/page_size and reads {policies,total}.
+	// Returning a bare {"data": [...]} made every created policy invisible in the
+	// UI even though the insert succeeded.
+	page := 1
+	if v, perr := strconv.Atoi(c.Query("page")); perr == nil && v > 0 {
+		page = v
+	}
+	pageSize := 20
+	if v, perr := strconv.Atoi(c.Query("page_size")); perr == nil && v > 0 && v <= 200 {
+		pageSize = v
+	}
+	offset := (page - 1) * pageSize
+
+	var total int
+	if err := s.db.Pool.QueryRow(c.Request.Context(),
+		`SELECT COUNT(*) FROM mfa_policies WHERE org_id = $1`, org.ID).Scan(&total); err != nil {
+		respondError(c, s.logger, apperrors.Internal("Failed to count MFA policies", err))
+		return
+	}
+
 	rows, err := s.db.Pool.Query(c.Request.Context(),
 		`SELECT id, name, description, enabled, priority, conditions, required_methods, grace_period_hours, created_at, updated_at
-		 FROM mfa_policies WHERE org_id = $1 ORDER BY priority, name`, org.ID)
+		 FROM mfa_policies WHERE org_id = $1 ORDER BY priority, name
+		 LIMIT $2 OFFSET $3`, org.ID, pageSize, offset)
 	if err != nil {
 		respondError(c, s.logger, apperrors.Internal("Failed to list MFA policies", err))
 		return
@@ -131,7 +155,12 @@ func (s *Service) handleListMFAPolicies(c *gin.Context) {
 	if policies == nil {
 		policies = []MFAPolicy{}
 	}
-	c.JSON(http.StatusOK, gin.H{"data": policies})
+	c.JSON(http.StatusOK, gin.H{
+		"policies":  policies,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 func (s *Service) handleCreateMFAPolicy(c *gin.Context) {
