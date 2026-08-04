@@ -186,12 +186,21 @@ func (s *Service) CreatePushMFAChallenge(ctx context.Context, request *PushMFACh
 		return nil, fmt.Errorf("failed to store challenge: %w", err)
 	}
 
-	// Send push notification
+	// Send push notification via the registered provider (FCM/APNs).
 	if err := s.sendPushNotification(ctx, targetDevice, challenge); err != nil {
 		s.logger.Error("Failed to send push notification",
 			zap.String("challenge_id", challenge.ID),
 			zap.Error(err))
 		// Don't fail the challenge creation, just log the error
+	}
+
+	// Also deliver over the self-hosted ntfy topic the app already subscribes
+	// to. This is the always-on, no-FCM/APNs-credentials delivery path: the
+	// phone gets a real-time, tappable prompt that deep-links into the approve
+	// screen. Best-effort.
+	if s.publishChallengeToNtfy(ctx, challenge) {
+		s.logger.Info("Push MFA challenge delivered via ntfy",
+			zap.String("challenge_id", challenge.ID))
 	}
 
 	s.logger.Info("Push MFA challenge created",
