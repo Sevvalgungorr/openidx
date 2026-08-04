@@ -194,6 +194,54 @@ func (s *Service) handleRegisterPushDevice(c *gin.Context) {
 	c.JSON(http.StatusCreated, device)
 }
 
+// handleStartPushEnrollment mints a QR enrollment ticket for the authenticated
+// user. The console/app renders the returned qr_payload as a QR code that an
+// authenticator scans to bind itself as a push device.
+// POST /api/v1/identity/mfa/push/enroll/start
+func (s *Service) handleStartPushEnrollment(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	ticket, err := s.StartPushEnrollment(c.Request.Context(), userID)
+	if err != nil {
+		apperrors.HandleErrorWithLogger(c, apperrors.Internal("start push enrollment", err), s.logger)
+		return
+	}
+	c.JSON(http.StatusOK, ticket)
+}
+
+// handleCompletePushEnrollment binds the presented device using an enrollment
+// ticket. This endpoint is authorized by the single-use ticket itself (from the
+// scanned QR), so the scanning authenticator does not need a prior login for the
+// target account. Org context is still resolved by the tenant middleware and
+// must match the ticket's org.
+// POST /api/v1/identity/mfa/push/enroll/complete
+func (s *Service) handleCompletePushEnrollment(c *gin.Context) {
+	var req struct {
+		EnrollmentToken string `json:"enrollment_token"`
+		PushMFAEnrollment
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.EnrollmentToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enrollment_token is required"})
+		return
+	}
+
+	device, err := s.CompletePushEnrollment(c.Request.Context(), req.EnrollmentToken, &req.PushMFAEnrollment, c.ClientIP())
+	if err != nil {
+		// Invalid/expired ticket or org mismatch is a client error, not a 500.
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, device)
+}
+
 func (s *Service) handleGetPushDevices(c *gin.Context) {
 	// CRITICAL: Only get user ID from authenticated context
 	// NEVER allow user_id from query/header/request body to prevent IDOR attacks

@@ -14,6 +14,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/openidx/openidx/internal/common/orgctx"
 )
 
 // PushMFADevice represents a registered push notification device
@@ -359,14 +361,23 @@ func (s *Service) getPushDeviceByToken(ctx context.Context, token string) (*Push
 }
 
 func (s *Service) storePushDevice(ctx context.Context, device *PushMFADevice) error {
+	// mfa_push_devices.org_id is NOT NULL (and the table is FORCE-RLS by org).
+	// It carried a default of the seed org, so omitting org_id silently filed
+	// every non-seed-org device under the wrong tenant. Set it explicitly from
+	// context.
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return fmt.Errorf("organization context required to store push device: %w", err)
+	}
+
 	query := `
 		INSERT INTO mfa_push_devices
 		(id, user_id, device_token, platform, device_name, device_model,
-		 os_version, app_version, enabled, trusted, last_ip, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		 os_version, app_version, enabled, trusted, last_ip, created_at, org_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
-	_, err := s.db.Pool.Exec(ctx, query,
+	_, err = s.db.Pool.Exec(ctx, query,
 		device.ID,
 		device.UserID,
 		device.DeviceToken,
@@ -379,6 +390,7 @@ func (s *Service) storePushDevice(ctx context.Context, device *PushMFADevice) er
 		device.Trusted,
 		device.LastIP,
 		device.CreatedAt,
+		org.ID,
 	)
 
 	return err

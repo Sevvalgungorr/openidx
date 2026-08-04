@@ -4,6 +4,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { parseOtpauthUri } from '@/features/authenticator/otp';
 import { addAccount } from '@/features/authenticator/store';
+import { parsePushEnrollQR, completeQrEnrollment } from '@/features/mfa/push';
 
 /**
  * Camera QR scanning for authenticator enrollment — point the phone at the
@@ -64,6 +65,27 @@ function Scanner({ camera }: { camera: CameraModule }) {
 
   const onScanned = async ({ data }: { data: string }) => {
     if (busy.current) return;
+
+    // First: is this an OpenIDX push-authenticator enrollment QR (from the
+    // admin console's "Enroll via Authenticator App")? If so, bind this device
+    // as a push authenticator instead of adding a TOTP account.
+    const enroll = parsePushEnrollQR(data);
+    if (enroll) {
+      busy.current = true;
+      try {
+        await completeQrEnrollment(enroll);
+        Alert.alert(
+          'Device enrolled',
+          `This phone is now a push authenticator for ${enroll.account}.`,
+          [{ text: 'OK', onPress: () => router.replace('/(app)/authenticator') }]
+        );
+      } catch (e) {
+        busy.current = false;
+        Alert.alert('Enrollment failed', e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
     const parsed = parseOtpauthUri(data);
     if (!parsed) {
       if (!rejected) {

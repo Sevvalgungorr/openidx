@@ -353,6 +353,12 @@ export const api = {
     return api.post<PushMFADevice>('/api/v1/identity/mfa/push/devices', data)
   },
 
+  // startPushEnrollment mints a QR enrollment ticket so an authenticator app can
+  // scan and bind itself as a push device (Google/MS-Authenticator style).
+  startPushEnrollment: async (): Promise<PushEnrollmentTicket> => {
+    return api.post<PushEnrollmentTicket>('/api/v1/identity/mfa/push/enroll/start')
+  },
+
   deletePushDevice: async (deviceId: string): Promise<void> => {
     await api.delete<void>(`/api/v1/identity/mfa/push/devices/${deviceId}`)
   },
@@ -864,6 +870,12 @@ export interface PushMFAEnrollment {
   platform: 'ios' | 'android' | 'web'
   device_name: string
   device_model?: string
+}
+
+export interface PushEnrollmentTicket {
+  enrollment_token: string
+  expires_in: number
+  qr_payload: string
 }
 
 export default axiosInstance

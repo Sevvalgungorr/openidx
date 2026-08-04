@@ -3511,6 +3511,12 @@ func RegisterRoutes(router *gin.Engine, svc *Service) {
 		public.GET("/providers", svc.handleListIdentityProviders)
 		public.GET("/branding", svc.handleGetLoginBranding)
 		public.POST("/federation/discover", svc.handleFederationDiscover)
+		// Push authenticator QR enrollment completion. Authorized by the
+		// single-use enrollment ticket from the scanned QR (not a JWT), so a
+		// fresh authenticator can bind itself without first logging in as the
+		// target user. Org context comes from the tenant middleware and must
+		// match the ticket's org.
+		public.POST("/mfa/push/enroll/complete", svc.handleCompletePushEnrollment)
 	}
 
 	identity := router.Group("/api/v1/identity")
@@ -3631,6 +3637,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service) {
 		identity.POST("/mfa/push/devices", svc.handleRegisterPushDevice)
 		identity.GET("/mfa/push/devices", svc.handleGetPushDevices)
 		identity.DELETE("/mfa/push/devices/:device_id", svc.handleDeletePushDevice)
+		// QR self-enrollment: the signed-in user mints a ticket (start), then an
+		// authenticator scans the QR and binds itself (complete, on the public
+		// group — the single-use ticket is the authorization).
+		identity.POST("/mfa/push/enroll/start", svc.handleStartPushEnrollment)
 		identity.POST("/mfa/push/challenge", svc.handleCreatePushChallenge)
 		identity.POST("/mfa/push/verify", svc.handleVerifyPushChallenge)
 		identity.GET("/mfa/push/challenge/:challenge_id", svc.handleGetPushChallenge)

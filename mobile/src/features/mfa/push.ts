@@ -54,6 +54,61 @@ export async function registerDevice(): Promise<PushDevice> {
   });
 }
 
+/**
+ * Payload encoded in the "Enroll via Authenticator App" QR the admin console
+ * shows (server: internal/identity/pushmfa_enroll.go). The user scans it and
+ * this device binds itself as a push authenticator for that account — no
+ * separate login for the target account required, because the single-use,
+ * short-lived enrollment token is the authorization.
+ */
+export type PushEnrollQR = {
+  type: 'openidx-push-enroll';
+  api_base: string;
+  token: string;
+  account: string;
+  issuer: string;
+};
+
+/** Recognize a scanned push-enrollment QR payload (JSON), else null. */
+export function parsePushEnrollQR(data: string): PushEnrollQR | null {
+  try {
+    const p = JSON.parse(data) as Partial<PushEnrollQR>;
+    if (p && p.type === 'openidx-push-enroll' && p.token && p.api_base) {
+      return p as PushEnrollQR;
+    }
+  } catch {
+    // not JSON / not our payload
+  }
+  return null;
+}
+
+/**
+ * Complete a QR enrollment: bind THIS device to the account the ticket was
+ * minted for. Posts to the public complete endpoint at the QR's api_base with
+ * the ticket + this device's push token. No bearer token needed.
+ */
+export async function completeQrEnrollment(qr: PushEnrollQR): Promise<PushDevice> {
+  const url = `${qr.api_base.replace(/\/$/, '')}/api/v1/identity/mfa/push/enroll/complete`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enrollment_token: qr.token,
+      device_token: await installId(),
+      platform: Platform.OS,
+      device_name: Device.deviceName ?? `${Platform.OS} device`,
+      device_model: Device.modelName ?? undefined,
+      os_version: Device.osVersion ?? undefined,
+    }),
+  });
+  const body = (await res.json().catch(() => ({}))) as PushDevice & { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error || 'Enrollment failed');
+  }
+  return body;
+}
+
+
 export function listDevices(): Promise<PushDevice[]> {
   return api.get<PushDevice[]>(`${BASE}/devices`);
 }

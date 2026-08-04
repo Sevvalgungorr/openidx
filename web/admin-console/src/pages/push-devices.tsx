@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Smartphone, Plus, Trash2, Loader2, Bell } from 'lucide-react'
+import { Smartphone, Plus, Trash2, Loader2, Bell, QrCode } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -14,6 +15,11 @@ export function PushDevicesPage() {
   const [showEnrollForm, setShowEnrollForm] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+
+  // QR self-enrollment state (Google/MS-Authenticator style).
+  const [qrPayload, setQrPayload] = useState<string | null>(null)
+  const [qrExpiresAt, setQrExpiresAt] = useState<number>(0)
+  const [qrLoading, setQrLoading] = useState(false)
 
   // Enrollment form state
   const [deviceName, setDeviceName] = useState('')
@@ -62,6 +68,52 @@ export function PushDevicesPage() {
     }
   }
 
+  // startQrEnrollment mints an enrollment ticket and shows the QR the
+  // authenticator app scans. We then poll the device list so the card can
+  // auto-dismiss once the phone completes enrollment.
+  const startQrEnrollment = async () => {
+    try {
+      setQrLoading(true)
+      setShowEnrollForm(false)
+      const ticket = await api.startPushEnrollment()
+      setQrPayload(ticket.qr_payload)
+      setQrExpiresAt(Date.now() + ticket.expires_in * 1000)
+    } catch {
+      toast({ title: 'Error', description: 'Failed to start QR enrollment', variant: 'destructive' })
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  const cancelQrEnrollment = () => {
+    setQrPayload(null)
+    setQrExpiresAt(0)
+  }
+
+  // While a QR is showing, poll for the new device and expire the ticket.
+  useEffect(() => {
+    if (!qrPayload) return
+    const before = devices.length
+    const interval = setInterval(async () => {
+      if (Date.now() > qrExpiresAt) {
+        setQrPayload(null)
+        toast({ title: 'QR expired', description: 'Generate a new code to enroll.' })
+        return
+      }
+      try {
+        const data = await api.getPushDevices()
+        if ((data?.length || 0) > before) {
+          setDevices(data || [])
+          setQrPayload(null)
+          toast({ title: 'Device enrolled', description: 'Your authenticator is now registered.' })
+        }
+      } catch {
+        // transient; keep polling until expiry
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [qrPayload, qrExpiresAt, devices.length, toast])
+
   const handleDelete = async (deviceId: string) => {
     try {
       setDeleting(deviceId)
@@ -91,10 +143,37 @@ export function PushDevicesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Push Notification Devices</h1>
           <p className="text-muted-foreground">Manage devices for push notification MFA verification</p>
         </div>
-        <Button onClick={() => setShowEnrollForm(true)} disabled={showEnrollForm}>
-          <Plus className="mr-2 h-4 w-4" /> Enroll Device
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={startQrEnrollment} disabled={qrLoading || !!qrPayload}>
+            {qrLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
+            Enroll via Authenticator App
+          </Button>
+          <Button variant="outline" onClick={() => setShowEnrollForm(true)} disabled={showEnrollForm}>
+            <Plus className="mr-2 h-4 w-4" /> Manual Enroll
+          </Button>
+        </div>
       </div>
+
+      {qrPayload && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Scan with your authenticator app</CardTitle>
+            <CardDescription>
+              Open the OpenIDX Authenticator on your phone, tap &ldquo;Scan QR&rdquo;, and point it at this code.
+              The device registers itself automatically. The code expires in a few minutes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4">
+            <div className="rounded-lg bg-white p-4">
+              <QRCodeSVG value={qrPayload} size={200} />
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Waiting for your device to enroll…
+            </div>
+            <Button variant="ghost" onClick={cancelQrEnrollment}>Cancel</Button>
+          </CardContent>
+        </Card>
+      )}
 
       {showEnrollForm && (
         <Card>
