@@ -21,8 +21,16 @@ describe('navigation config integrity', () => {
   })
 
   it('has no duplicate hrefs', () => {
+    // A handful of destinations intentionally appear twice: once as a
+    // self-service entry for regular users and once in an admin/operator
+    // section, because the page itself is role-aware (e.g. Sessions renders
+    // "My Sessions" for a user and full "Session Management" for an operator).
+    // Those are allowed; every other duplicate is a config mistake.
+    const intentionalDuplicates = new Set(['/sessions'])
     const hrefs = allNavHrefs()
-    const dupes = hrefs.filter((href, i) => hrefs.indexOf(href) !== i)
+    const dupes = hrefs.filter(
+      (href, i) => hrefs.indexOf(href) !== i && !intentionalDuplicates.has(href),
+    )
     expect(dupes).toEqual([])
   })
 

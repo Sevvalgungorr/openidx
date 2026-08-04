@@ -16,6 +16,14 @@ vi.mock('../hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }))
 
+// The page reads the caller's roles via useAuth to decide between the admin
+// (org-wide) view and the self-service ("My Sessions") view. Mock hasRole so
+// each test can pick the role set it needs.
+const hasRoleMock = vi.fn((_role: string) => true)
+vi.mock('../lib/auth', () => ({
+  useAuth: () => ({ hasRole: hasRoleMock }),
+}))
+
 import { SessionsAdminPage } from './sessions-admin'
 import { api } from '../lib/api'
 
@@ -62,6 +70,10 @@ describe('SessionsAdminPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
+    // Default to an admin caller so the org-wide view is exercised.
+    hasRoleMock.mockImplementation((role: string) =>
+      role === 'admin' || role === 'super_admin' || role === 'operator',
+    )
     vi.mocked(api.get).mockResolvedValue({
       sessions: [activeSession, riskySession],
       total: 2,
@@ -118,5 +130,46 @@ describe('SessionsAdminPage', () => {
     expect(
       screen.getByText(/user sessions will appear here when users log in/i),
     ).toBeInTheDocument()
+  })
+})
+
+describe('SessionsAdminPage (self-service, non-admin)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.innerHTML = ''
+    // A regular user: no admin/operator roles.
+    hasRoleMock.mockImplementation(() => false)
+    vi.mocked(api.get).mockResolvedValue({
+      sessions: [activeSession],
+      total: 1,
+    })
+  })
+
+  it('reads the caller\'s own sessions from /me/sessions', async () => {
+    render(<SessionsAdminPage />, { wrapper: createWrapper() })
+    await screen.findByText('My Sessions')
+
+    expect(api.get).toHaveBeenCalledWith('/api/v1/identity/users/me/sessions')
+  })
+
+  it('renders the "My Sessions" heading + self-service subtitle', async () => {
+    render(<SessionsAdminPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('My Sessions')).toBeInTheDocument()
+    expect(
+      screen.getByText(/devices and apps currently signed in to your account/i),
+    ).toBeInTheDocument()
+  })
+
+  it('hides admin-only affordances (user filter, admin stat cards)', async () => {
+    render(<SessionsAdminPage />, { wrapper: createWrapper() })
+    await screen.findByText('My Sessions')
+
+    expect(screen.queryByPlaceholderText(/filter by user id/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Unique Users')).not.toBeInTheDocument()
+    expect(screen.queryByText('High Risk')).not.toBeInTheDocument()
+    expect(screen.queryByText('Trusted Devices')).not.toBeInTheDocument()
+    // The self view keeps the "Active Sessions" summary card.
+    expect(screen.getByText('Active Sessions')).toBeInTheDocument()
   })
 })

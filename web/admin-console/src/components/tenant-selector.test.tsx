@@ -15,13 +15,12 @@ vi.mock('@/lib/store', () => ({
 
 vi.mock('@/lib/api', () => ({
   api: {
-    get: vi.fn().mockResolvedValue({
-      organizations: [
-        { id: '1', name: 'Acme Corp', slug: 'acme' },
-        { id: '2', name: 'Globex', slug: 'globex' },
-      ],
-      total: 2,
-    }),
+    // GET /api/v1/organizations returns a plain array (verified against the
+    // live API); the component reads it directly as Organization[].
+    get: vi.fn().mockResolvedValue([
+      { id: '1', name: 'Acme Corp', slug: 'acme' },
+      { id: '2', name: 'Globex', slug: 'globex' },
+    ]),
   },
 }))
 

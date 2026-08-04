@@ -1,11 +1,25 @@
 import '@testing-library/jest-dom'
 import { vi, afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
+import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event'
 
 // Cleanup after each test
 afterEach(() => {
   cleanup()
 })
+
+// Default user-event to skip the pointer-events check. Under React 19, Radix's
+// Dialog/Select/DropdownMenu set `pointer-events: none` on the trigger (or body)
+// while their portal is mounting; user-event then refuses to click with
+// "element has pointer-events: none", failing tests that were green on React 18.
+// The visual guard is irrelevant in jsdom, so disable it globally by wrapping
+// userEvent.setup to inject pointerEventsCheck: Never unless a test overrides it.
+const baseUserEventSetup = userEvent.setup.bind(userEvent)
+;(userEvent as { setup: typeof userEvent.setup }).setup = ((options = {}) =>
+  baseUserEventSetup({
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+    ...options,
+  })) as typeof userEvent.setup
 
 // Mock IntersectionObserver
 class MockIntersectionObserver {
@@ -98,5 +112,65 @@ if (!window.PointerEvent) {
       super(type, init)
     }
   } as any
+}
+
+// Guard against a focus-trap recursion under React 19 + jsdom. Radix's
+// focus-scope (used by Dialog/Select/DropdownMenu) listens for `focusin` and,
+// when focus escapes the trapped container, calls focus() to pull it back. In
+// jsdom, focus() dispatches `focusin` synchronously, so if the "last focused"
+// element is itself outside the container (common right before unmount, or
+// across React 19's changed event timing) the handler re-enters without end
+// and blows the stack -- which cascaded into an OOM for the whole suite. Wrap
+// HTMLElement.prototype.focus with a reentrancy guard so a focus() triggered
+// while another focus() is already on the stack becomes a no-op.
+const nativeFocus = HTMLElement.prototype.focus
+let focusInProgress = false
+HTMLElement.prototype.focus = function patchedFocus(
+  this: HTMLElement,
+  options?: FocusOptions
+) {
+  if (focusInProgress) return
+  focusInProgress = true
+  try {
+    nativeFocus.call(this, options)
+  } finally {
+    focusInProgress = false
+  }
+}
+
+// Mock HTMLCanvasElement.getContext. jsdom does not implement canvas, so any
+// component that reaches for a 2D context (xterm.js in the terminal/PAM pages)
+// throws "Not implemented: HTMLCanvasElement.prototype.getContext". Under the
+// React 19 + Vitest 4 RPC path that error object serialized into a runaway
+// recursion that OOM'd the whole run, so stub the context to a no-op surface.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+    fillRect: vi.fn(),
+    clearRect: vi.fn(),
+    getImageData: vi.fn((_x: number, _y: number, w: number, h: number) => ({
+      data: new Array(w * h * 4),
+    })),
+    putImageData: vi.fn(),
+    createImageData: vi.fn(() => ({ data: [] })),
+    setTransform: vi.fn(),
+    drawImage: vi.fn(),
+    save: vi.fn(),
+    fillText: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    stroke: vi.fn(),
+    translate: vi.fn(),
+    scale: vi.fn(),
+    rotate: vi.fn(),
+    arc: vi.fn(),
+    fill: vi.fn(),
+    measureText: vi.fn(() => ({ width: 0 })),
+    transform: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext
 }
 

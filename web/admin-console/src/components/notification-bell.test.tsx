@@ -63,7 +63,9 @@ describe('NotificationBell', () => {
     document.body.innerHTML = ''
 
     vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.includes('unread-count')) return Promise.resolve({ count: 1 })
+      // The component reads `unread_count` from the unread-count endpoint
+      // (matched to the live API shape); the list endpoint returns { notifications }.
+      if (url.includes('unread-count')) return Promise.resolve({ unread_count: 1 })
       return Promise.resolve(mockNotifications)
     })
   })

@@ -20,10 +20,9 @@ vi.mock('../hooks/use-toast', () => ({
 import { BrandingPage } from './branding'
 import { api } from '../lib/api'
 
-const orgs = {
-  organizations: [{ id: 'org-1', name: 'Acme Corp' }],
-  total: 1,
-}
+// GET /api/v1/organizations returns a plain array (verified against the live
+// API); the page reads orgs[0].id to pick which tenant to brand.
+const orgs = [{ id: 'org-1', name: 'Acme Corp' }]
 
 const branding = {
   logo_url: 'https://cdn.example/logo.svg',

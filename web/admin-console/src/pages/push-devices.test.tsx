@@ -49,7 +49,7 @@ describe('PushDevicesPage', () => {
     vi.mocked(api.getPushDevices).mockResolvedValue([iphone, androidPhone])
   })
 
-  it('renders the heading + subtitle + Enroll Device button', async () => {
+  it('renders the heading + subtitle + enroll buttons', async () => {
     render(
       <MemoryRouter>
         <PushDevicesPage />
@@ -62,8 +62,10 @@ describe('PushDevicesPage', () => {
     expect(
       screen.getByText(/manage devices for push notification mfa verification/i),
     ).toBeInTheDocument()
+    // The page offers QR self-enrollment via an authenticator app plus a manual
+    // token entry path; assert the manual path, which drives the form below.
     expect(
-      screen.getByRole('button', { name: /enroll device/i }),
+      screen.getByRole('button', { name: /manual enroll/i }),
     ).toBeInTheDocument()
   })
 
@@ -81,7 +83,7 @@ describe('PushDevicesPage', () => {
     expect(screen.getByText(/2 devices enrolled/i)).toBeInTheDocument()
   })
 
-  it('opens the enrollment form when the Enroll Device button is clicked', async () => {
+  it('opens the enrollment form when the Manual Enroll button is clicked', async () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
@@ -90,7 +92,7 @@ describe('PushDevicesPage', () => {
     )
     await screen.findByText('Alice iPhone')
 
-    await user.click(screen.getByRole('button', { name: /enroll device/i }))
+    await user.click(screen.getByRole('button', { name: /manual enroll/i }))
 
     expect(
       await screen.findByText(/enroll push notification device/i),
