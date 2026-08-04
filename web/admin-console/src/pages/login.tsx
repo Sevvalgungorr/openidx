@@ -180,23 +180,44 @@ export function LoginPage() {
     }
   }, [])
 
-  // Check for login_session parameter on mount
+  // Check for login_session parameter on mount.
+  //
+  // login_session ties this login to a pending OIDC /oauth/authorize request
+  // (SecureTask and other external clients). It MUST survive:
+  //   - the URL being cleaned (replaceState below),
+  //   - a component remount,
+  //   - the user pressing Back/Cancel from the MFA screen.
+  // Keeping it only in React state (and wiping the URL) lost it on any of those,
+  // so the next login submitted login_session:null and the pending OAuth request
+  // silently degraded into a normal console login -> /dashboard, with no code
+  // ever returned to the client. Persist it in sessionStorage as the source of
+  // truth for the lifetime of the pending authorization.
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
-    const session = urlParams.get('login_session')
+    const fromUrl = urlParams.get('login_session')
+    const session = fromUrl || sessionStorage.getItem('oidc_login_session')
     if (session) {
+      sessionStorage.setItem('oidc_login_session', session)
       setLoginSession(session)
-      // Clear the URL parameter without reloading
+    }
+    if (fromUrl) {
+      // Clear the URL parameter without reloading (value now lives in storage).
       window.history.replaceState({}, '', '/login')
     }
   }, [])
 
-  // If already authenticated, redirect to dashboard
+  // If already authenticated, redirect to dashboard — UNLESS there is a pending
+  // OIDC authorization (login_session). The server's /oauth/authorize always
+  // routes through this login page to mint the authorization code (there is no
+  // cookie-based SSO short-circuit server-side), so an already-logged-in console
+  // user must still complete the pending request here instead of being bounced
+  // to /dashboard, which would strand every external client login.
   useEffect(() => {
-    if (isAuthenticated) {
+    const pendingOIDC = loginSession || sessionStorage.getItem('oidc_login_session')
+    if (isAuthenticated && !pendingOIDC) {
       navigate('/dashboard', { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, loginSession])
 
   // Fetch Identity Providers
   useEffect(() => {
@@ -235,6 +256,20 @@ export function LoginPage() {
   const handleLogin = async () => {
     setError('')
     login()
+  }
+
+  // completeOIDCRedirect finalizes a pending OIDC authorization: the pending
+  // login_session has now been exchanged for an authorization code embedded in
+  // `url`, so clear the durable session marker and hand off to the client's
+  // redirect_uri. Use this everywhere a redirect_url is returned so we never
+  // leave a stale login_session behind to interfere with the next login.
+  const completeOIDCRedirect = (url: string) => {
+    try {
+      sessionStorage.removeItem('oidc_login_session')
+    } catch {
+      // sessionStorage may be unavailable (private mode); non-fatal.
+    }
+    window.location.href = url
   }
 
   const handleSSOLogin = (idp: IdentityProvider) => {
@@ -308,7 +343,7 @@ export function LoginPage() {
 
       // Redirect to the URL with the authorization code
       if (data.redirect_url) {
-        window.location.href = data.redirect_url
+        completeOIDCRedirect(data.redirect_url)
       }
     } catch (err) {
       setError('Unable to connect to the server. Please try again.')
@@ -392,7 +427,7 @@ export function LoginPage() {
       }
 
       if (verifyData.redirect_url) {
-        window.location.href = verifyData.redirect_url
+        completeOIDCRedirect(verifyData.redirect_url)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'WebAuthn authentication failed'
@@ -454,7 +489,7 @@ export function LoginPage() {
             }
 
             if (verifyData.redirect_url) {
-              window.location.href = verifyData.redirect_url
+              completeOIDCRedirect(verifyData.redirect_url)
             }
           } else if (statusData.status === 'denied') {
             clearInterval(pollInterval)
@@ -551,7 +586,7 @@ export function LoginPage() {
       }
 
       if (data.redirect_url) {
-        window.location.href = data.redirect_url
+        completeOIDCRedirect(data.redirect_url)
       }
     } catch (err) {
       setError('Unable to connect to the server. Please try again.')
@@ -573,7 +608,7 @@ export function LoginPage() {
         console.error('Failed to trust browser:', err)
       }
     }
-    window.location.href = pendingRedirectUrl
+    completeOIDCRedirect(pendingRedirectUrl)
   }
 
   const handleBackToOptions = () => {
@@ -583,7 +618,10 @@ export function LoginPage() {
       pushPollingRef.current = null
     }
 
-    setLoginSession(null)
+    // NOTE: intentionally do NOT clear loginSession here. "Back to login" /
+    // "Cancel" returns the user to the credentials form for the SAME pending
+    // OIDC request; wiping login_session made the next submit degrade into a
+    // plain console login and stranded the external client.
     setMfaRequired(false)
     setMfaSession('')
     setMfaCode('')
@@ -615,7 +653,7 @@ export function LoginPage() {
       })
       const data = await response.json()
       if (data.redirect_url) {
-        window.location.href = data.redirect_url
+        completeOIDCRedirect(data.redirect_url)
       } else {
         setError(data.error_description || 'Failed to force login')
       }
@@ -675,7 +713,7 @@ export function LoginPage() {
       })
       const finishData = await finishResp.json()
       if (!finishResp.ok) throw new Error(finishData.error_description || 'Passkey verification failed')
-      if (finishData.redirect_url) window.location.href = finishData.redirect_url
+      if (finishData.redirect_url) completeOIDCRedirect(finishData.redirect_url)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Passkey authentication failed'
       setError(msg)
@@ -726,7 +764,7 @@ export function LoginPage() {
           const pollData = await pollResp.json()
           if (pollData.redirect_url) {
             if (qrPollingRef2.current) clearInterval(qrPollingRef2.current)
-            window.location.href = pollData.redirect_url
+            completeOIDCRedirect(pollData.redirect_url)
           } else if (pollData.status === 'expired') {
             if (qrPollingRef2.current) clearInterval(qrPollingRef2.current)
             setQrSession(null)
