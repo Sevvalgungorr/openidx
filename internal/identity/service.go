@@ -96,6 +96,7 @@ type Session struct {
 	StartedAt  time.Time `json:"started_at"`
 	LastSeenAt time.Time `json:"last_seen_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
+	Revoked    bool      `json:"revoked"`
 }
 
 // MFATOTP represents TOTP MFA settings for a user

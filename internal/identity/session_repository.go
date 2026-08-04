@@ -67,12 +67,12 @@ func NewPostgresSessionRepository(db *database.PostgresDB) *PostgresSessionRepos
 	return &PostgresSessionRepository{db: db}
 }
 
-const sessionSelectColumns = `id, user_id, client_id, ip_address, user_agent, started_at, last_seen_at, expires_at`
+const sessionSelectColumns = `id, user_id, client_id, ip_address, user_agent, started_at, last_seen_at, expires_at, COALESCE(revoked, false)`
 
 func scanSessionRow(rows pgx.Rows) (Session, error) {
 	var s Session
 	err := rows.Scan(&s.ID, &s.UserID, &s.ClientID, &s.IPAddress, &s.UserAgent,
-		&s.StartedAt, &s.LastSeenAt, &s.ExpiresAt)
+		&s.StartedAt, &s.LastSeenAt, &s.ExpiresAt, &s.Revoked)
 	return s, err
 }
 
@@ -86,6 +86,7 @@ func (r *PostgresSessionRepository) ListByUser(ctx context.Context, userID strin
 		SELECT `+sessionSelectColumns+`
 		FROM sessions
 		WHERE user_id = $1 AND org_id = $2 AND expires_at > NOW()
+		  AND (revoked IS NULL OR revoked = false)
 		ORDER BY last_seen_at DESC
 	`, userID, org.ID)
 	if err != nil {
