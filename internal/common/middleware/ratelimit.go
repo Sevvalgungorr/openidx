@@ -40,6 +40,7 @@ type RateLimitConfig struct {
 // prefix, so e.g. "/oauth/magic-link" also covers "/oauth/magic-link-verify".
 var authPaths = []string{
 	"/oauth/login",
+	"/oauth/passwordless/phone/init",
 	"/oauth/mfa-verify",
 	"/oauth/mfa-send-otp",
 	"/oauth/stepup-verify",

@@ -1275,6 +1275,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 		// Push MFA endpoints
 		oauth.POST("/mfa-push-begin", svc.handleMFAPushBegin)
 		oauth.GET("/mfa-push-status/:challenge_id", svc.handleMFAPushStatus)
+		// Passwordless phone sign-in: username -> approve a push on your device,
+		// no password. Requires an enabled push device; completes via the same
+		// mfa-push-begin/status + mfa-verify(push) path.
+		oauth.POST("/passwordless/phone/init", svc.handlePasswordlessPhoneInit)
 
 		// Step-up MFA endpoints (mid-session re-auth)
 		// The handlers read user_id + session_id from the gin context,
@@ -2336,6 +2340,15 @@ func (s *Service) handleMFAVerify(c *gin.Context) {
 	userID := mfaData["user_id"]
 	clientIP := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
+
+	// A session pinned to a specific method (e.g. passwordless phone sign-in is
+	// pinned to "push") must not be completable with any other method. Without
+	// this, a passwordless session — which was created without a password —
+	// could be finished with a weaker/unintended factor.
+	if pinned := requiredMFAMethodFromSession(mfaData); pinned != "" && pinned != req.Method {
+		c.JSON(400, gin.H{"error": "invalid_request", "error_description": "this sign-in must be completed with " + pinned})
+		return
+	}
 
 	var valid bool
 	var verifyErr error

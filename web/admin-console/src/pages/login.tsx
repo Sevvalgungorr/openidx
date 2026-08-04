@@ -722,6 +722,42 @@ export function LoginPage() {
     }
   }
 
+  // Passwordless phone sign-in: no password — prove identity by approving a
+  // push on your registered device. Requires a username and a pending OIDC
+  // login_session; the server only proceeds if the user has an enabled push
+  // device, then we run the existing push challenge flow.
+  const handlePhoneSignIn = async () => {
+    if (!loginSession) return
+    if (!username.trim()) {
+      setError('Enter your username to sign in with your phone.')
+      return
+    }
+    setPushLoading(true)
+    setError('')
+    try {
+      const resp = await fetch(`${baseURL}/oauth/passwordless/phone/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), login_session: loginSession }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) {
+        setError(data.error_description || 'Passwordless phone sign-in is unavailable.')
+        setPushLoading(false)
+        return
+      }
+      // Enter the MFA (push) step and start the challenge — same flow the
+      // password path uses once a push factor is selected.
+      setMfaRequired(true)
+      setMfaSession(data.mfa_session)
+      setSelectedMfaMethod('push')
+      beginPushChallenge(data.mfa_session)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Passwordless sign-in failed')
+      setPushLoading(false)
+    }
+  }
+
   const handleMagicLinkRequest = async () => {
     if (!loginSession || !magicLinkEmail) return
     setMagicLinkLoading(true)
@@ -1178,6 +1214,16 @@ export function LoginPage() {
                 >
                   {passkeyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                   Sign in with a passkey
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={handlePhoneSignIn}
+                  disabled={pushLoading}
+                >
+                  {pushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
+                  Sign in with your phone
                 </Button>
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
