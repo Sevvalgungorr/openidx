@@ -51,7 +51,7 @@ jobs:
           echo "'cd mobile && npx eas init' once to link an EAS project."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
