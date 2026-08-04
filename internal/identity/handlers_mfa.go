@@ -303,6 +303,11 @@ func (s *Service) handleCreatePushChallenge(c *gin.Context) {
 	if request.UserAgent == "" {
 		request.UserAgent = c.GetHeader("User-Agent")
 	}
+	// Requesting application name for the approval screen (additional context).
+	// Prefer an explicit app_name; fall back to a caller-supplied header.
+	if request.AppName == "" {
+		request.AppName = c.GetHeader("X-Requesting-App")
+	}
 
 	challenge, err := s.CreatePushMFAChallenge(c.Request.Context(), &request)
 	if err != nil {
@@ -329,7 +334,9 @@ func (s *Service) handleVerifyPushChallenge(c *gin.Context) {
 		return
 	}
 
-	if response.ChallengeCode == "" {
+	// The number is required only to APPROVE (number matching). A deny/report
+	// does not need it — the user is rejecting a prompt they don't recognize.
+	if response.Approved && response.ChallengeCode == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "challenge_code is required"})
 		return
 	}
@@ -371,5 +378,39 @@ func (s *Service) handleGetPushChallenge(c *gin.Context) {
 	// Don't expose the challenge code in GET responses (security)
 	challenge.ChallengeCode = ""
 
-	c.JSON(http.StatusOK, challenge)
+	// Build a clean "additional context" block for the approval screen so the
+	// user can spot an unexpected prompt (anti-MFA-fatigue, MS-Authenticator
+	// style): which app, from where, on what, and when.
+	appName := ""
+	if challenge.SessionInfo != nil {
+		if v, ok := challenge.SessionInfo["app_name"].(string); ok {
+			appName = v
+		}
+	}
+	browser := ""
+	if challenge.UserAgent != "" {
+		browser = parseBrowserName(challenge.UserAgent)
+	}
+	ctxBlock := gin.H{
+		"app_name":   appName,
+		"location":   challenge.Location,
+		"ip_address": challenge.IPAddress,
+		"browser":    browser,
+		"user_agent": challenge.UserAgent,
+		"created_at": challenge.CreatedAt,
+		"expires_at": challenge.ExpiresAt,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":         challenge.ID,
+		"user_id":    challenge.UserID,
+		"device_id":  challenge.DeviceID,
+		"status":     challenge.Status,
+		"created_at": challenge.CreatedAt,
+		"expires_at": challenge.ExpiresAt,
+		"ip_address": challenge.IPAddress,
+		"user_agent": challenge.UserAgent,
+		"location":   challenge.Location,
+		"context":    ctxBlock,
+	})
 }

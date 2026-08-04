@@ -68,6 +68,10 @@ type PushMFAChallengeRequest struct {
 	IPAddress string `json:"ip_address,omitempty"`
 	UserAgent string `json:"user_agent,omitempty"`
 	Location  string `json:"location,omitempty"`
+	// AppName is the application requesting approval (e.g. "Admin Console",
+	// "SecureTask"). Shown on the approve screen so the user knows what they're
+	// approving — the anti-MFA-fatigue "additional context" pattern.
+	AppName string `json:"app_name,omitempty"`
 }
 
 // PushMFAChallengeResponse represents challenge response from user
@@ -75,6 +79,9 @@ type PushMFAChallengeResponse struct {
 	ChallengeID   string `json:"challenge_id"`
 	ChallengeCode string `json:"challenge_code"` // User must enter the number they see
 	Approved      bool   `json:"approved"`
+	// Reported marks a deny as "this wasn't me" — a suspicious-activity signal.
+	// Only meaningful when Approved is false.
+	Reported bool `json:"reported,omitempty"`
 }
 
 // RegisterPushMFADevice registers a new push notification device
@@ -167,6 +174,25 @@ func (s *Service) CreatePushMFAChallenge(ctx context.Context, request *PushMFACh
 	}
 	challengeCode := fmt.Sprintf("%02d", codeNum.Int64()+10) // Ensures 2 digits (10-99)
 
+	// Rich approval context (anti-MFA-fatigue). Resolve a human-readable
+	// location from the request IP if the risk service is wired and no explicit
+	// location was supplied, and stash the requesting app name in session_info.
+	location := request.Location
+	if location == "" && s.risk != nil && request.IPAddress != "" {
+		if geo, gerr := s.risk.GeoIPLookup(ctx, request.IPAddress); gerr == nil && geo != nil {
+			switch {
+			case geo.City != "" && geo.Country != "":
+				location = geo.City + ", " + geo.Country
+			case geo.Country != "":
+				location = geo.Country
+			}
+		}
+	}
+	sessionInfo := map[string]interface{}{}
+	if request.AppName != "" {
+		sessionInfo["app_name"] = request.AppName
+	}
+
 	// Create challenge
 	challenge := &PushMFAChallenge{
 		ID:            uuid.New().String(),
@@ -174,11 +200,12 @@ func (s *Service) CreatePushMFAChallenge(ctx context.Context, request *PushMFACh
 		DeviceID:      targetDevice.ID,
 		ChallengeCode: challengeCode,
 		Status:        "pending",
+		SessionInfo:   sessionInfo,
 		CreatedAt:     time.Now(),
 		ExpiresAt:     time.Now().Add(time.Duration(s.cfg.PushMFA.ChallengeTimeout) * time.Second),
 		IPAddress:     request.IPAddress,
 		UserAgent:     request.UserAgent,
-		Location:      request.Location,
+		Location:      location,
 	}
 
 	// Store challenge
@@ -231,8 +258,11 @@ func (s *Service) VerifyPushMFAChallenge(ctx context.Context, response *PushMFAC
 		return false, fmt.Errorf("challenge expired")
 	}
 
-	// Verify challenge code (number matching)
-	if response.ChallengeCode != challenge.ChallengeCode {
+	// Verify challenge code (number matching) — required only to APPROVE. A user
+	// denying a prompt they don't recognize must not be forced to type a number
+	// they were never shown (the GET response redacts it); requiring it would
+	// make "deny suspicious" impossible and push users toward blind approval.
+	if response.Approved && response.ChallengeCode != challenge.ChallengeCode {
 		s.logger.Warn("Push MFA challenge code mismatch",
 			zap.String("challenge_id", challenge.ID),
 			zap.String("expected", challenge.ChallengeCode),
@@ -245,12 +275,24 @@ func (s *Service) VerifyPushMFAChallenge(ctx context.Context, response *PushMFAC
 	challenge.RespondedAt = &now
 	if response.Approved {
 		challenge.Status = "approved"
+	} else if response.Reported {
+		challenge.Status = "reported"
 	} else {
 		challenge.Status = "denied"
 	}
 
 	if err := s.updatePushChallenge(ctx, challenge); err != nil {
 		s.logger.Error("Failed to update challenge", zap.Error(err))
+	}
+
+	// A "reported" deny is a security signal: the user says this sign-in wasn't
+	// them. Record it loudly so downstream alerting/risk can react.
+	if response.Reported {
+		s.logger.Warn("Push MFA challenge reported as suspicious by user",
+			zap.String("challenge_id", challenge.ID),
+			zap.String("user_id", challenge.UserID),
+			zap.String("ip_address", scrubLogValue(challenge.IPAddress)),
+			zap.String("location", challenge.Location))
 	}
 
 	// Update device last used time

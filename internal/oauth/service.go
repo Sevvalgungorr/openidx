@@ -2541,11 +2541,20 @@ func (s *Service) handleMFAPushBegin(c *gin.Context) {
 
 	userID := mfaData["user_id"]
 
+	// Resolve a friendly application name for the approval screen (rich context).
+	appName := ""
+	if cid := mfaData["client_id"]; cid != "" {
+		if cl, cerr := s.GetClient(c.Request.Context(), cid); cerr == nil && cl != nil && cl.Name != "" {
+			appName = cl.Name
+		}
+	}
+
 	// Create push challenge
 	challenge, err := s.identityService.CreatePushMFAChallenge(c.Request.Context(), &identity.PushMFAChallengeRequest{
 		UserID:    userID,
 		IPAddress: c.ClientIP(),
 		UserAgent: c.GetHeader("User-Agent"),
+		AppName:   appName,
 	})
 	if err != nil {
 		s.logger.Error("Failed to create push MFA challenge",

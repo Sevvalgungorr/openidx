@@ -28,10 +28,24 @@ export type PushDevice = {
   created_at: string;
 };
 
+export type PushChallengeContext = {
+  app_name?: string;
+  location?: string;
+  ip_address?: string;
+  browser?: string;
+  user_agent?: string;
+  created_at?: string;
+  expires_at?: string;
+};
+
 export type PushChallengeStatus = {
   id: string;
-  status: 'pending' | 'approved' | 'denied' | 'expired';
+  status: 'pending' | 'approved' | 'denied' | 'expired' | 'reported';
   expires_at: string;
+  // Rich "additional context" for the approval screen (anti-MFA-fatigue).
+  context?: PushChallengeContext;
+  location?: string;
+  ip_address?: string;
 };
 
 async function installId(): Promise<string> {
@@ -128,10 +142,23 @@ export function verifyChallenge(
   challengeId: string,
   challengeCode: string,
   approved: boolean,
+  reported = false,
 ): Promise<{ verified: boolean }> {
   return api.post<{ verified: boolean }>(`${BASE}/verify`, {
     challenge_id: challengeId,
     challenge_code: challengeCode,
     approved,
+    reported,
   });
+}
+
+/**
+ * Deny a challenge the user does not recognize ("This wasn't me"). No number is
+ * required to deny/report — the server only requires the matched number to
+ * approve. reported=true records a suspicious-activity signal server-side.
+ */
+export function reportChallenge(
+  challengeId: string,
+): Promise<{ verified: boolean }> {
+  return verifyChallenge(challengeId, '', false, true);
 }
