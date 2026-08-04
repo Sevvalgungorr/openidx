@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
 	apperrors "github.com/openidx/openidx/internal/common/errors"
@@ -384,8 +386,8 @@ func (s *Service) handleListDSARs(c *gin.Context) {
 	}
 
 	baseQuery := `SELECT d.id, d.user_id, COALESCE(u.username, ''), d.request_type, d.status,
-		d.reason, d.requested_data_categories, d.result_file_path, d.result_file_size,
-		d.processed_by, d.notes, d.due_date, d.created_at, d.updated_at, d.completed_at
+		COALESCE(d.reason, ''), d.requested_data_categories, d.result_file_path, d.result_file_size,
+		d.processed_by, COALESCE(d.notes, ''), d.due_date, d.created_at, d.updated_at, d.completed_at
 		FROM data_subject_requests d LEFT JOIN users u ON d.user_id = u.id AND u.org_id = d.org_id`
 	countQuery := `SELECT COUNT(*) FROM data_subject_requests d`
 
@@ -528,8 +530,8 @@ func (s *Service) handleGetDSAR(c *gin.Context) {
 	var d dsarDetail
 	err := s.db.Pool.QueryRow(ctx,
 		`SELECT d.id, d.user_id, COALESCE(u.username, ''), d.request_type, d.status,
-			d.reason, d.requested_data_categories, d.result_file_path, d.result_file_size,
-			d.processed_by, COALESCE(p.username, ''), d.notes, d.due_date,
+			COALESCE(d.reason, ''), d.requested_data_categories, d.result_file_path, d.result_file_size,
+			d.processed_by, COALESCE(p.username, ''), COALESCE(d.notes, ''), d.due_date,
 			d.created_at, d.updated_at, d.completed_at
 		 FROM data_subject_requests d
 		 LEFT JOIN users u ON d.user_id = u.id AND u.org_id = d.org_id
@@ -540,7 +542,13 @@ func (s *Service) handleGetDSAR(c *gin.Context) {
 		&d.ProcessedBy, &d.ProcessedName, &d.Notes, &d.DueDate,
 		&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt)
 	if err != nil {
-		respondError(c, nil, apperrors.NotFound("DSAR"))
+		if errors.Is(err, pgx.ErrNoRows) {
+			respondError(c, nil, apperrors.NotFound("DSAR"))
+			return
+		}
+		// A scan failure here (e.g. a NULL into a non-nullable field) is a server
+		// bug, not a missing record — surface it instead of masking as 404.
+		respondError(c, s.logger, apperrors.Internal("Failed to load DSAR", err))
 		return
 	}
 
@@ -1133,9 +1141,9 @@ func (s *Service) handleListPrivacyAssessments(c *gin.Context) {
 		return
 	}
 
-	baseQuery := `SELECT id, title, description, data_categories, processing_purposes,
+	baseQuery := `SELECT id, title, COALESCE(description, ''), data_categories, processing_purposes,
 		risk_level, status, findings, mitigations, assessor_id, reviewer_id,
-		review_notes, approved_at, created_at, updated_at
+		COALESCE(review_notes, ''), approved_at, created_at, updated_at
 		FROM privacy_assessments`
 
 	conditions := []string{"org_id = $1"}
@@ -1173,6 +1181,7 @@ func (s *Service) handleListPrivacyAssessments(c *gin.Context) {
 		if err := rows.Scan(&a.ID, &a.Title, &a.Description, &a.DataCategories, &a.ProcessingPurposes,
 			&a.RiskLevel, &a.Status, &a.Findings, &a.Mitigations, &a.AssessorID, &a.ReviewerID,
 			&a.ReviewNotes, &a.ApprovedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			s.logger.Error("Failed to scan privacy assessment row", zap.Error(err))
 			continue
 		}
 		assessments = append(assessments, a)
@@ -1276,15 +1285,19 @@ func (s *Service) handleGetPrivacyAssessment(c *gin.Context) {
 
 	var a PrivacyAssessment
 	err := s.db.Pool.QueryRow(c.Request.Context(),
-		`SELECT id, title, description, data_categories, processing_purposes,
+		`SELECT id, title, COALESCE(description, ''), data_categories, processing_purposes,
 			risk_level, status, findings, mitigations, assessor_id, reviewer_id,
-			review_notes, approved_at, created_at, updated_at
+			COALESCE(review_notes, ''), approved_at, created_at, updated_at
 		 FROM privacy_assessments WHERE id = $1 AND org_id = $2`, id, org.ID,
 	).Scan(&a.ID, &a.Title, &a.Description, &a.DataCategories, &a.ProcessingPurposes,
 		&a.RiskLevel, &a.Status, &a.Findings, &a.Mitigations, &a.AssessorID, &a.ReviewerID,
 		&a.ReviewNotes, &a.ApprovedAt, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
-		respondError(c, nil, apperrors.NotFound("Privacy assessment"))
+		if errors.Is(err, pgx.ErrNoRows) {
+			respondError(c, nil, apperrors.NotFound("Privacy assessment"))
+			return
+		}
+		respondError(c, s.logger, apperrors.Internal("Failed to load privacy assessment", err))
 		return
 	}
 

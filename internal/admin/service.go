@@ -3582,6 +3582,22 @@ func (s *Service) handleCreateDelegation(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "delegate_id, scope_type, and scope_id are required"})
 		return
 	}
+	// delegate_id and scope_id are uuid columns; reject non-UUID input with a 400
+	// instead of letting Postgres raise an invalid-uuid error that surfaces as a
+	// confusing 500. (scope_id for scope_type=organization is still a uuid.)
+	if _, err := uuid.Parse(d.DelegateID); err != nil {
+		c.JSON(400, gin.H{"error": "delegate_id must be a valid user ID"})
+		return
+	}
+	if _, err := uuid.Parse(d.ScopeID); err != nil {
+		c.JSON(400, gin.H{"error": "scope_id must be a valid ID for the selected scope"})
+		return
+	}
+	validScopeTypes := map[string]bool{"group": true, "role": true, "application": true, "organization": true}
+	if !validScopeTypes[d.ScopeType] {
+		c.JSON(400, gin.H{"error": "scope_type must be group, role, application, or organization"})
+		return
+	}
 	// Set delegated_by from the authenticated user if available
 	if userID, exists := c.Get("user_id"); exists {
 		if uid, ok := userID.(string); ok && d.DelegatedBy == "" {
