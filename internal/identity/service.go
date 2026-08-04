@@ -472,6 +472,11 @@ func isIdentitySelfService(path string) bool {
 	switch {
 	case rest == "/users/me" || strings.HasPrefix(rest, "/users/me/"):
 		return true // profile, password, PATs, consents, privacy, identity-links
+	// Terminating a session by id is self-service: the handler enforces that a
+	// non-admin can only end their OWN session (ownership check), so a user can
+	// sign out their own devices from the Sessions page without an admin role.
+	case strings.HasPrefix(rest, "/sessions/"):
+		return true
 	// MFA bypass codes are break-glass overrides minted FOR ANOTHER USER
 	// (GenerateBypassCodeRequest carries a target user_id), so generating,
 	// listing, revoking and auditing them are ADMINISTRATIVE actions — they
@@ -4015,6 +4020,39 @@ func (s *Service) handleGetUserSessions(c *gin.Context) {
 
 func (s *Service) handleTerminateSession(c *gin.Context) {
 	sessionID := c.Param("id")
+
+	callerID := c.GetString("user_id")
+	if callerID == "" {
+		c.JSON(401, gin.H{"error": "authentication required"})
+		return
+	}
+
+	// Admins/operators may terminate any session in the org. A regular user may
+	// only terminate their OWN session — without this ownership check the route
+	// (which is now reachable by non-admins as a self-service action) would be an
+	// IDOR: knowing another user's session id would let anyone revoke it.
+	isAdmin := false
+	for _, r := range c.GetStringSlice("roles") {
+		if r == "admin" || r == "super_admin" || r == "operator" {
+			isAdmin = true
+			break
+		}
+	}
+	if !isAdmin {
+		org, err := orgctx.From(c.Request.Context())
+		if err != nil {
+			c.JSON(403, gin.H{"error": "organization context required"})
+			return
+		}
+		var ownerID string
+		err = s.db.Pool.QueryRow(c.Request.Context(),
+			`SELECT user_id::text FROM sessions WHERE id = $1 AND org_id = $2`, sessionID, org.ID).Scan(&ownerID)
+		if err != nil || ownerID != callerID {
+			// Do not distinguish "not found" from "not yours" — no probing.
+			c.JSON(404, gin.H{"error": "session not found"})
+			return
+		}
+	}
 
 	if err := s.TerminateSession(c.Request.Context(), sessionID); err != nil {
 		s.logger.Error("failed to terminate session", zap.String("session_id", sessionID), zap.Error(err))

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { useAuth } from '../lib/auth'
 
 interface Session {
   id: string
@@ -36,6 +37,10 @@ interface Session {
 export function SessionsAdminPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { hasRole } = useAuth()
+  // Admins/operators manage every session in the org; a regular user manages
+  // only their own. This drives which endpoint we read and what actions show.
+  const isAdmin = hasRole('admin') || hasRole('super_admin') || hasRole('operator')
   const [userIdFilter, setUserIdFilter] = useState('')
   const [activeOnly, setActiveOnly] = useState(true)
   const [revokeTarget, setRevokeTarget] = useState<Session | null>(null)
@@ -43,8 +48,15 @@ export function SessionsAdminPage() {
   const [bulkRevokeUser, setBulkRevokeUser] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-sessions', userIdFilter, activeOnly],
+    queryKey: ['admin-sessions', isAdmin, userIdFilter, activeOnly],
     queryFn: () => {
+      if (!isAdmin) {
+        // Self-service: the caller's own sessions (server sources the user from
+        // the JWT). No org-wide list, no user filter.
+        return api.get<{ sessions: Session[]; total?: number }>(
+          '/api/v1/identity/users/me/sessions'
+        )
+      }
       const params = new URLSearchParams()
       params.set('active_only', String(activeOnly))
       if (userIdFilter) params.set('user_id', userIdFilter)
@@ -52,14 +64,18 @@ export function SessionsAdminPage() {
     },
   })
   const sessions = data?.sessions || []
-  const total = data?.total || 0
+  const total = data?.total ?? sessions.length
 
   const revokeMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api.delete(`/api/v1/sessions/${id}`, { data: { reason } }),
+      // Admins revoke via the admin endpoint; a user ends their own session via
+      // the ownership-checked self endpoint.
+      isAdmin
+        ? api.delete(`/api/v1/sessions/${id}`, { data: { reason } })
+        : api.delete(`/api/v1/identity/sessions/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-sessions'] })
-      toast({ title: 'Session revoked' })
+      toast({ title: isAdmin ? 'Session revoked' : 'Signed out of that session' })
       setRevokeTarget(null)
       setRevokeReason('')
     },
@@ -97,12 +113,18 @@ export function SessionsAdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Session Management</h1>
-        <p className="text-muted-foreground">View and manage active user sessions</p>
+        <h1 className="text-3xl font-bold tracking-tight">
+          {isAdmin ? 'Session Management' : 'My Sessions'}
+        </h1>
+        <p className="text-muted-foreground">
+          {isAdmin
+            ? 'View and manage active user sessions'
+            : 'Devices and apps currently signed in to your account'}
+        </p>
       </div>
 
       {/* Session Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className={`grid gap-4 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-1'}`}>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
@@ -113,6 +135,7 @@ export function SessionsAdminPage() {
             <p className="text-xs text-muted-foreground">of {total} total</p>
           </CardContent>
         </Card>
+        {isAdmin && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Unique Users</CardTitle>
@@ -122,6 +145,8 @@ export function SessionsAdminPage() {
             <div className="text-2xl font-bold">{uniqueUsers}</div>
           </CardContent>
         </Card>
+        )}
+        {isAdmin && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">High Risk</CardTitle>
@@ -132,6 +157,8 @@ export function SessionsAdminPage() {
             <p className="text-xs text-muted-foreground">Risk score &ge; 70</p>
           </CardContent>
         </Card>
+        )}
+        {isAdmin && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Trusted Devices</CardTitle>
@@ -141,18 +168,23 @@ export function SessionsAdminPage() {
             <div className="text-2xl font-bold">{trustedDeviceSessions.length}</div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex items-center gap-4">
             <CardTitle className="flex items-center gap-2"><Monitor className="h-5 w-5" />Sessions ({total})</CardTitle>
-            <Input placeholder="Filter by user ID..." className="max-w-xs" value={userIdFilter}
-              onChange={e => setUserIdFilter(e.target.value)} />
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={activeOnly} onChange={e => setActiveOnly(e.target.checked)} />
-              Active only
-            </label>
+            {isAdmin && (
+              <>
+                <Input placeholder="Filter by user ID..." className="max-w-xs" value={userIdFilter}
+                  onChange={e => setUserIdFilter(e.target.value)} />
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={activeOnly} onChange={e => setActiveOnly(e.target.checked)} />
+                  Active only
+                </label>
+              </>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -165,24 +197,26 @@ export function SessionsAdminPage() {
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <MonitorSmartphone className="h-12 w-12 text-muted-foreground/40 mb-3" />
               <p className="font-medium">No active sessions</p>
-              <p className="text-sm">User sessions will appear here when users log in</p>
+              <p className="text-sm">{isAdmin ? 'User sessions will appear here when users log in' : 'Your active sessions will appear here'}</p>
             </div>
           ) : (
             <Table>
               <TableHeader><TableRow>
-                <TableHead>User</TableHead><TableHead>Device</TableHead><TableHead>Location</TableHead>
-                <TableHead>Risk</TableHead><TableHead>Started</TableHead><TableHead>Last Active</TableHead>
+                {isAdmin && <TableHead>User</TableHead>}<TableHead>Device</TableHead><TableHead>Location</TableHead>
+                {isAdmin && <TableHead>Risk</TableHead>}<TableHead>Started</TableHead><TableHead>Last Active</TableHead>
                 <TableHead>Status</TableHead><TableHead>Actions</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {sessions.map(s => (
                   <TableRow key={s.id} className={(s.risk_score || 0) >= 70 ? 'bg-red-50' : ''}>
+                    {isAdmin && (
                     <TableCell>
                       <div>
                         <div className="font-medium">{s.username}</div>
                         <div className="text-xs text-muted-foreground">{s.email}</div>
                       </div>
                     </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div>
@@ -201,6 +235,7 @@ export function SessionsAdminPage() {
                       </div>
                       <div className="font-mono text-xs text-muted-foreground">{s.ip_address || '-'}</div>
                     </TableCell>
+                    {isAdmin && (
                     <TableCell>
                       {getRiskBadge(s.risk_score)}
                       {s.auth_methods && s.auth_methods.length > 0 && (
@@ -209,6 +244,7 @@ export function SessionsAdminPage() {
                         </div>
                       )}
                     </TableCell>
+                    )}
                     <TableCell className="text-sm">{formatDate(s.started_at)}</TableCell>
                     <TableCell className="text-sm">{formatDate(s.last_seen_at)}</TableCell>
                     <TableCell>
@@ -227,9 +263,11 @@ export function SessionsAdminPage() {
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         )}
+                        {isAdmin && (
                         <Button variant="outline" size="sm" onClick={() => { setBulkRevokeUser(s.user_id); setRevokeReason('') }}>
                           Revoke All
                         </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
