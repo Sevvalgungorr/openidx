@@ -86,11 +86,18 @@ export default function AuthenticatorScreen() {
         options={{
           title: 'Authenticator',
           headerRight: () => (
-            <Link href="/(app)/authenticator/add" asChild>
-              <Pressable hitSlop={12}>
-                <Text style={styles.addBtn}>+ Add</Text>
-              </Pressable>
-            </Link>
+            <View style={styles.headerActions}>
+              <Link href="/(app)/authenticator/backup" asChild>
+                <Pressable hitSlop={12}>
+                  <Text style={styles.headerLink}>Backup</Text>
+                </Pressable>
+              </Link>
+              <Link href="/(app)/authenticator/add" asChild>
+                <Pressable hitSlop={12}>
+                  <Text style={styles.addBtn}>+ Add</Text>
+                </Pressable>
+              </Link>
+            </View>
           ),
         }}
       />
@@ -188,6 +195,8 @@ function CodeRow({
 
 const styles = StyleSheet.create({
   addBtn: { color: '#208AEF', fontSize: 16, fontWeight: '600' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  headerLink: { color: '#208AEF', fontSize: 16, fontWeight: '600' },
   list: { padding: 16, gap: 12 },
   row: {
     borderRadius: 16,
