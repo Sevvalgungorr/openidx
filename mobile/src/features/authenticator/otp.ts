@@ -139,3 +139,61 @@ function clampInt(n: number, min: number, max: number, fallback: number): number
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
+
+/**
+ * Build the canonical otpauth:// URI for an account — the exact string a QR code
+ * encodes. This is what lets OpenIDX *produce* a code (to move an account to
+ * another authenticator, or to show the QR a freshly-generated secret should be
+ * scanned into), mirroring how services present 2FA setup.
+ *
+ *   otpauth://totp/Issuer:label?secret=...&issuer=Issuer&algorithm=SHA1&digits=6&period=30
+ */
+export function buildOtpauthUri(
+  account: Pick<
+    OtpAccount,
+    'issuer' | 'label' | 'secret' | 'algorithm' | 'digits' | 'period' | 'type' | 'counter'
+  >
+): string {
+  const issuer = account.issuer?.trim() || 'OpenIDX';
+  const label = account.label?.trim() || issuer;
+  // Label is conventionally "Issuer:account"; both parts are percent-encoded.
+  const path = `${encodeURIComponent(issuer)}:${encodeURIComponent(label)}`;
+
+  const params: string[] = [
+    `secret=${encodeURIComponent(account.secret)}`,
+    `issuer=${encodeURIComponent(issuer)}`,
+    `algorithm=${account.algorithm}`,
+    `digits=${account.digits}`,
+  ];
+  if (account.type === 'hotp') {
+    params.push(`counter=${account.counter ?? 0}`);
+  } else {
+    params.push(`period=${account.period}`);
+  }
+  return `otpauth://${account.type}/${path}?${params.join('&')}`;
+}
+
+/**
+ * Generate a fresh, cryptographically-random base32 TOTP secret so OpenIDX can
+ * mint an account itself (and then show its QR / setup key), instead of only
+ * importing one from another service. `bytes` of entropy → RFC 4648 base32.
+ * 20 bytes (160 bits) matches what Google/Microsoft issue.
+ */
+export function generateSecret(randomBytes: Uint8Array): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (let i = 0; i < randomBytes.length; i++) {
+    value = (value << 8) | randomBytes[i];
+    bits += 8;
+    while (bits >= 5) {
+      out += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    out += alphabet[(value << (5 - bits)) & 31];
+  }
+  return out;
+}

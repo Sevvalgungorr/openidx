@@ -1,4 +1,6 @@
 import { Link, Stack, useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+import * as Crypto from 'expo-crypto';
 import { useState } from 'react';
 import {
   Alert,
@@ -11,9 +13,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 
 import { isValidBase32 } from '@/features/authenticator/crypto';
 import {
+  buildOtpauthUri,
+  generateSecret,
   generateTOTP,
   parseOtpauthUri,
   type OtpAccount,
@@ -21,17 +26,18 @@ import {
 } from '@/features/authenticator/otp';
 import { addAccount } from '@/features/authenticator/store';
 
-type Mode = 'uri' | 'manual';
+type Mode = 'uri' | 'manual' | 'create';
 
 /**
- * Add-account screen. Two paths, mirroring Google Authenticator:
- *  - "Scan / paste setup key": paste an otpauth:// URI (the exact string a QR
- *    code encodes) and every field is filled in automatically.
- *  - "Enter manually": type the issuer, account and secret from the service's
- *    "can't scan?" screen.
+ * Add-account screen. Three paths:
+ *  - "Scan / paste setup key": paste an otpauth:// URI (what a QR encodes).
+ *  - "Enter manually": type issuer/account/secret from a "can't scan?" screen.
+ *  - "Create in OpenIDX": OpenIDX *generates* a fresh secret and shows its QR +
+ *    setup key so you can register it with a service — the same thing a website
+ *    does when it presents a 2FA QR, but produced here.
  *
- * The secret is validated by actually generating a code before saving, so a
- * mistyped key is caught immediately rather than silently producing wrong codes.
+ * The secret is validated by generating a code before saving, so a mistyped key
+ * is caught immediately rather than silently producing wrong codes.
  */
 export default function AddAccountScreen() {
   const router = useRouter();
@@ -44,7 +50,6 @@ export default function AddAccountScreen() {
 
   const save = async (input: Omit<OtpAccount, 'id' | 'createdAt'>) => {
     try {
-      // Prove the secret produces a code before persisting it.
       generateTOTP({ ...input, id: 'preview', createdAt: 0 });
     } catch {
       Alert.alert('Invalid secret', 'That secret key could not be used to generate a code.');
@@ -102,11 +107,12 @@ export default function AddAccountScreen() {
           </Link>
           <Text style={styles.orDivider}>or add without the camera</Text>
           <View style={styles.tabs}>
-            <Tab label="Setup key / link" active={mode === 'uri'} onPress={() => setMode('uri')} />
-            <Tab label="Enter manually" active={mode === 'manual'} onPress={() => setMode('manual')} />
+            <Tab label="Setup key" active={mode === 'uri'} onPress={() => setMode('uri')} />
+            <Tab label="Manual" active={mode === 'manual'} onPress={() => setMode('manual')} />
+            <Tab label="Create" active={mode === 'create'} onPress={() => setMode('create')} />
           </View>
 
-          {mode === 'uri' ? (
+          {mode === 'uri' && (
             <View style={styles.card}>
               <Text style={styles.help}>
                 On the service&apos;s two-factor setup screen choose &quot;Can&apos;t scan?&quot; or
@@ -126,7 +132,9 @@ export default function AddAccountScreen() {
                 <Text style={styles.saveText}>Add account</Text>
               </Pressable>
             </View>
-          ) : (
+          )}
+
+          {mode === 'manual' && (
             <View style={styles.card}>
               <Text style={styles.fieldLabel}>Service name</Text>
               <TextInput
@@ -167,9 +175,111 @@ export default function AddAccountScreen() {
               </Pressable>
             </View>
           )}
+
+          {mode === 'create' && <CreateTab onSaved={() => router.back()} />}
         </ScrollView>
       </KeyboardAvoidingView>
     </>
+  );
+}
+
+/**
+ * "Create in OpenIDX": mint a fresh random secret and present its QR + setup key
+ * so the user can register it with a service (or a second device). Nothing is
+ * stored until the user confirms — matching how a website shows a QR you commit
+ * only after verifying a code.
+ */
+function CreateTab({ onSaved }: { onSaved: () => void }) {
+  const [issuer, setIssuer] = useState('');
+  const [label, setLabel] = useState('');
+  const [secret, setSecret] = useState<string | null>(null);
+
+  const generate = () => {
+    if (!issuer.trim()) {
+      Alert.alert('Missing name', 'Enter a name for this account first (for example a service or app name).');
+      return;
+    }
+    // 20 bytes (160 bits) of entropy → base32, matching Google/Microsoft.
+    const bytes = Crypto.getRandomBytes(20);
+    setSecret(generateSecret(new Uint8Array(bytes)));
+  };
+
+  const account: Omit<OtpAccount, 'id' | 'createdAt'> | null = secret
+    ? {
+        issuer: issuer.trim() || 'OpenIDX',
+        label: label.trim() || issuer.trim() || 'OpenIDX',
+        secret,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        type: 'totp',
+      }
+    : null;
+
+  const uri = account ? buildOtpauthUri(account) : '';
+
+  const copyKey = async () => {
+    if (!secret) return;
+    await Clipboard.setStringAsync(secret);
+    Alert.alert('Copied', 'The setup key was copied to your clipboard.');
+  };
+
+  const saveIt = async () => {
+    if (!account) return;
+    await addAccount(account);
+    onSaved();
+  };
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.help}>
+        OpenIDX generates a brand-new secret for you. Scan the QR (or paste the key) into the
+        service or second device that should share this code, then save it here.
+      </Text>
+      <Text style={styles.fieldLabel}>Account name</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="My server, a service, a second phone…"
+        placeholderTextColor="rgba(127,127,127,0.6)"
+        value={issuer}
+        onChangeText={setIssuer}
+        autoCapitalize="words"
+      />
+      <Text style={styles.fieldLabel}>Account detail (optional)</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="you@example.com"
+        placeholderTextColor="rgba(127,127,127,0.6)"
+        value={label}
+        onChangeText={setLabel}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
+      {!secret ? (
+        <Pressable style={styles.save} onPress={generate}>
+          <Text style={styles.saveText}>Generate secret & QR</Text>
+        </Pressable>
+      ) : (
+        <>
+          <View style={styles.qrBox}>
+            <QRCode value={uri} size={220} />
+          </View>
+          <Pressable style={styles.keyCard} onPress={copyKey}>
+            <Text style={styles.keyLabel}>Setup key (tap to copy)</Text>
+            <Text style={styles.keyValue} selectable>
+              {secret.replace(/(.{4})/g, '$1 ').trim()}
+            </Text>
+          </Pressable>
+          <Text style={styles.hint}>
+            Enter this key or scan the QR wherever the code is needed. Keep it secret.
+          </Text>
+          <Pressable style={styles.save} onPress={saveIt}>
+            <Text style={styles.saveText}>Save to my authenticator</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -225,4 +335,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  qrBox: { alignSelf: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginTop: 6 },
+  keyCard: { backgroundColor: 'rgba(127,127,127,0.08)', borderRadius: 14, padding: 16, gap: 6, marginTop: 6 },
+  keyLabel: { fontSize: 12, fontWeight: '600', opacity: 0.55 },
+  keyValue: { fontSize: 18, fontWeight: '600', letterSpacing: 1, fontVariant: ['tabular-nums'] },
 });

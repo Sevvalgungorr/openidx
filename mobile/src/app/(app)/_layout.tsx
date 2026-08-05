@@ -3,6 +3,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { registerDevice } from '@/features/mfa/push';
 import { useNtfyPush } from '@/features/notifications/push';
 
 // Grace period: don't re-prompt for a brief app-switch (notification shade, a
@@ -91,6 +92,12 @@ export default function AppLayout() {
   // backend has no ntfy configured.
   useNtfyPush();
 
+  // Register this device as a push authenticator once unlocked (best-effort,
+  // idempotent). Previously lived on the home screen, which is now a tab.
+  useEffect(() => {
+    if (!locked) registerDevice().catch(() => {});
+  }, [locked]);
+
   if (locked) {
     return (
       <View style={styles.lock}>
@@ -103,7 +110,13 @@ export default function AppLayout() {
       </View>
     );
   }
-  return <Stack screenOptions={{ headerShown: true }} />;
+  return (
+    <Stack screenOptions={{ headerShown: true }}>
+      {/* The tab group manages its own headers; hide the parent Stack header so
+          they don't stack. Detail screens pushed on top keep the Stack header. */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
+  );
 }
 
 const styles = StyleSheet.create({

@@ -52,14 +52,14 @@ function bytesToB64(bytes: number[]): string {
   for (const b of bytes) bin += String.fromCharCode(b);
   // btoa exists in RN/Hermes and web; guard just in case.
   if (typeof btoa === 'function') return btoa(bin);
-  return globalThis.Buffer.from(bin, 'binary').toString('base64');
+  return (globalThis as any).Buffer.from(bin, 'binary').toString('base64');
 }
 
 function b64ToBytes(b64: string): number[] {
   const bin =
     typeof atob === 'function'
       ? atob(b64)
-      : globalThis.Buffer.from(b64, 'base64').toString('binary');
+      : (globalThis as any).Buffer.from(b64, 'base64').toString('binary');
   const out: number[] = [];
   for (let i = 0; i < bin.length; i++) out.push(bin.charCodeAt(i) & 0xff);
   return out;

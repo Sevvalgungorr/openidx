@@ -47,6 +47,17 @@ export async function listAccounts(): Promise<OtpAccount[]> {
   return accounts;
 }
 
+/** A single account by id, or null if it is missing/corrupt. */
+export async function getAccount(id: string): Promise<OtpAccount | null> {
+  const raw = await SecureStore.getItemAsync(ACCT_PREFIX + id);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as OtpAccount;
+  } catch {
+    return null;
+  }
+}
+
 /** Add an account (secret already validated by the caller). Returns its id. */
 export async function addAccount(
   input: Omit<OtpAccount, 'id' | 'createdAt'>
