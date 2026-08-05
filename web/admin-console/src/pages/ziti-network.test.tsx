@@ -28,24 +28,30 @@ const status = {
   identities_count: 47,
 }
 
+// The overview endpoint nests health under `health` (verified against the live
+// API). routers_online/total drive the Routers card.
 const overview = {
-  controller_online: true,
-  router_count: 3,
-  service_count: 12,
-  identity_count: 47,
-  healthy_routers: 3,
-  unhealthy_routers: 0,
+  health: {
+    controller_reachable: true,
+    controller_version: '0.30.0',
+    sdk_ready: true,
+    routers_online: 3,
+    routers_total: 3,
+    services_count: 12,
+    identities_count: 47,
+    policies_count: 8,
+  },
 }
 
 const routers = [
   {
     id: 'r-1',
     name: 'edge-router-east',
-    is_online: true,
+    // The controller returns camelCase and no fingerprint/created_at.
+    isOnline: true,
+    isVerified: true,
     hostname: 'east.routers.example.com',
-    fingerprint: 'abc123',
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-06-01T00:00:00Z',
+    versionInfo: { os: 'linux', arch: 'amd64', version: 'v1.6.12' },
   },
 ]
 
@@ -115,10 +121,10 @@ describe('ZitiNetworkPage', () => {
     // Controller is online → stat card shows "Online" (may also show in
     // a status indicator, so allow multiple).
     expect(screen.getAllByText('Online').length).toBeGreaterThan(0)
-    // Router count + healthy/unhealthy hint
+    // Router count + online/offline hint
     expect(screen.getAllByText('3').length).toBeGreaterThan(0)
     expect(
-      screen.getByText(/3 healthy, 0 unhealthy/i),
+      screen.getByText(/3 online, 0 offline/i),
     ).toBeInTheDocument()
   })
 
@@ -128,7 +134,9 @@ describe('ZitiNetworkPage', () => {
         return Promise.resolve({ ...status, controller_reachable: false }) as ReturnType<typeof api.get>
       }
       if (url.includes('/ziti/fabric/overview')) {
-        return Promise.resolve({ ...overview, controller_online: false }) as ReturnType<typeof api.get>
+        return Promise.resolve({
+          health: { ...overview.health, controller_reachable: false, routers_online: 0 },
+        }) as ReturnType<typeof api.get>
       }
       return Promise.resolve({}) as ReturnType<typeof api.get>
     })

@@ -95,6 +95,49 @@ type ZitiIdentityInfo struct {
 	} `json:"enrollment,omitempty"`
 }
 
+// UnmarshalJSON tolerates the two shapes OpenZiti has used for an identity's
+// "type": a bare string ("Device") on older controllers, and an entity
+// reference object ({"id":"Device","name":"Device"}) on newer ones. Decoding
+// the object form into a plain string field previously failed the whole list
+// with "cannot unmarshal object into ... .type of type string", which made the
+// fabric overview report 0 identities even though many were enrolled.
+func (z *ZitiIdentityInfo) UnmarshalJSON(data []byte) error {
+	type alias ZitiIdentityInfo // avoid recursing into this method
+	// First try the object form for `type`.
+	aux := struct {
+		Type json.RawMessage `json:"type"`
+		*alias
+	}{alias: (*alias)(z)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	z.Type = decodeZitiTypeRef(aux.Type)
+	return nil
+}
+
+// decodeZitiTypeRef flattens a Ziti "type" value (string or {id,name} object)
+// to a display string. An empty/absent value yields "".
+func decodeZitiTypeRef(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var ref struct {
+		Name string `json:"name"`
+		ID   string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &ref); err == nil {
+		if ref.Name != "" {
+			return ref.Name
+		}
+		return ref.ID
+	}
+	return ""
+}
+
 // NewZitiManagerWithConn builds a ZitiManager against an explicit connection
 // (controller URL / admin creds / identity dir / insecure), overriding whatever
 // is in base cfg. Used for the admin-panel runtime connect path so the

@@ -76,6 +76,10 @@ interface ZitiStatus {
   console_url?: string
   services_count: number
   identities_count: number
+  // Present on the fabric/health-derived status; optional here so the overview
+  // cards can fall back to it when the overview payload is unavailable.
+  routers_online?: number
+  routers_total?: number
   /** true when ZITI_CTRL_URLS configures >1 management endpoint (HA cluster) */
   ha?: boolean
   controller_endpoints?: ZitiEndpointStatus[]
@@ -96,20 +100,34 @@ interface ZitiSyncStatus {
 interface FabricRouter {
   id: string
   name: string
-  is_online: boolean
+  // The controller returns camelCase fields straight from the Ziti mgmt API
+  // (isOnline/isVerified/versionInfo), and does NOT send fingerprint/created_at.
+  // Matching the real shape here fixes the router showing as "Offline" and the
+  // "Invalid Date" created cell.
+  isOnline: boolean
+  isVerified?: boolean
   hostname: string
-  fingerprint: string
-  created_at: string
-  updated_at: string
+  roleAttributes?: string[]
+  versionInfo?: { os?: string; arch?: string; version?: string }
 }
 
+// The /ziti/fabric/overview endpoint returns { health: {...}, recent_metrics }.
+// The FE previously expected a flat {controller_online, router_count,
+// healthy_routers, ...} object whose keys never matched, so the overview cards
+// all read 0 / Offline even though the fabric was healthy.
+interface FabricHealth {
+  controller_reachable: boolean
+  controller_version?: string
+  sdk_ready?: boolean
+  routers_online: number
+  routers_total: number
+  services_count: number
+  identities_count: number
+  policies_count: number
+  last_checked?: string
+}
 interface FabricOverview {
-  controller_online: boolean
-  router_count: number
-  service_count: number
-  identity_count: number
-  healthy_routers: number
-  unhealthy_routers: number
+  health?: FabricHealth
 }
 
 interface PostureCheck {
@@ -653,25 +671,34 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
 
   if (statusLoading) return <Spinner />
 
+  // The overview endpoint nests everything under `health`. Fall back to the
+  // separate `status` (fabric/health) source when present.
+  const h = overview?.health
+  const controllerUp = (h?.controller_reachable ?? status?.controller_reachable) ?? false
+  const routersOnline = h?.routers_online ?? status?.routers_online ?? 0
+  const routersTotal = h?.routers_total ?? status?.routers_total ?? routers.length
+  const servicesCount = h?.services_count ?? status?.services_count ?? 0
+  const identitiesCount = h?.identities_count ?? status?.identities_count ?? 0
+
   const statCards = [
     {
       title: 'Controller',
-      value: overview?.controller_online || status?.controller_reachable ? 'Online' : 'Offline',
-      description: status?.sdk_ready ? 'SDK Ready' : 'SDK Not Ready',
+      value: controllerUp ? 'Online' : 'Offline',
+      description: (h?.sdk_ready ?? status?.sdk_ready) ? 'SDK Ready' : 'SDK Not Ready',
       icon: Network,
-      color: (overview?.controller_online || status?.controller_reachable) ? 'text-green-600' : 'text-red-500',
+      color: controllerUp ? 'text-green-600' : 'text-red-500',
       isStatus: true,
     },
     {
       title: 'Routers',
-      value: overview?.router_count || 0,
-      description: `${overview?.healthy_routers || 0} healthy, ${overview?.unhealthy_routers || 0} unhealthy`,
+      value: routersTotal,
+      description: `${routersOnline} online, ${Math.max(0, routersTotal - routersOnline)} offline`,
       icon: Router,
       color: 'text-blue-600',
     },
     {
       title: 'Services',
-      value: status?.services_count || 0,
+      value: servicesCount,
       description: 'Registered services',
       icon: Server,
       color: 'text-purple-600',
@@ -679,7 +706,7 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
     },
     {
       title: 'Identities',
-      value: status?.identities_count || 0,
+      value: identitiesCount,
       description: 'Registered identities',
       icon: Users2,
       color: 'text-orange-600',
@@ -741,8 +768,8 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
                   <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Hostname</TableHead>
-                  <TableHead>Fingerprint</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Verified</TableHead>
+                  <TableHead>Version</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -750,14 +777,18 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
                   <TableRow key={router.id} className="hover:bg-muted/50">
                     <TableCell className="font-medium">{router.name}</TableCell>
                     <TableCell>
-                      <Badge variant={router.is_online ? 'default' : 'destructive'}>
-                        {router.is_online ? 'Online' : 'Offline'}
+                      <Badge variant={router.isOnline ? 'default' : 'destructive'}>
+                        {router.isOnline ? 'Online' : 'Offline'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{router.hostname}</TableCell>
-                    <TableCell><TruncatedId value={router.fingerprint} label="Fingerprint" /></TableCell>
+                    <TableCell>
+                      <Badge variant={router.isVerified ? 'default' : 'secondary'}>
+                        {router.isVerified ? 'Verified' : 'Unverified'}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(router.created_at).toLocaleDateString()}
+                      {router.versionInfo?.version ?? '—'}
                     </TableCell>
                   </TableRow>
                 ))}
