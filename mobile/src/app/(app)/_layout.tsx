@@ -5,12 +5,14 @@ import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { registerDevice } from '@/features/mfa/push';
 import { useNtfyPush } from '@/features/notifications/push';
+import { getSettings, lockTimeoutMs } from '@/features/settings/store';
 
 // Grace period: don't re-prompt for a brief app-switch (notification shade, a
 // quick jump to another app to copy a code, an OAuth round-trip). Banking apps
-// and 1Password all use an idle window rather than locking on every blur. Should
-// become a user setting (Immediately / 1 min / 5 min); 60s is a sane default.
-const LOCK_GRACE_MS = 60_000;
+// and 1Password all use an idle window rather than locking on every blur. The
+// window is user-configurable in Settings (Immediately / 1 min / 5 min); 1 min
+// is the default, read live from the settings store.
+const DEFAULT_LOCK_GRACE_MS = 60_000;
 
 /**
  * Biometric app-lock: requires Face ID / Touch ID / fingerprint — with the
@@ -66,13 +68,20 @@ function useAppLock() {
   useEffect(() => {
     // Cold start always locks.
     unlock();
+    // Track the user's chosen grace window; refreshed whenever the app becomes
+    // active so a change in Settings takes effect on the next background trip.
+    const graceRef = { current: DEFAULT_LOCK_GRACE_MS };
+    getSettings().then((s) => (graceRef.current = lockTimeoutMs(s.lockTimeout)));
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'background' || s === 'inactive') {
         backgroundedAt.current = Date.now();
       } else if (s === 'active') {
-        // Only re-lock if we were away longer than the grace period.
+        // Re-read the preference (cheap; cached) in case it changed.
+        getSettings().then((cfg) => {
+          graceRef.current = lockTimeoutMs(cfg.lockTimeout);
+        });
         const away = Date.now() - backgroundedAt.current;
-        if (backgroundedAt.current === 0 || away > LOCK_GRACE_MS) {
+        if (backgroundedAt.current === 0 || away > graceRef.current) {
           setLocked(true);
           unlock();
         }

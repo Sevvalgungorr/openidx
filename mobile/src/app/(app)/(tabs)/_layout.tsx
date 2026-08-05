@@ -50,10 +50,10 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="more"
+        name="settings"
         options={{
-          title: 'More',
-          tabBarIcon: ({ color }) => <TabIcon glyph="⋯" color={color} />,
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <TabIcon glyph="⚙️" color={color} />,
         }}
       />
     </Tabs>

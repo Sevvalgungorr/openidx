@@ -21,6 +21,7 @@ import {
   type OtpAccount,
 } from '@/features/authenticator/otp';
 import { listAccounts, updateAccount } from '@/features/authenticator/store';
+import { DEFAULT_SETTINGS, getSettings, type AppSettings } from '@/features/settings/store';
 
 /**
  * The authenticator home screen — a live list of one-time codes styled like
@@ -35,6 +36,7 @@ export default function AuthenticatorScreen() {
   const [accounts, setAccounts] = useState<OtpAccount[] | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [query, setQuery] = useState('');
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Put the "+ Add" action in the tab's header (Tabs manage the header, so we
@@ -53,6 +55,7 @@ export default function AuthenticatorScreen() {
 
   const reload = useCallback(async () => {
     setAccounts(await listAccounts());
+    setSettings(await getSettings());
   }, []);
 
   useFocusEffect(
@@ -132,6 +135,8 @@ export default function AuthenticatorScreen() {
                 key={a.id}
                 account={a}
                 now={now}
+                hideCodes={settings.hideCodes}
+                tapToCopy={settings.tapToCopy}
                 onOpen={() => router.push(`/(app)/authenticator/${a.id}`)}
                 onAdvance={() => advanceHotp(a)}
               />
@@ -150,15 +155,22 @@ export default function AuthenticatorScreen() {
 function CodeRow({
   account,
   now,
+  hideCodes,
+  tapToCopy,
   onOpen,
   onAdvance,
 }: {
   account: OtpAccount;
   now: number;
+  hideCodes: boolean;
+  tapToCopy: boolean;
   onOpen: () => void;
   onAdvance: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  // When "hide codes" is on, the code stays masked until the user reveals it by
+  // tapping the row; revealing also copies if tap-to-copy is on.
+  const [revealed, setRevealed] = useState(false);
   const isHotp = account.type === 'hotp';
   const code = isHotp
     ? generateHOTP(account.secret, account.counter ?? 0, account.digits, account.algorithm)
@@ -172,9 +184,21 @@ function CodeRow({
     setTimeout(() => setCopied(false), 1200);
   }, [code]);
 
+  const onRowPress = useCallback(() => {
+    if (hideCodes && !revealed) {
+      setRevealed(true);
+      // Auto-hide again shortly so a shoulder-surfer window stays small.
+      setTimeout(() => setRevealed(false), 8000);
+    }
+    if (tapToCopy) copy();
+  }, [hideCodes, revealed, tapToCopy, copy]);
+
+  const masked = hideCodes && !revealed;
+  const display = copied ? 'Copied' : masked ? '•••  •••' : formatCode(code);
+
   return (
     <View style={styles.row}>
-      <Pressable style={styles.rowMain} onPress={copy} accessibilityRole="button">
+      <Pressable style={styles.rowMain} onPress={onRowPress} accessibilityRole="button">
         <IssuerAvatar issuer={account.issuer} />
         <View style={styles.rowText}>
           <Text style={styles.issuer} numberOfLines={1}>
@@ -185,8 +209,8 @@ function CodeRow({
               {account.label}
             </Text>
           )}
-          <Text style={[styles.code, copied && styles.codeCopied]}>
-            {copied ? 'Copied' : formatCode(code)}
+          <Text style={[styles.code, copied && styles.codeCopied, masked && styles.codeMasked]}>
+            {display}
           </Text>
         </View>
         {isHotp ? (
@@ -244,6 +268,7 @@ const styles = StyleSheet.create({
     color: '#2563EB',
   },
   codeCopied: { color: '#16A34A' },
+  codeMasked: { color: 'rgba(127,127,127,0.6)', letterSpacing: 4 },
   hotpBtn: {
     width: 40,
     height: 40,
