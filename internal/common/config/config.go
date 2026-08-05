@@ -520,6 +520,25 @@ type WebAuthnConfig struct {
 	RPID      string   `mapstructure:"rp_id"`      // Relying Party ID (e.g., "example.com")
 	RPOrigins []string `mapstructure:"rp_origins"` // Allowed origins
 	Timeout   int      `mapstructure:"timeout"`    // Timeout in seconds (default: 60)
+
+	// Mobile app domain-association: values published at
+	// /.well-known/apple-app-site-association and /.well-known/assetlinks.json so
+	// iOS/Android bind the native app to this domain for passkeys (WebAuthn) and
+	// universal/app links. All optional; when unset the well-known files are not
+	// served (404), so this is strictly opt-in per deployment.
+	IOSAppID       string `mapstructure:"ios_app_id"`      // "<TEAMID>.<bundleId>", e.g. "ABCDE12345.org.tdv.openidx"
+	AndroidPackage string `mapstructure:"android_package"` // e.g. "org.tdv.openidx"
+	AndroidSHA256  string `mapstructure:"android_sha256"`  // signing-cert SHA-256 fingerprint (colon-separated hex)
+}
+
+// HasIOSAppAssociation reports whether the iOS app-site-association file should
+// be served (an iOS app id was configured).
+func (w WebAuthnConfig) HasIOSAppAssociation() bool { return w.IOSAppID != "" }
+
+// HasAndroidAssetLinks reports whether the Android assetlinks file should be
+// served (both a package name and a signing fingerprint were configured).
+func (w WebAuthnConfig) HasAndroidAssetLinks() bool {
+	return w.AndroidPackage != "" && w.AndroidSHA256 != ""
 }
 
 // PushMFAConfig holds Push MFA configuration
@@ -1066,8 +1085,12 @@ func bindEnvVars(v *viper.Viper) {
 		// only matches OPENIDX_WEBAUTHN_*), so RPID stays "localhost" and browsers
 		// reject registration on any real domain with "The relying party ID is not
 		// a registrable domain suffix of, nor equal to the current domain".
-		"webauthn.rp_id":                    "WEBAUTHN_RP_ID",
-		"webauthn.rp_origins":               "WEBAUTHN_RP_ORIGINS",
+		"webauthn.rp_id":      "WEBAUTHN_RP_ID",
+		"webauthn.rp_origins": "WEBAUTHN_RP_ORIGINS",
+		// Mobile domain-association (opt-in; drives /.well-known/*).
+		"webauthn.ios_app_id":               "WEBAUTHN_IOS_APP_ID",
+		"webauthn.android_package":          "WEBAUTHN_ANDROID_PACKAGE",
+		"webauthn.android_sha256":           "WEBAUTHN_ANDROID_SHA256",
 		"enable_rate_limit":                 "ENABLE_RATE_LIMIT",
 		"rate_limit_requests":               "RATE_LIMIT_REQUESTS",
 		"rate_limit_window":                 "RATE_LIMIT_WINDOW",

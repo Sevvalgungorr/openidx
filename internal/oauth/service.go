@@ -1210,6 +1210,13 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 	router.GET("/.well-known/jwks.json", svc.handleJWKS)
 	router.OPTIONS("/.well-known/jwks.json", svc.handleJWKS)
 
+	// Mobile app domain-association (opt-in via config): binds the native iOS /
+	// Android app to this domain so passkeys (WebAuthn) and universal/app links
+	// resolve. Served only when the corresponding app id / package+fingerprint
+	// is configured; otherwise 404 (see handlers).
+	router.GET("/.well-known/apple-app-site-association", svc.handleAppleAppSiteAssociation)
+	router.GET("/.well-known/assetlinks.json", svc.handleAndroidAssetLinks)
+
 	// SSF/CAEP (Shared Signals): transmitter metadata + stream management +
 	// receiver push endpoint.
 	router.GET("/.well-known/ssf-configuration", svc.handleSSFConfiguration)
