@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { api, baseURL } from '../lib/api'
+import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
 interface ReportExport {
@@ -72,6 +72,32 @@ export function ReportsPage() {
       setGenerateOpen(false)
     },
     onError: () => toast({ title: 'Failed to generate report', variant: 'destructive' }),
+  })
+
+  // Download an export through the authenticated api client (blob), not a bare
+  // window.open — the download endpoint requires the Authorization header, so a
+  // plain URL opened in a new tab returned {"error":"missing authorization
+  // header"} instead of the file. Fetch the bytes with the bearer token, then
+  // save via a temporary object-URL anchor.
+  const downloadMutation = useMutation({
+    mutationFn: async (exp: ReportExport) => {
+      const blob = await api.get<Blob>(
+        `/api/v1/audit/reports/exports/${exp.id}/download`,
+        { responseType: 'blob' },
+      )
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const ext = (exp.format || 'csv').toLowerCase()
+      const safeName = (exp.name || 'report').replace(/[^\w.-]+/g, '_')
+      a.download = safeName.endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // Revoke on the next tick so the click has consumed the URL.
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    },
+    onError: () => toast({ title: 'Download failed', variant: 'destructive' }),
   })
 
   const createScheduleMutation = useMutation({
@@ -181,7 +207,7 @@ export function ReportsPage() {
                       <TableCell>{new Date(exp.created_at).toLocaleString()}</TableCell>
                       <TableCell>
                         {exp.status === 'completed' && (
-                          <Button size="sm" variant="ghost" onClick={() => window.open(`${baseURL}/api/v1/audit/reports/exports/${exp.id}/download`, '_blank')}>
+                          <Button size="sm" variant="ghost" disabled={downloadMutation.isPending} onClick={() => downloadMutation.mutate(exp)}>
                             <Download className="h-4 w-4" />
                           </Button>
                         )}

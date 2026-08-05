@@ -33,6 +33,22 @@ func extractSubprotocolToken(header string) string {
 	return ""
 }
 
+// selectedSubprotocol returns the exact "access_token_<jwt>" protocol string the
+// client offered in Sec-WebSocket-Protocol, or "" if none. The browser
+// WebSocket API requires the server's 101 response to echo back a subprotocol
+// matching one the client offered; if it does not, the browser fails the
+// handshake and closes with 1006 (even though non-browser clients accept the
+// upgrade). We therefore echo the offered protocol verbatim on Upgrade.
+func selectedSubprotocol(header string) string {
+	for _, p := range strings.Split(header, ",") {
+		p = strings.TrimSpace(p)
+		if strings.HasPrefix(p, "access_token_") {
+			return p
+		}
+	}
+	return ""
+}
+
 // EventStreamer manages real-time streaming of audit events
 type EventStreamer struct {
 	logger          *zap.Logger
@@ -218,7 +234,17 @@ func (es *EventStreamer) handleWebSocketStream(c *gin.Context) {
 		}
 	}
 
-	conn, err := es.upgrader.Upgrade(c.Writer, c.Request, nil)
+	// Echo the client's offered "access_token_<jwt>" subprotocol back in the 101
+	// response. Browsers require this: a WebSocket opened with a subprotocol
+	// whose handshake response omits a matching Sec-WebSocket-Protocol header is
+	// failed by the browser and closed with 1006. Non-browser clients (curl,
+	// raw sockets) accept the upgrade regardless, which can mask the bug.
+	var upgradeHeader http.Header
+	if sp := selectedSubprotocol(c.Request.Header.Get("Sec-WebSocket-Protocol")); sp != "" {
+		upgradeHeader = http.Header{"Sec-WebSocket-Protocol": []string{sp}}
+	}
+
+	conn, err := es.upgrader.Upgrade(c.Writer, c.Request, upgradeHeader)
 	if err != nil {
 		es.logger.Error("Failed to upgrade to WebSocket",
 			zap.String("client_id", c.Query("client_id")),
