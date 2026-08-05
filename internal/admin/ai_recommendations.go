@@ -244,20 +244,24 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 
 	generated := 0
 
-	// 1. Permission Right-Sizing: Find users with admin roles who haven't done admin actions
+	// 1. Permission Right-Sizing: users with admin roles but no recent admin activity.
+	// audit_events.actor_id is text and categorized by `category`, not dotted
+	// event_type values; compare on category and cast the id to text.
 	rightSizeRows, err := s.db.Pool.Query(ctx, `
-		SELECT u.id, u.username, r.name as role_name FROM users u
+		SELECT u.id, u.username, r.name AS role_name FROM users u
 		JOIN user_roles ur ON u.id = ur.user_id AND ur.org_id = u.org_id
 		JOIN roles r ON ur.role_id = r.id AND r.org_id = u.org_id
 		WHERE r.name IN ('admin', 'super_admin') AND u.enabled = true
 		AND u.org_id = $1
-		AND u.id NOT IN (
-			SELECT DISTINCT actor_id::uuid FROM audit_events
-			WHERE event_type IN ('user.create', 'user.delete', 'settings.update', 'policy.create')
+		AND u.id::text NOT IN (
+			SELECT actor_id FROM audit_events
+			WHERE category IN ('user_management', 'configuration', 'governance')
 			AND timestamp > NOW() - INTERVAL '30 days'
 			AND org_id = $1
 		) LIMIT 20`, org.ID)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("recommendations: right-sizing query failed", zap.Error(err))
+	} else {
 		defer rightSizeRows.Close()
 		entities := []map[string]interface{}{}
 		for rightSizeRows.Next() {
@@ -271,26 +275,30 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 				"action": "downgrade_role", "from": "admin", "to": "user",
 				"reason": "No admin activity in 30 days",
 			})
-			s.createRecommendation(ctx, "permission_right_sizing", "security",
+			if s.createRecommendation(ctx, "permission_right_sizing", "security",
 				fmt.Sprintf("%d users have admin roles but no admin activity", len(entities)),
 				"These users have elevated privileges they haven't used in the last 30 days. Consider downgrading their roles to follow the principle of least privilege.",
-				"high", "low", entitiesJSON, actionJSON)
-			generated++
+				"high", "low", entitiesJSON, actionJSON) {
+				generated++
+			}
 		}
 	}
 
-	// 2. MFA Enrollment: Users without MFA who log in frequently
+	// 2. MFA Enrollment: frequently-active users without any MFA method.
+	// mfa_totp has `enabled` (there is no `verified` column).
 	mfaRows, err := s.db.Pool.Query(ctx, `
-		SELECT u.id, u.username, COUNT(ae.id) as login_count FROM users u
+		SELECT u.id, u.username, COUNT(ae.id) AS login_count FROM users u
 		JOIN audit_events ae ON u.id::text = ae.actor_id AND ae.org_id = u.org_id
 		WHERE ae.event_type = 'authentication' AND ae.timestamp > NOW() - INTERVAL '30 days'
 		AND u.org_id = $1
-		AND u.id NOT IN (SELECT DISTINCT user_id FROM mfa_totp WHERE verified = true AND org_id = $1)
+		AND u.id NOT IN (SELECT DISTINCT user_id FROM mfa_totp WHERE enabled = true AND org_id = $1)
 		AND u.id NOT IN (SELECT DISTINCT user_id FROM mfa_webauthn WHERE org_id = $1)
 		AND u.enabled = true
 		GROUP BY u.id, u.username HAVING COUNT(ae.id) > 5
 		LIMIT 20`, org.ID)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("recommendations: mfa-enrollment query failed", zap.Error(err))
+	} else {
 		defer mfaRows.Close()
 		entities := []map[string]interface{}{}
 		for mfaRows.Next() {
@@ -304,20 +312,23 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 			actionJSON, _ := json.Marshal(map[string]interface{}{
 				"action": "enforce_mfa", "methods": []string{"totp", "webauthn", "push"},
 			})
-			s.createRecommendation(ctx, "mfa_enrollment", "security",
+			if s.createRecommendation(ctx, "mfa_enrollment", "security",
 				fmt.Sprintf("%d active users have no MFA configured", len(entities)),
 				"These frequently active users don't have any MFA method enabled, creating a significant security risk.",
-				"high", "medium", entitiesJSON, actionJSON)
-			generated++
+				"high", "medium", entitiesJSON, actionJSON) {
+				generated++
+			}
 		}
 	}
 
-	// 3. Stale Account Cleanup
+	// 3. Stale Account Cleanup. The column is `last_login_at`.
 	var staleCount int
-	s.db.Pool.QueryRow(ctx, `
+	if err := s.db.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM users WHERE enabled = true
-		AND (last_login IS NULL OR last_login < NOW() - INTERVAL '90 days')
-		AND org_id = $1`, org.ID).Scan(&staleCount)
+		AND (last_login_at IS NULL OR last_login_at < NOW() - INTERVAL '90 days')
+		AND org_id = $1`, org.ID).Scan(&staleCount); err != nil {
+		s.logger.Warn("recommendations: stale-account query failed", zap.Error(err))
+	}
 	if staleCount > 0 {
 		actionJSON, _ := json.Marshal(map[string]interface{}{
 			"action": "disable_accounts", "threshold_days": 90,
@@ -325,20 +336,24 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 		entitiesJSON, _ := json.Marshal([]map[string]interface{}{
 			{"type": "summary", "count": staleCount},
 		})
-		s.createRecommendation(ctx, "stale_account_cleanup", "governance",
+		if s.createRecommendation(ctx, "stale_account_cleanup", "governance",
 			fmt.Sprintf("%d accounts inactive for 90+ days", staleCount),
 			"These accounts have not been used in over 90 days and should be reviewed for deactivation to reduce attack surface.",
-			"medium", "low", entitiesJSON, actionJSON)
-		generated++
+			"medium", "low", entitiesJSON, actionJSON) {
+			generated++
+		}
 	}
 
-	// 4. Policy Coverage Gaps
+	// 4. Policy Coverage Gaps. There is no policy_rules.target_applications column
+	// and no reliable app<->policy join in the deployed schema, so flag apps when
+	// the org has enabled applications but no enabled policies at all.
 	var unprotectedApps int
-	s.db.Pool.QueryRow(ctx, `
+	if err := s.db.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM applications a
-		WHERE a.org_id = $1
-		AND a.id NOT IN (SELECT DISTINCT unnest(pr.target_applications) FROM policy_rules pr
-			JOIN policies p ON pr.policy_id = p.id AND p.org_id = pr.org_id WHERE p.enabled = true AND pr.org_id = $1)`, org.ID).Scan(&unprotectedApps)
+		WHERE a.org_id = $1 AND a.enabled = true
+		AND NOT EXISTS (SELECT 1 FROM policies p WHERE p.org_id = $1 AND p.enabled = true)`, org.ID).Scan(&unprotectedApps); err != nil {
+		s.logger.Warn("recommendations: policy-coverage query failed", zap.Error(err))
+	}
 	if unprotectedApps > 0 {
 		actionJSON, _ := json.Marshal(map[string]interface{}{
 			"action": "create_default_policy", "type": "conditional_access",
@@ -346,24 +361,28 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 		entitiesJSON, _ := json.Marshal([]map[string]interface{}{
 			{"type": "summary", "count": unprotectedApps},
 		})
-		s.createRecommendation(ctx, "policy_tightening", "compliance",
+		if s.createRecommendation(ctx, "policy_tightening", "compliance",
 			fmt.Sprintf("%d applications have no access policy", unprotectedApps),
 			"These applications lack conditional access policies, meaning any authenticated user can access them without additional controls.",
-			"medium", "medium", entitiesJSON, actionJSON)
-		generated++
+			"medium", "medium", entitiesJSON, actionJSON) {
+			generated++
+		}
 	}
 
-	// 5. Agent Permission Scoping
+	// 5. Agent Permission Scoping: active agents with more granted permissions than
+	// resource types they've touched recently.
 	agentRows, err := s.db.Pool.Query(ctx, `
-		SELECT a.id, a.name, COUNT(p.id) as perm_count,
-			COUNT(DISTINCT act.resource_type) as used_resources
+		SELECT a.id, a.name, COUNT(p.id) AS perm_count,
+			COUNT(DISTINCT act.resource_type) AS used_resources
 		FROM ai_agents a
 		LEFT JOIN ai_agent_permissions p ON a.id = p.agent_id
 		LEFT JOIN ai_agent_activity act ON a.id = act.agent_id AND act.created_at > NOW() - INTERVAL '30 days'
 		WHERE a.status = 'active'
 		GROUP BY a.id, a.name
 		HAVING COUNT(p.id) > COUNT(DISTINCT act.resource_type) * 2`)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("recommendations: agent-scoping query failed", zap.Error(err))
+	} else {
 		defer agentRows.Close()
 		entities := []map[string]interface{}{}
 		for agentRows.Next() {
@@ -380,23 +399,30 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 			actionJSON, _ := json.Marshal(map[string]interface{}{
 				"action": "scope_reduction", "reason": "Unused permissions detected",
 			})
-			s.createRecommendation(ctx, "agent_permission_scoping", "security",
+			if s.createRecommendation(ctx, "agent_permission_scoping", "security",
 				fmt.Sprintf("%d AI agents have over-broad permissions", len(entities)),
 				"These AI agents have more permissions than they actively use. Consider reducing their scope.",
-				"medium", "low", entitiesJSON, actionJSON)
-			generated++
+				"medium", "low", entitiesJSON, actionJSON) {
+				generated++
+			}
 		}
 	}
 
-	// 6. Compliance gap detection
+	// 6. Compliance gap detection: MFA adoption below target. mfa_totp uses
+	// `enabled`, not `verified`. Only emit when the org actually has users, so an
+	// empty org doesn't produce a spurious "0% adoption" recommendation.
 	var mfaAdoptionPct int
 	var totalU, mfaU int
-	s.db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE enabled = true AND org_id = $1", org.ID).Scan(&totalU)
-	s.db.Pool.QueryRow(ctx, "SELECT COUNT(DISTINCT user_id) FROM mfa_totp WHERE verified = true AND org_id = $1", org.ID).Scan(&mfaU)
+	if err := s.db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE enabled = true AND org_id = $1", org.ID).Scan(&totalU); err != nil {
+		s.logger.Warn("recommendations: user-count query failed", zap.Error(err))
+	}
+	if err := s.db.Pool.QueryRow(ctx, "SELECT COUNT(DISTINCT user_id) FROM mfa_totp WHERE enabled = true AND org_id = $1", org.ID).Scan(&mfaU); err != nil {
+		s.logger.Warn("recommendations: mfa-count query failed", zap.Error(err))
+	}
 	if totalU > 0 {
 		mfaAdoptionPct = (mfaU * 100) / totalU
 	}
-	if mfaAdoptionPct < 90 {
+	if totalU > 0 && mfaAdoptionPct < 90 {
 		actionJSON, _ := json.Marshal(map[string]interface{}{
 			"action": "enforce_mfa_policy", "target_adoption": 90,
 		})
@@ -404,15 +430,14 @@ func (s *Service) handleGenerateRecommendations(c *gin.Context) {
 			"current_adoption": mfaAdoptionPct, "target": 90,
 			"compliance_frameworks": []string{"SOC2", "ISO27001", "NIST"},
 		})
-		s.createRecommendation(ctx, "compliance_gap", "compliance",
+		// Carry the supporting data through createRecommendation so we don't need a
+		// second UPDATE (Postgres does not accept ORDER BY/LIMIT on a plain UPDATE).
+		if s.createRecommendationWithSupport(ctx, "compliance_gap", "compliance",
 			fmt.Sprintf("MFA adoption at %d%% - below 90%% compliance target", mfaAdoptionPct),
 			"SOC 2, ISO 27001, and NIST frameworks recommend MFA adoption above 90% for all users.",
-			"high", "medium", json.RawMessage(`[]`), actionJSON)
-		// Update supporting data
-		s.db.Pool.Exec(ctx, `UPDATE ai_recommendations SET supporting_data = $1
-			WHERE recommendation_type = 'compliance_gap' AND status = 'pending'
-			ORDER BY created_at DESC LIMIT 1`, supportJSON)
-		generated++
+			"high", "medium", json.RawMessage(`[]`), actionJSON, supportJSON) {
+			generated++
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "recommendation generation complete", "generated": generated})
@@ -485,12 +510,35 @@ func (s *Service) handleRecommendationStats(c *gin.Context) {
 
 // --- Helper ---
 
-func (s *Service) createRecommendation(ctx context.Context, recType, category, title, description, impact, effort string, entities, action json.RawMessage) {
-	s.db.Pool.Exec(ctx, `
-		INSERT INTO ai_recommendations (recommendation_type, category, title, description, impact, effort, affected_entities, suggested_action)
-		SELECT $1, $2, $3, $4, $5, $6, $7, $8
+// createRecommendation inserts a pending recommendation unless an identical
+// pending one already exists. It returns true only when a row was actually
+// written, so the generate handler counts real inserts rather than attempts.
+// Any DB error is logged (previously it was silently swallowed, which made the
+// endpoint report "generated: N" while persisting nothing).
+func (s *Service) createRecommendation(ctx context.Context, recType, category, title, description, impact, effort string, entities, action json.RawMessage) bool {
+	return s.createRecommendationWithSupport(ctx, recType, category, title, description, impact, effort, entities, action, nil)
+}
+
+// createRecommendationWithSupport is createRecommendation plus an optional
+// supporting_data payload written in the same statement. The SELECT operands are
+// explicitly cast so Postgres can deduce parameter types even when the row is
+// filtered out by NOT EXISTS (an untyped SELECT of only bind params otherwise
+// fails with "inconsistent types deduced for parameter").
+func (s *Service) createRecommendationWithSupport(ctx context.Context, recType, category, title, description, impact, effort string, entities, action, support json.RawMessage) bool {
+	if support == nil {
+		support = json.RawMessage(`{}`)
+	}
+	tag, err := s.db.Pool.Exec(ctx, `
+		INSERT INTO ai_recommendations (recommendation_type, category, title, description, impact, effort, affected_entities, suggested_action, supporting_data)
+		SELECT $1::varchar, $2::varchar, $3::varchar, $4::text, $5::varchar, $6::varchar, $7::jsonb, $8::jsonb, $9::jsonb
 		WHERE NOT EXISTS (
 			SELECT 1 FROM ai_recommendations WHERE recommendation_type = $1 AND title = $3 AND status = 'pending'
 		)`,
-		recType, category, title, description, impact, effort, entities, action)
+		recType, category, title, description, impact, effort, entities, action, support)
+	if err != nil {
+		s.logger.Error("failed to insert recommendation",
+			zap.String("type", recType), zap.String("title", title), zap.Error(err))
+		return false
+	}
+	return tag.RowsAffected() > 0
 }

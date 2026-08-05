@@ -74,7 +74,15 @@ export function ErrorCatalogPage() {
 
   const { data: errors = [], isLoading } = useQuery({
     queryKey: ['error-catalog'],
-    queryFn: () => api.get<ErrorEntry[]>('/api/v1/error-catalog'),
+    // The backend wraps the list as { errors: [...], total }. Unwrap to the
+    // array the UI filters over (a bare array would crash with
+    // "j.filter is not a function").
+    queryFn: async () => {
+      const res = await api.get<{ errors: ErrorEntry[]; total: number }>(
+        '/api/v1/error-catalog'
+      )
+      return res.errors ?? []
+    },
   })
 
   // Filter errors

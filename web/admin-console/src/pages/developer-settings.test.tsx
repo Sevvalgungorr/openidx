@@ -21,23 +21,14 @@ import { DeveloperSettingsPage } from './developer-settings'
 import { api } from '../lib/api'
 
 const settings = {
-  api_keys: {
-    max_keys_per_user: 5,
-    default_expiry_days: 365,
-    allowed_scopes: ['users:read', 'audit:read'],
-  },
-  webhooks: {
-    ip_allowlist: ['203.0.113.0/24'],
-    max_retries: 3,
-    retry_delay_seconds: 60,
-  },
-  cors: {
-    allowed_origins: ['https://admin.example.com'],
-  },
-  rate_limits: {
-    default_rate_limit: 100,
-    burst_limit: 200,
-  },
+  api_key_max_per_user: 5,
+  api_key_default_expiry: '365d',
+  api_key_allowed_scopes: ['read:users', 'read:audit'],
+  webhook_ip_allowlist: ['203.0.113.0/24'],
+  webhook_max_retries: 3,
+  cors_allowed_origins: ['https://admin.example.com'],
+  rate_limit_default: 100,
+  sandbox_enabled: false,
 }
 
 function createWrapper() {

@@ -44,27 +44,79 @@ interface DeveloperSettings {
   }
 }
 
+// ApiDeveloperSettings is the flat shape the backend actually serves
+// (internal/admin/developer.go). The UI models the same data nested, so we
+// adapt at the query/mutation boundary.
+interface ApiDeveloperSettings {
+  api_key_max_per_user: number
+  api_key_default_expiry: string
+  api_key_allowed_scopes: string[]
+  webhook_ip_allowlist: string[]
+  webhook_max_retries: number
+  cors_allowed_origins: string[]
+  rate_limit_default: number
+  sandbox_enabled: boolean
+}
+
+// "90d" <-> 90. "0"/"" -> 0 (never expires).
+function expiryToDays(v: string | undefined): number {
+  if (!v) return 0
+  const n = parseInt(v, 10)
+  return Number.isFinite(n) ? n : 0
+}
+function daysToExpiry(days: number): string {
+  return days > 0 ? `${days}d` : '0d'
+}
+
+function fromApi(a: ApiDeveloperSettings): DeveloperSettings {
+  return {
+    api_keys: {
+      max_keys_per_user: a.api_key_max_per_user ?? 5,
+      default_expiry_days: expiryToDays(a.api_key_default_expiry),
+      allowed_scopes: a.api_key_allowed_scopes ?? [],
+    },
+    webhooks: {
+      ip_allowlist: a.webhook_ip_allowlist ?? [],
+      max_retries: a.webhook_max_retries ?? 3,
+      retry_delay_seconds: 0, // not modeled by the backend
+    },
+    cors: { allowed_origins: a.cors_allowed_origins ?? [] },
+    rate_limits: {
+      default_rate_limit: a.rate_limit_default ?? 100,
+      burst_limit: 0, // not modeled by the backend
+    },
+  }
+}
+
+function toApi(s: DeveloperSettings, sandboxEnabled: boolean): ApiDeveloperSettings {
+  return {
+    api_key_max_per_user: s.api_keys.max_keys_per_user,
+    api_key_default_expiry: daysToExpiry(s.api_keys.default_expiry_days),
+    api_key_allowed_scopes: s.api_keys.allowed_scopes,
+    webhook_ip_allowlist: s.webhooks.ip_allowlist,
+    webhook_max_retries: s.webhooks.max_retries,
+    cors_allowed_origins: s.cors.allowed_origins,
+    rate_limit_default: s.rate_limits.default_rate_limit,
+    sandbox_enabled: sandboxEnabled,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const ALL_SCOPES = [
-  'identity:read',
-  'identity:write',
-  'users:read',
-  'users:write',
-  'groups:read',
-  'groups:write',
-  'governance:read',
-  'governance:write',
-  'audit:read',
-  'audit:write',
-  'admin:read',
-  'admin:write',
-  'provisioning:read',
-  'provisioning:write',
-  'applications:read',
-  'applications:write',
+  'read:users',
+  'write:users',
+  'read:groups',
+  'write:groups',
+  'read:applications',
+  'write:applications',
+  'read:audit',
+  'read:governance',
+  'write:governance',
+  'read:provisioning',
+  'write:provisioning',
 ] as const
 
 const EXPIRY_OPTIONS = [
@@ -85,10 +137,11 @@ export function DeveloperSettingsPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'api_keys' | 'webhooks' | 'cors' | 'rate_limits'>('api_keys')
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: apiSettings, isLoading } = useQuery({
     queryKey: ['developer-settings'],
-    queryFn: () => api.get<DeveloperSettings>('/api/v1/developer/settings'),
+    queryFn: () => api.get<ApiDeveloperSettings>('/api/v1/developer/settings'),
   })
+  const settings = apiSettings ? fromApi(apiSettings) : undefined
 
   const [formData, setFormData] = useState<DeveloperSettings | null>(null)
 
@@ -100,7 +153,7 @@ export function DeveloperSettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: DeveloperSettings) =>
-      api.put('/api/v1/developer/settings', data),
+      api.put('/api/v1/developer/settings', toApi(data, apiSettings?.sandbox_enabled ?? false)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['developer-settings'] })
       toast({ title: 'Settings saved', description: 'Developer settings updated successfully.' })

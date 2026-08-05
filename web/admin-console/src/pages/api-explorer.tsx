@@ -103,7 +103,15 @@ export function ApiExplorerPage() {
   // Queries
   const { data: endpoints = [], isLoading } = useQuery({
     queryKey: ['api-endpoints'],
-    queryFn: () => api.get<ApiEndpoint[]>('/api/v1/developer/api-catalog'),
+    // The backend returns { endpoints: { <service>: ApiEndpoint[] } }. Flatten to
+    // the array the UI groups/filters over (the raw object is not iterable and
+    // crashed the grouping useMemo with "K is not iterable").
+    queryFn: async () => {
+      const res = await api.get<{ endpoints: Record<string, ApiEndpoint[]> }>(
+        '/api/v1/developer/api-catalog'
+      )
+      return Object.values(res.endpoints ?? {}).flat()
+    },
   })
 
   const { data: codeSamples } = useQuery({

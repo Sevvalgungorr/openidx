@@ -58,7 +58,12 @@ describe('ApiExplorerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
-    vi.mocked(api.get).mockResolvedValue(endpoints)
+    vi.mocked(api.get).mockResolvedValue({
+      endpoints: {
+        identity: endpoints.filter((e) => e.service === 'identity'),
+        oauth: endpoints.filter((e) => e.service === 'oauth'),
+      },
+    })
   })
 
   it('renders the heading once endpoints have loaded', async () => {

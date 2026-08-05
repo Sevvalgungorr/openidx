@@ -49,7 +49,7 @@ describe('ErrorCatalogPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
-    vi.mocked(api.get).mockResolvedValue(entries)
+    vi.mocked(api.get).mockResolvedValue({ errors: entries, total: entries.length })
   })
 
   it('renders the heading + subtitle + search input', async () => {
@@ -86,7 +86,7 @@ describe('ErrorCatalogPage', () => {
   })
 
   it('shows the empty state when no codes match', async () => {
-    vi.mocked(api.get).mockResolvedValue([])
+    vi.mocked(api.get).mockResolvedValue({ errors: [], total: 0 })
 
     render(<ErrorCatalogPage />, { wrapper: createWrapper() })
 
