@@ -23,6 +23,7 @@ import { api } from '../lib/api'
 const activeAgent = {
   agent_id: 'agt-001',
   device_id: 'dev-aaa-111',
+  hostname: 'CMIT0601L-025',
   status: 'active',
   compliance_status: 'compliant',
   compliance_score: 95,
@@ -94,6 +95,21 @@ describe('AgentFleetPage', () => {
     expect(await screen.findByText('agt-001')).toBeInTheDocument()
     expect(screen.getByText('agt-002')).toBeInTheDocument()
     expect(screen.getByText('agt-003')).toBeInTheDocument()
+  })
+
+  it('shows the human-readable hostname as the primary label and finds it by search', async () => {
+    const user = userEvent.setup()
+    render(<AgentFleetPage />, { wrapper: createWrapper() })
+    // The device reports its hostname in metadata; the row must surface it
+    // (previously only agent_id/device_id showed, so an operator searching for
+    // the machine name "CMIT0601L-025" found nothing even though it was enrolled).
+    expect(await screen.findByText('CMIT0601L-025')).toBeInTheDocument()
+
+    await user.type(screen.getByPlaceholderText(/search hostname/i), 'CMIT0601')
+    expect(screen.getByText('CMIT0601L-025')).toBeInTheDocument()
+    // The two agents without that hostname are filtered out.
+    expect(screen.queryByText('agt-002')).not.toBeInTheDocument()
+    expect(screen.queryByText('agt-003')).not.toBeInTheDocument()
   })
 
   it('filters by platform via the platform selector', async () => {

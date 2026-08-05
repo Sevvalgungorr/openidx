@@ -38,6 +38,7 @@ import { useToast } from '../hooks/use-toast'
 interface AgentRecord {
   agent_id: string
   device_id: string
+  hostname?: string
   status: string
   compliance_status: string
   compliance_score: number
@@ -137,9 +138,11 @@ export function AgentFleetPage() {
   })
 
   const filtered = agents.filter((a) => {
+    const q = search.toLowerCase()
     const matchesSearch =
-      a.agent_id.toLowerCase().includes(search.toLowerCase()) ||
-      a.device_id.toLowerCase().includes(search.toLowerCase())
+      a.agent_id.toLowerCase().includes(q) ||
+      a.device_id.toLowerCase().includes(q) ||
+      (a.hostname?.toLowerCase().includes(q) ?? false)
     const matchesPlatform = platformFilter === 'all' || a.platform === platformFilter
     return matchesSearch && matchesPlatform
   })
@@ -204,7 +207,7 @@ export function AgentFleetPage() {
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search agent/device id…"
+                placeholder="Search hostname / agent / device id…"
                 className="pl-8 w-64"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -234,8 +237,10 @@ export function AgentFleetPage() {
                       <div className="flex items-center gap-2">
                         <PlatformIcon platform={agent.platform} formFactor={agent.form_factor} />
                         <div>
-                          <div className="font-medium">{agent.agent_id}</div>
-                          <div className="text-xs text-muted-foreground">{agent.device_id}</div>
+                          <div className="font-medium">{agent.hostname || agent.agent_id}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {agent.hostname ? agent.agent_id : agent.device_id}
+                          </div>
                         </div>
                       </div>
                     </TableCell>
