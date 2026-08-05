@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
@@ -472,6 +473,15 @@ func (s *Service) handleCreateDSAR(c *gin.Context) {
 
 	if req.UserID == "" || req.RequestType == "" {
 		respondError(c, nil, apperrors.BadRequest("user_id and request_type are required"))
+		return
+	}
+
+	// user_id is a uuid column. A non-UUID value (the create form is a free-text
+	// "Enter user ID" field, so an operator can type a username or a partial id)
+	// would otherwise reach Postgres and raise an invalid-uuid error that surfaces
+	// as a confusing 500. Reject it up front with a clear 400.
+	if _, uerr := uuid.Parse(req.UserID); uerr != nil {
+		respondError(c, nil, apperrors.BadRequest("user_id must be a valid user ID (UUID)"))
 		return
 	}
 

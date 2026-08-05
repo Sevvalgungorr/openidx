@@ -93,6 +93,15 @@ const tabs = [
 
 type TabKey = (typeof tabs)[number]['key']
 
+// A DSAR's user_id is a uuid column server-side, so the create form must submit
+// a real UUID (not a username or email) or the backend rejects it. Validate on
+// the client so we fail fast with a clear hint instead of a round-trip error.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value)
+}
+
 function getStatusBadge(status: string) {
   const styles: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -382,10 +391,18 @@ function DSARsTab() {
               <Label htmlFor="dsar-user-id">User ID</Label>
               <Input
                 id="dsar-user-id"
-                placeholder="Enter user ID"
+                placeholder="e.g. 00000000-0000-0000-0000-000000000000"
                 value={formUserId}
                 onChange={(e) => setFormUserId(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                The data subject's user UUID. Copy it from the Users page.
+              </p>
+              {formUserId.trim() !== '' && !isUuid(formUserId.trim()) && (
+                <p className="text-xs text-destructive">
+                  This must be a user UUID, not a username or email.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="dsar-type">Request Type</Label>
@@ -397,9 +414,6 @@ function DSARsTab() {
                   <SelectItem value="export">Data Export</SelectItem>
                   <SelectItem value="delete">Data Deletion</SelectItem>
                   <SelectItem value="restrict">Restrict Processing</SelectItem>
-                  <SelectItem value="access">Data Access</SelectItem>
-                  <SelectItem value="rectify">Rectification</SelectItem>
-                  <SelectItem value="portability">Data Portability</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -426,7 +440,7 @@ function DSARsTab() {
                   reason: formReason,
                 })
               }
-              disabled={!formUserId || !formReason || createMutation.isPending}
+              disabled={!isUuid(formUserId.trim()) || !formReason || createMutation.isPending}
             >
               {createMutation.isPending ? 'Creating...' : 'Create DSAR'}
             </Button>
