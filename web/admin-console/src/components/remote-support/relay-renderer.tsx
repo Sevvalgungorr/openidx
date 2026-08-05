@@ -60,6 +60,13 @@ export function RelayRenderer({ wsUrl, mode, onEnd, onPopOut, autoFullscreen }: 
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
+    // No-frames watchdog state (declared before the decoder so its output
+    // callback can mark the first frame). Armed in ws.onopen below.
+    let framesSeen = false
+    const markFrameSeen = () => {
+      framesSeen = true
+    }
+
     // WebCodecs VP8 decoder -> canvas.
     const decoder = new VideoDecoder({
       output: (frame) => {
@@ -72,6 +79,7 @@ export function RelayRenderer({ wsUrl, mode, onEnd, onPopOut, autoFullscreen }: 
           const ctx = c.getContext('2d')
           if (ctx) ctx.drawImage(frame, 0, 0)
           setState('streaming')
+          markFrameSeen()
           // Healthy frame: rebase the retry budget to now so a later genuine
           // drop still gets a full set of reconnect attempts.
           lastGoodNonceRef.current = reconnectNonce
@@ -92,6 +100,20 @@ export function RelayRenderer({ wsUrl, mode, onEnd, onPopOut, autoFullscreen }: 
       if (controlActiveRef.current) sendJSON({ event: 'control_state', active: true })
       requestKeyframe()
     }
+
+    // No-frames watchdog: if the socket stays open but no decoded frame ever
+    // arrives, the viewer would sit on "Connecting…" forever. That happens when
+    // the device connected but sends no video — typically a video-less agent
+    // build (pure-Go/no-capture) or a capture that failed to start. After a
+    // grace period with zero frames, surface a clear error instead of hanging.
+    const noFrameWatchdog = setTimeout(() => {
+      if (!framesSeen) {
+        setErrorMessage(
+          'No screen video received. The device connected but sent no frames — it may be running an agent build without screen capture, or capture failed to start. Check the agent logs on the device.',
+        )
+        setState((p) => (p === 'closed' ? p : 'error'))
+      }
+    }, 12000)
     // On an unexpected close/error, auto-reconnect with backoff until the device
     // side is ready. This absorbs the start-of-session race (403 while consent is
     // pending, or no frames yet while the device's overlay leg connects) so the
@@ -137,6 +159,7 @@ export function RelayRenderer({ wsUrl, mode, onEnd, onPopOut, autoFullscreen }: 
 
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      clearTimeout(noFrameWatchdog)
       // Detach handlers before closing so a normal unmount/reconnect teardown
       // doesn't re-trigger scheduleReconnect via onclose.
       ws.onclose = null

@@ -21,6 +21,22 @@ type VideoSource interface {
 	Close()
 }
 
+// videoCapable is implemented by sources that actually produce frames. The stub
+// source (default/pure-Go build) does not implement it, so a peer can detect at
+// runtime that it will send no video and log a clear diagnostic instead of the
+// operator seeing an unexplained "connecting forever" on the viewer.
+type videoCapable interface{ HasVideo() bool }
+
+// SourceHasVideo reports whether src will actually emit frames. Unknown sources
+// are assumed capable (so a custom source isn't wrongly flagged); only the stub
+// opts out.
+func SourceHasVideo(src VideoSource) bool {
+	if vc, ok := src.(videoCapable); ok {
+		return vc.HasVideo()
+	}
+	return true
+}
+
 // SyntheticSource is a deterministic VideoSource for tests: it hands back the
 // frames it was given, in order, then repeats the last one. No OS or codec deps.
 type SyntheticSource struct {

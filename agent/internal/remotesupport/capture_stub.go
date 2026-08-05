@@ -21,3 +21,7 @@ type stubVideoSource struct{ interval time.Duration }
 func (s *stubVideoSource) NextFrame() ([]byte, error)   { return nil, nil }
 func (s *stubVideoSource) FrameInterval() time.Duration { return s.interval }
 func (s *stubVideoSource) Close()                       {}
+
+// HasVideo reports that this build sends no frames, so a peer can log a clear
+// diagnostic (and the operator understands why the viewer shows no screen).
+func (s *stubVideoSource) HasVideo() bool { return false }

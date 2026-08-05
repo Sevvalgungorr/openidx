@@ -18,6 +18,14 @@ on:
         description: MSI version (x.y.z)
         type: string
         default: 0.1.0
+      allow_pure_go:
+        description: >-
+          Allow a video-less (pure-Go, no screen capture) fallback if the
+          libvpx/CGO toolchain fails. Off by default so a broken toolchain fails
+          loudly instead of silently shipping an agent that can't stream the
+          screen. Never honored on a release (tag) build.
+        type: boolean
+        default: false
 
 concurrency:
   group: windows-client-${{ github.ref }}
@@ -61,17 +69,25 @@ jobs:
           cache-dependency-path: agent/go.sum
 
       # Native deps for the real screen-share build (VP8 encode via libvpx +
-      # pkg-config + the mingw C toolchain the CGO binding uses). vcpkg is
-      # preinstalled on windows-latest at $VCPKG_INSTALLATION_ROOT. Best-effort:
-      # the build step falls back to a pure-Go exe if any of this is unavailable.
+      # pkg-config + the mingw C toolchain the CGO binding uses). This is now a
+      # HARD prerequisite: the screen-share agent is the whole point of remote
+      # support, so we install + VERIFY the toolchain and fail the job if it
+      # isn't usable, rather than silently producing a video-less agent.
+      - name: Cache vcpkg libvpx (x64-mingw)
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/packages
+          key: vcpkg-libvpx-x64-mingw-${{ runner.os }}-v2
       - name: Install libvpx + pkg-config (for screen capture)
         id: nativedeps
         shell: bash
-        continue-on-error: true
         run: |
+          set -euo pipefail
           set -x
           # pkg-config + mingw gcc for the vpx cgo binding.
-          choco install -y pkgconfiglite mingw || true
+          choco install -y pkgconfiglite mingw
           # libvpx via the preinstalled vcpkg. Use the MINGW triplet — the Go
           # build links with mingw gcc, which cannot read vcpkg's default MSVC
           # (x64-windows) import libs ("file format not recognized"). The mingw
@@ -81,8 +97,14 @@ jobs:
           TRIPLET_DIR="$VCPKG/installed/x64-mingw-dynamic"
           [ -d "$TRIPLET_DIR" ] || TRIPLET_DIR="$VCPKG/installed/x64-mingw-static"
           echo "VCPKG_TRIPLET_DIR=$TRIPLET_DIR" >> "$GITHUB_ENV"
-          ls "$TRIPLET_DIR/lib/pkgconfig" || true
-          ls "$TRIPLET_DIR/lib" || true
+          # VERIFY the toolchain is actually usable before the build depends on it.
+          test -f "$TRIPLET_DIR/lib/pkgconfig/vpx.pc" \
+            || { echo "::error::libvpx pkgconfig (vpx.pc) not found under $TRIPLET_DIR"; exit 1; }
+          ls "$TRIPLET_DIR"/lib/*vpx* >/dev/null \
+            || { echo "::error::libvpx library not found under $TRIPLET_DIR/lib"; exit 1; }
+          command -v gcc >/dev/null || command -v x86_64-w64-mingw32-gcc >/dev/null \
+            || { echo "::error::mingw gcc not on PATH"; exit 1; }
+          echo "libvpx + mingw toolchain verified at $TRIPLET_DIR"
 
       - name: Resolve version
         id: ver
@@ -104,13 +126,15 @@ jobs:
           mkdir -p dist
           LDFLAGS="-s -w -X main.Version=${{ steps.ver.outputs.version }} -X main.Commit=${{ github.sha }}"
 
-          # Try the real screen-share build first: -tags screenshare needs CGO +
-          # libvpx (installed via vcpkg below). If anything about the native
-          # toolchain fails, fall back to the pure-Go build so the MSI is never
-          # blocked — that build negotiates remote-support sessions and honors
-          # input, it just sends no video frames.
+          # Build the real screen-share agent (-tags screenshare, CGO + libvpx).
+          # The native toolchain was already installed AND verified above, so a
+          # failure here is a genuine build break, not a missing dependency.
+          # A video-less pure-Go fallback is only allowed when it is explicitly
+          # requested (workflow_dispatch allow_pure_go=true) AND this is not a
+          # release (tag) build — otherwise we fail loudly rather than ship an
+          # agent that can't stream the screen.
           set +e
-          echo "Attempting screen-share (VP8 capture) build..."
+          echo "Building screen-share (VP8 capture) agent..."
           # Static-link the MinGW GCC runtime (libwinpthread / libgcc / libstdc++)
           # into the exe. The screenshare build uses CGO via MinGW-w64, which by
           # default DYNAMICALLY links libwinpthread-1.dll — a DLL that only exists
@@ -124,7 +148,9 @@ jobs:
           CGO_LDFLAGS="-L$VCPKG_TRIPLET_DIR/lib -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic" \
             go build -trimpath -tags screenshare -ldflags "$LDFLAGS" \
             -o dist/openidx-agent.exe ./cmd/openidx-agent
-          if [ $? -eq 0 ]; then
+          BUILD_RC=$?
+          set -e
+          if [ $BUILD_RC -eq 0 ]; then
             echo "SCREENSHARE_BUILD=on" >> "$GITHUB_ENV"
             echo "✓ built WITH real screen capture (VP8)"
             # Copy the libvpx runtime DLL next to the exe (dynamic triplet).
@@ -137,12 +163,17 @@ jobs:
               [ -f "$d/libwinpthread-1.dll" ] && cp "$d/libwinpthread-1.dll" dist/ 2>/dev/null && break
             done || true
           else
-            echo "::warning::screenshare build failed; falling back to pure-Go (no video capture)"
+            IS_RELEASE="${{ steps.ver.outputs.release }}"
+            ALLOW_PURE_GO="${{ github.event.inputs.allow_pure_go }}"
+            if [ "$IS_RELEASE" = "true" ] || [ "$ALLOW_PURE_GO" != "true" ]; then
+              echo "::error::screenshare (VP8 capture) build failed and a pure-Go fallback is not permitted here — a video-less agent must never be shipped. Fix the CGO/libvpx build. (release=$IS_RELEASE, allow_pure_go=$ALLOW_PURE_GO)"
+              exit 1
+            fi
+            echo "::warning::screenshare build failed; allow_pure_go=true on a non-release build → falling back to pure-Go (NO video capture). Do not distribute this artifact."
             CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" \
               -o dist/openidx-agent.exe ./cmd/openidx-agent
             echo "SCREENSHARE_BUILD=off" >> "$GITHUB_ENV"
           fi
-          set -e
           ls -la dist/
 
       - name: Report build variant
@@ -154,6 +185,28 @@ jobs:
           else
             echo "### ⚠️ Pure-Go build (no video capture)" >> "$GITHUB_STEP_SUMMARY"
             echo "Remote support negotiates + honors input, but sends no video (libvpx toolchain unavailable this run)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Runtime proof: run the exe we just built and confirm it actually reports
+      # screen-capture capability. This catches a build that links but can't
+      # capture (e.g. a stubbed source slipped in) — the packaged artifact is
+      # verified, not just the compiler exit code. Skipped only when a pure-Go
+      # fallback was explicitly permitted (allow_pure_go on a non-release build).
+      - name: Verify agent capabilities (screen capture)
+        shell: bash
+        run: |
+          set -euo pipefail
+          caps="$(./dist/openidx-agent.exe capabilities)"
+          echo "$caps"
+          sc="$(echo "$caps" | python -c 'import sys,json;print(json.load(sys.stdin)["screen_capture"])')"
+          if [ "${SCREENSHARE_BUILD:-off}" = "on" ]; then
+            if [ "$sc" != "True" ]; then
+              echo "::error::screenshare build reported screen_capture=$sc — the packaged agent cannot capture the screen."
+              exit 1
+            fi
+            echo "✓ runtime verified: screen_capture=true"
+          else
+            echo "::notice::pure-Go build (allowed): screen_capture=$sc"
           fi
 
       # Authenticode signing (optional): set WINDOWS_CERT_PFX_BASE64 +

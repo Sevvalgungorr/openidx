@@ -84,6 +84,9 @@ func (s *realVideoSource) NextFrame() ([]byte, error) {
 
 func (s *realVideoSource) FrameInterval() time.Duration { return s.interval }
 
+// HasVideo reports that this build captures and sends real frames.
+func (s *realVideoSource) HasVideo() bool { return true }
+
 // ForceKeyFrame asks the encoder to emit a keyframe on the next frame. Called
 // when the browser sends an RTCP PLI (it has no keyframe to decode yet), so a
 // (re)joining viewer paints almost immediately instead of waiting for the next

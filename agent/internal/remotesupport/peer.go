@@ -116,6 +116,15 @@ func (p *Peer) Run(conn SignalConn) error {
 	if p.logger == nil {
 		p.logger = zap.NewNop()
 	}
+	// Loud, actionable warning when this build cannot capture video: the session
+	// will negotiate and honor input but the operator's viewer will show no
+	// screen. This is the single most common "remote support connects but the
+	// screen never appears" cause (a pure-Go/no-capture agent build).
+	if !SourceHasVideo(p.cfg.Source) {
+		p.logger.Warn("remote-support: this agent build has NO screen capture (video-less build); " +
+			"the session will connect and accept input but send no video. Install the " +
+			"screenshare-enabled agent build to stream the screen.")
+	}
 	sink := p.cfg.Input
 	if sink == nil {
 		sink = noopSink{}

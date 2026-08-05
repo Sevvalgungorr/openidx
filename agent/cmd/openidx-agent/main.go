@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 	"github.com/openidx/openidx/agent/internal/agent"
 	"github.com/openidx/openidx/agent/internal/authstore"
 	"github.com/openidx/openidx/agent/internal/enrollment"
+	"github.com/openidx/openidx/agent/internal/remotesupport"
 	"github.com/openidx/openidx/agent/internal/sso"
 	"github.com/openidx/openidx/agent/internal/tray"
 	"github.com/openidx/openidx/agent/internal/updater"
@@ -260,6 +262,31 @@ var updateCmd = &cobra.Command{
 	},
 }
 
+// capabilitiesCmd reports, as JSON, what this build can do at runtime — most
+// importantly whether it can capture the screen for remote support. This makes
+// the "video-less agent" state observable: CI verifies the packaged exe reports
+// screen_capture=true, and an operator can check a deployed agent instead of
+// guessing why a session shows no screen.
+var capabilitiesCmd = &cobra.Command{
+	Use:   "capabilities",
+	Short: "Print this build's runtime capabilities (JSON), e.g. screen capture",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		screenCapture := false
+		if src, err := remotesupport.NewScreenSource(10); err == nil {
+			screenCapture = remotesupport.SourceHasVideo(src)
+			src.Close()
+		}
+		out := map[string]any{
+			"version":        Version,
+			"commit":         Commit,
+			"screen_capture": screenCapture,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	},
+}
+
 var serviceInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install and start the OpenIDX agent service (LocalSystem, auto-start)",
@@ -317,4 +344,5 @@ func init() {
 	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(trayCmd)
 	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(capabilitiesCmd)
 }

@@ -195,11 +195,21 @@ export function RemoteSupportViewer({
     // device peer probably wasn't connected when we sent our answer (so our
     // signaling was missed). Rather than sit on a black screen until the
     // operator manually closes + reopens, bump reconnectNonce to tear this
-    // connection down and try again. Retries a handful of times, then gives up.
+    // connection down and try again. Retries a handful of times, then surfaces
+    // a clear error instead of sitting on "Connecting…" forever — the usual
+    // cause after retries are exhausted is a device running a video-less agent
+    // build (the pure-Go/no-capture variant negotiates the session but sends no
+    // frames), which otherwise looks like an infinite connect.
     gotVideoRef.current = false
     const watchdog = setTimeout(() => {
-      if (!gotVideoRef.current && reconnectNonce < 6) {
+      if (gotVideoRef.current) return
+      if (reconnectNonce < 6) {
         setReconnectNonce((n) => n + 1)
+      } else {
+        setState('error')
+        setErrorMessage(
+          'No screen video received. The device connected but sent no frames — it may be running an agent build without screen capture, or screen capture failed to start. Check the agent logs on the device.',
+        )
       }
     }, 4000)
 
