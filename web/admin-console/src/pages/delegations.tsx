@@ -66,6 +66,23 @@ interface AdminDelegation {
 
 const SCOPE_TYPES = ['group', 'role', 'application', 'organization']
 
+// delegate_id and scope_id are uuid columns server-side; a non-UUID value is
+// rejected with a 400 (previously a confusing 500). Validate on the client so
+// the operator gets an inline hint instead of a failed submit.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value.trim())
+}
+
+// Where to find the UUID for each scope type, so the "Scope ID" field is not a
+// mystery box.
+const SCOPE_ID_HINT: Record<string, string> = {
+  group: 'Group UUID — copy it from the Groups page.',
+  role: 'Role UUID — copy it from the Roles page.',
+  application: 'Application UUID — copy it from the Applications page.',
+  organization: 'Organization UUID — copy it from the Organizations page.',
+}
+
 export function DelegationsPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -379,8 +396,12 @@ export function DelegationsPage() {
                 value={formData.delegate_id}
                 onChange={(e) => setFormData(prev => ({ ...prev, delegate_id: e.target.value }))}
                 required
-                placeholder="UUID of the delegate user"
+                placeholder="e.g. 00000000-0000-0000-0000-000000000000"
               />
+              <p className="text-xs text-gray-500">User UUID of the delegate — copy it from the Users page.</p>
+              {formData.delegate_id.trim() !== '' && !isUuid(formData.delegate_id) && (
+                <p className="text-xs text-destructive">Must be a user UUID, not a username or email.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="delegated_by">Delegated By (User ID)</Label>
@@ -411,8 +432,14 @@ export function DelegationsPage() {
                 value={formData.scope_id}
                 onChange={(e) => setFormData(prev => ({ ...prev, scope_id: e.target.value }))}
                 required
-                placeholder="UUID of the scoped resource"
+                placeholder="e.g. 00000000-0000-0000-0000-000000000000"
               />
+              <p className="text-xs text-gray-500">
+                {SCOPE_ID_HINT[formData.scope_type] ?? 'UUID of the scoped resource.'}
+              </p>
+              {formData.scope_id.trim() !== '' && !isUuid(formData.scope_id) && (
+                <p className="text-xs text-destructive">Must be a {formData.scope_type} UUID, not a name.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="permissions">Permissions (comma-separated)</Label>
@@ -447,7 +474,7 @@ export function DelegationsPage() {
               <Button type="button" variant="outline" onClick={() => setAddModal(false)} disabled={createMutation.isPending}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createMutation.isPending}>
+              <Button type="submit" disabled={createMutation.isPending || !isUuid(formData.delegate_id) || !isUuid(formData.scope_id)}>
                 {createMutation.isPending ? 'Creating...' : 'Create Delegation'}
               </Button>
             </div>
