@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -219,7 +221,12 @@ func (s *Service) handleCreatePlaygroundSession(c *gin.Context) {
 		RedirectURI string `json:"redirect_uri"`
 		Scopes      string `json:"scopes"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// The body is optional: every field has a server-side default below, and the
+	// UI's "Create Session" button posts with no body. ShouldBindJSON returns
+	// io.EOF on an empty body, which previously surfaced as a confusing
+	// 400 {"error":"EOF"}. Tolerate an empty/whitespace body; only reject a body
+	// that is present but malformed JSON.
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -262,12 +269,17 @@ func (s *Service) handleCreatePlaygroundSession(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	// scopes is a text[] column, but the API models scopes as a single
+	// space-separated string (what the OAuth spec and the UI use). Split into an
+	// array for storage; a plain string bind produced a 500 "malformed array
+	// literal".
+	scopeList := strings.Fields(session.Scopes)
 	_, err = s.db.Pool.Exec(ctx, `
 		INSERT INTO oauth_playground_sessions (id, state, code_verifier, code_challenge,
 			redirect_uri, client_id, scopes, created_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`, session.ID, session.State, session.CodeVerifier, session.CodeChallenge,
-		session.RedirectURI, session.ClientID, session.Scopes, session.CreatedAt, session.ExpiresAt)
+		session.RedirectURI, session.ClientID, scopeList, session.CreatedAt, session.ExpiresAt)
 
 	if err != nil {
 		s.logger.Error("Failed to create playground session", zap.Error(err))
@@ -295,19 +307,23 @@ func (s *Service) handleExecutePlayground(c *gin.Context) {
 
 	// Load session
 	var session PlaygroundSession
+	var scopeList []string
 	err := s.db.Pool.QueryRow(ctx, `
 		SELECT id, state, code_verifier, code_challenge, redirect_uri, client_id, scopes, created_at, expires_at
 		FROM oauth_playground_sessions
 		WHERE id = $1
 	`, req.SessionID).Scan(
 		&session.ID, &session.State, &session.CodeVerifier, &session.CodeChallenge,
-		&session.RedirectURI, &session.ClientID, &session.Scopes,
+		&session.RedirectURI, &session.ClientID, &scopeList,
 		&session.CreatedAt, &session.ExpiresAt,
 	)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "playground session not found"})
 		return
 	}
+	// scopes is stored as a text[] array; the OAuth flow uses a space-separated
+	// string.
+	session.Scopes = strings.Join(scopeList, " ")
 
 	if time.Now().After(session.ExpiresAt) {
 		c.JSON(http.StatusGone, gin.H{"error": "playground session has expired"})
