@@ -124,6 +124,37 @@ PYCHK
 	else
 		unknown "kubeconform yok: şema doğrulaması yapılamadı"
 	fi
+
+	# Alert rules. A rule with a typo in its PromQL is accepted by Kubernetes and
+	# then never fires: the manifest is valid, the alert simply does not exist.
+	# That is worse than having no alert at all, because the dashboard implies
+	# someone is watching. promtool parses the expressions the way Prometheus
+	# itself does.
+	local pt; pt="$(command -v promtool 2>/dev/null || echo /tmp/k8sha/promtool)"
+	if [ -x "$pt" ]; then
+		local rules; rules="$(mktemp --suffix=.yaml)"
+		python3 - "$rendered" "$rules" <<'PYRULES'
+import sys, yaml
+docs=[d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+groups=[]
+for d in docs:
+    if d.get('kind')=='PrometheusRule':
+        groups.extend(d['spec'].get('groups',[]))
+yaml.safe_dump({'groups':groups}, open(sys.argv[2],'w'), default_flow_style=False)
+print(sum(len(g.get('rules',[])) for g in groups))
+PYRULES
+		local ptout
+		ptout="$("$pt" check rules "$rules" 2>&1)"
+		if printf '%s' "$ptout" | grep -q 'SUCCESS'; then
+			pass "Uyarı kuralları geçerli ($(printf '%s' "$ptout" | grep -oE '[0-9]+ rules found' | head -1))"
+		else
+			fail "uyarı kuralları geçersiz — sessizce hiç ateşlenmezler"
+			printf '%s\n' "$ptout" | tail -3
+		fi
+		rm -f "$rules"
+	else
+		unknown "promtool yok: uyarı kuralları doğrulanamadı"
+	fi
 	rm -f "$rendered"
 }
 

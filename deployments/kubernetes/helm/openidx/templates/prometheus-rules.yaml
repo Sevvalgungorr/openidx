@@ -152,4 +152,88 @@ spec:
           annotations:
             summary: "JWKS cache close to max-stale — verification will start failing"
             description: "The served JWKS key set is {{ "{{ $value | humanizeDuration }}" }} stale, approaching JWKS_MAX_STALE. Once exceeded, valid tokens will be rejected. Restore the OAuth/JWKS issuer immediately."
+
+    # ----- Availability of the platform itself, not of the request path -----
+    #
+    # Every rule above watches the application: is it up, is it slow, is it
+    # erroring. None of them fire when the *redundancy* quietly disappears —
+    # a Deployment sitting at one replica, a spread constraint that cannot be
+    # satisfied, an overlay that has lost its quorum. Those look perfectly
+    # healthy right up until the moment one more thing fails, and then there is
+    # nothing left to absorb it.
+    #
+    # These rules are about that silent erosion: they fire while the service is
+    # still serving, which is the only useful time to hear about it.
+    - name: openidx.high_availability
+      rules:
+        - alert: DeploymentNoRedundancy
+          # A single available replica means the next disruption is an outage.
+          # Deliberately not "0 replicas": that is already covered by
+          # ServiceDown, and by then it is too late to act.
+          expr: kube_deployment_status_replicas_available{deployment=~".*openidx.*"} < 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.deployment }}" }} has no redundancy left"
+            description: "Only {{ "{{ $value }}" }} replica is available. The service is still up, but the next pod loss, node drain or rollout becomes an outage."
+
+        - alert: DeploymentReplicasUnavailable
+          # Pods that never reach Ready: a bad image, a failing probe, or a
+          # scheduling constraint nothing can satisfy (for example a zone
+          # spread on a cluster that has lost a zone).
+          expr: kube_deployment_status_replicas_unavailable{deployment=~".*openidx.*"} > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.deployment }}" }} cannot bring up all replicas"
+            description: "{{ "{{ $value }}" }} replica(s) unavailable for 15m. Check probe failures, image pulls, or unsatisfiable scheduling constraints."
+
+        - alert: PodDisruptionBudgetAtLimit
+          # At zero allowed disruptions a node drain will block, so routine
+          # maintenance stalls — and if it is forced through, it takes the
+          # service with it.
+          expr: kube_poddisruptionbudget_status_disruptions_allowed{poddisruptionbudget=~".*openidx.*"} == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.poddisruptionbudget }}" }} allows no disruptions"
+            description: "A node drain will block on this budget. Maintenance is stuck until capacity is restored."
+
+        - alert: PodsNotSpreadAcrossZones
+          # Anti-affinity keeps replicas off one node; only a zone spread keeps
+          # them out of one availability zone. If every replica lands in a
+          # single zone the service is one zone failure from being gone.
+          expr: count by (deployment) (count by (deployment, zone) (kube_pod_info{created_by_name=~".*openidx.*"} * on(node) group_left(zone) kube_node_labels)) < 2
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.deployment }}" }} is confined to one zone"
+            description: "All replicas are in a single availability zone. A zone outage takes the whole service down."
+
+        - alert: ZitiControllerQuorumAtRisk
+          # Raft needs a majority. With 3 members, losing one is survivable and
+          # losing two deadlocks the control plane: no new overlay sessions,
+          # so every dark application becomes unreachable.
+          expr: kube_statefulset_status_replicas_ready{statefulset=~".*ziti-controller.*"} < 2
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Ziti controller quorum at risk"
+            description: "Only {{ "{{ $value }}" }} controller replica(s) ready. Below a majority the overlay control plane stops issuing sessions and dark applications become unreachable."
+
+        - alert: ZitiRouterNoRedundancy
+          # The routers are the overlay data plane. One router means every
+          # dark application shares a single point of failure.
+          expr: kube_deployment_status_replicas_available{deployment=~".*ziti-router.*"} < 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ziti data plane has no redundancy"
+            description: "Only {{ "{{ $value }}" }} edge router available. Losing it takes every overlay-published application offline at once."
 {{- end }}
