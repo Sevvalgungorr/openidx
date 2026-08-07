@@ -82,7 +82,7 @@ type ZitiMetric struct {
 
 // ListEdgeRouters retrieves all edge routers from the Ziti controller and syncs them to the database
 func (zm *ZitiManager) ListEdgeRouters(ctx context.Context) ([]ZitiEdgeRouterInfo, error) {
-	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/edge-routers", nil)
+	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/edge-routers?limit=1000", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list edge routers: %w", err)
 	}
@@ -158,7 +158,7 @@ func (zm *ZitiManager) GetEdgeRouter(ctx context.Context, routerID string) (*Zit
 
 // ListServicePolicies retrieves all service policies from the Ziti controller
 func (zm *ZitiManager) ListServicePolicies(ctx context.Context) ([]ZitiServicePolicyInfo, error) {
-	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/service-policies", nil)
+	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/service-policies?limit=1000", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list service policies: %w", err)
 	}
@@ -179,7 +179,7 @@ func (zm *ZitiManager) ListServicePolicies(ctx context.Context) ([]ZitiServicePo
 
 // ListEdgeRouterPolicies retrieves all edge router policies from the Ziti controller
 func (zm *ZitiManager) ListEdgeRouterPolicies(ctx context.Context) ([]ZitiServicePolicyInfo, error) {
-	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/edge-router-policies", nil)
+	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/edge-router-policies?limit=1000", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list edge router policies: %w", err)
 	}

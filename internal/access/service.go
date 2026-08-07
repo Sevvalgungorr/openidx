@@ -429,6 +429,9 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 
 		// Ziti service connectivity test (diagnostic dial; read-like)
 		api.POST("/ziti/services/:id/test", svc.handleTestZitiService)
+		// Admin "behind the scenes": explain how a resource is wired end to end
+		// and which link is broken, so diagnosis needs no CLI.
+		api.GET("/ziti/services/by-name/:name/explain", adminOnly, svc.handleExplainZitiService)
 
 		// Edge router policy CRUD
 		api.GET("/ziti/edge-router-policies", svc.handleListEdgeRouterPolicies)

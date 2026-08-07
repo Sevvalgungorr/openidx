@@ -315,7 +315,7 @@ func (zm *ZitiManager) SyncCertificatesFromController(ctx context.Context) error
 	zm.logger.Info("Syncing certificates from Ziti controller")
 
 	// Fetch CAs from the controller
-	caData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/cas", nil)
+	caData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/cas?limit=1000", nil)
 	if err != nil {
 		return fmt.Errorf("failed to fetch CAs from controller: %w", err)
 	}
@@ -359,7 +359,7 @@ func (zm *ZitiManager) SyncCertificatesFromController(ctx context.Context) error
 	}
 
 	// Fetch identity certificates
-	identData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/identities", nil)
+	identData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/identities?limit=1000", nil)
 	if err != nil {
 		return fmt.Errorf("failed to fetch identities from controller: %w", err)
 	}

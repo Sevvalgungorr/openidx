@@ -1526,7 +1526,7 @@ func (zm *ZitiManager) GetIdentityRoleAttributes(ctx context.Context, zitiID str
 
 // ListServices lists all Ziti services from the management API
 func (zm *ZitiManager) ListServices(ctx context.Context) ([]ZitiServiceInfo, error) {
-	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/services", nil)
+	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/services?limit=1000", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1546,7 +1546,7 @@ func (zm *ZitiManager) ListServices(ctx context.Context) ([]ZitiServiceInfo, err
 
 // ListIdentities lists all Ziti identities from the management API
 func (zm *ZitiManager) ListIdentities(ctx context.Context) ([]ZitiIdentityInfo, error) {
-	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/identities", nil)
+	respData, statusCode, err := zm.mgmtRequest("GET", "/edge/management/v1/identities?limit=1000", nil)
 	if err != nil {
 		return nil, err
 	}

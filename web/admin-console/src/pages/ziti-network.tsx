@@ -816,6 +816,9 @@ function ServicesTab() {
   const [createModal, setCreateModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ZitiService | null>(null)
   const [testingService, setTestingService] = useState<string | null>(null)
+  // "How this works": the behind-the-scenes chain for one resource, so an
+  // admin can see which link is broken without dropping to the CLI.
+  const [explainName, setExplainName] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', description: '', host: '', port: 8080, protocol: 'tcp' })
 
   const { data, isLoading } = useQuery({
@@ -934,6 +937,9 @@ function ServicesTab() {
                           <CheckCircle className="mr-2 h-4 w-4" />
                           {testingService === svc.id ? 'Testing...' : 'Test Connection'}
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setExplainName(svc.name)}>
+                          <ScrollText className="mr-2 h-4 w-4" /> How this works
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => {
                           navigator.clipboard.writeText(svc.ziti_id)
                           toast({ title: 'Copied', description: 'Ziti ID copied to clipboard.' })
@@ -958,12 +964,13 @@ function ServicesTab() {
       <Dialog open={createModal} onOpenChange={setCreateModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Ziti Service</DialogTitle>
+            <DialogTitle>Add a resource</DialogTitle>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form) }} className="space-y-4">
             <div className="space-y-2">
-              <Label>Service Name</Label>
+              <Label>Name</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="internal-app" required />
+              <p className="text-xs text-muted-foreground">What people will see in their list.</p>
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
@@ -971,8 +978,8 @@ function ServicesTab() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Host</Label>
-                <Input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="internal-app" required />
+                <Label>Target host</Label>
+                <Input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="10.0.0.5" required />
               </div>
               <div className="space-y-2">
                 <Label>Port</Label>
@@ -999,6 +1006,9 @@ function ServicesTab() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* "How this works" — the real chain, and which link is broken. */}
+      <ExplainServiceDialog name={explainName} onClose={() => setExplainName(null)} />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
@@ -3961,5 +3971,92 @@ function TempAccessLinksSection() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// "How this works" — behind the scenes for one resource.
+//
+// End users get a single Open/Connect button and never see the overlay. Admins
+// need the opposite: the actual chain a connection traverses, which hop is
+// missing, and what to do about it — without opening a terminal.
+// ---------------------------------------------------------------------------
+
+interface ChainHop {
+  step: number
+  title: string
+  detail: string
+  technical?: string
+  status: 'ok' | 'missing' | 'unknown'
+  fix?: string
+}
+
+interface ResourceDiagnosis {
+  name: string
+  reachable: boolean
+  summary: string
+  chain: ChainHop[]
+}
+
+function ExplainServiceDialog({ name, onClose }: { name: string | null; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['ziti-explain', name],
+    queryFn: () =>
+      api.get<ResourceDiagnosis>(
+        `/api/v1/access/ziti/services/by-name/${encodeURIComponent(name!)}/explain`
+      ),
+    enabled: !!name,
+  })
+
+  return (
+    <Dialog open={!!name} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>How “{name}” works</DialogTitle>
+        </DialogHeader>
+
+        {isLoading || !data ? (
+          <p className="py-8 text-center text-muted-foreground">Checking…</p>
+        ) : (
+          <div className="space-y-4">
+            <div
+              className={`rounded-md p-3 text-sm ${
+                data.reachable
+                  ? 'bg-green-50 text-green-900 border border-green-200'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200'
+              }`}
+            >
+              {data.summary}
+            </div>
+
+            <ol className="space-y-2">
+              {data.chain.map((hop) => (
+                <li key={hop.step} className="flex gap-3 rounded-md border p-3">
+                  <div className="mt-0.5 shrink-0">
+                    {hop.status === 'ok' ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{hop.title}</p>
+                    <p className="text-sm text-muted-foreground">{hop.detail}</p>
+                    {hop.fix && (
+                      <p className="mt-1 text-xs font-medium text-amber-700">→ {hop.fix}</p>
+                    )}
+                    {hop.technical && (
+                      <code className="mt-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {hop.technical}
+                      </code>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

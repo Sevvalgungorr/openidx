@@ -55,9 +55,14 @@ else
   m9="-"
 fi
 
-# 10. CLI steps to onboard a resource end-to-end (0 == UI-only)
-#     8 = the ziti CLI commands used to stand up `secops` by hand.
-m10=$(grep -qE 'intercept_address|dial_roles' $FE/ziti-network.tsx 2>/dev/null && echo 0 || echo 8)
+# 10. CLI steps an admin still needs, in two halves:
+#     - diagnosing "why can/can't X reach Y"  -> the explain endpoint + drawer;
+#     - onboarding a resource end-to-end      -> the create form provisioning
+#       the full chain (intercept/dial fields).
+#     Each half that still needs the CLI counts 4 (the ziti commands it replaces).
+m10=0
+grep -qs 'handleExplainZitiService' internal/access/service.go || m10=$(( m10 + 4 ))
+grep -qs 'intercept_address\|dial_roles' $FE/ziti-network.tsx || m10=$(( m10 + 4 ))
 
 # 11. admin surface must not shrink: 104 ziti endpoints at baseline
 adm=$(grep -cE 'api\.(GET|POST|PUT|DELETE|PATCH)\("/ziti' internal/access/service.go 2>/dev/null || echo 0)
