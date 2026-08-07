@@ -573,6 +573,44 @@ podAntiAffinity:
   enabled: true
   weight: 100
 
+# Zero-downtime termination.
+#
+# Kubernetes removes a Pod from Service endpoints and sends SIGTERM at the same
+# time; those two propagate independently. Without a pause the container can be
+# gone while some nodes still forward to it, which shows up as 502s during an
+# otherwise healthy rolling update.
+#
+# preStopSeconds must cover endpoint propagation; gracePeriodSeconds must cover
+# preStop plus the application's own drain (shutdown_timeout_seconds, 30s by
+# default) or Kubernetes SIGKILLs mid-drain and cuts live requests.
+gracefulTermination:
+  enabled: true
+  preStopSeconds: 5
+  gracePeriodSeconds: 45
+
+# Spread replicas across availability zones.
+#
+# podAntiAffinity above keeps replicas off one node; this keeps them out of one
+# zone. ScheduleAnyway is deliberate: DoNotSchedule leaves pods Pending on a
+# single-zone cluster, trading an availability gain for an outage. Set it to
+# DoNotSchedule on a genuinely multi-zone cluster if you want the hard rule.
+topologySpread:
+  enabled: true
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+# Rolling update capacity.
+#
+# Kubernetes defaults to maxUnavailable=25%: a deploy can remove a quarter of
+# the fleet before replacements are Ready. maxUnavailable=0 with maxSurge=1
+# means a new pod must be Ready before an old one goes, so capacity never dips
+# during a deploy. Costs one extra pod for the length of the rollout.
+rollingUpdate:
+  enabled: true
+  maxUnavailable: 0
+  maxSurge: 1
+
 # Network Policy — zero-trust network segmentation
 networkPolicy:
   enabled: false

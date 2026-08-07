@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/component: governance-service
 spec:
   replicas: {{ .Values.governanceService.replicaCount }}
+  {{- include "openidx.rollingStrategy" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "openidx.selectorLabels" . | nindent 6 }}
@@ -18,6 +19,8 @@ spec:
         {{- include "openidx.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: governance-service
     spec:
+      {{- include "openidx.gracefulTermination" . | nindent 6 }}
+      {{- include "openidx.topologySpread" (dict "ctx" . "component" "governance-service") | nindent 6 }}
       serviceAccountName: {{ include "openidx.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -36,6 +39,7 @@ spec:
         - name: governance-service
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.governanceService.image.repository }}:{{ .Values.governanceService.image.tag }}"
           imagePullPolicy: {{ .Values.governanceService.image.pullPolicy }}
+          {{- include "openidx.preStopHook" . | nindent 10 }}
           ports:
             - name: http
               containerPort: 8002

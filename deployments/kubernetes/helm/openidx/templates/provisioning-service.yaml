@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/component: provisioning-service
 spec:
   replicas: {{ .Values.provisioningService.replicaCount }}
+  {{- include "openidx.rollingStrategy" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "openidx.selectorLabels" . | nindent 6 }}
@@ -18,6 +19,8 @@ spec:
         {{- include "openidx.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: provisioning-service
     spec:
+      {{- include "openidx.gracefulTermination" . | nindent 6 }}
+      {{- include "openidx.topologySpread" (dict "ctx" . "component" "provisioning-service") | nindent 6 }}
       serviceAccountName: {{ include "openidx.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -36,6 +39,7 @@ spec:
         - name: provisioning-service
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.provisioningService.image.repository }}:{{ .Values.provisioningService.image.tag }}"
           imagePullPolicy: {{ .Values.provisioningService.image.pullPolicy }}
+          {{- include "openidx.preStopHook" . | nindent 10 }}
           ports:
             - name: http
               containerPort: 8003

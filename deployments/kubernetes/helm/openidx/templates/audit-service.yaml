@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/component: audit-service
 spec:
   replicas: {{ .Values.auditService.replicaCount }}
+  {{- include "openidx.rollingStrategy" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "openidx.selectorLabels" . | nindent 6 }}
@@ -18,6 +19,8 @@ spec:
         {{- include "openidx.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: audit-service
     spec:
+      {{- include "openidx.gracefulTermination" . | nindent 6 }}
+      {{- include "openidx.topologySpread" (dict "ctx" . "component" "audit-service") | nindent 6 }}
       serviceAccountName: {{ include "openidx.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -36,6 +39,7 @@ spec:
         - name: audit-service
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.auditService.image.repository }}:{{ .Values.auditService.image.tag }}"
           imagePullPolicy: {{ .Values.auditService.image.pullPolicy }}
+          {{- include "openidx.preStopHook" . | nindent 10 }}
           ports:
             - name: http
               containerPort: 8004

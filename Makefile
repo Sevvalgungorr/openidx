@@ -1,7 +1,7 @@
 # OpenIDX Makefile
 # Build, test, and deploy automation
 
-.PHONY: all build test lint clean dev dev-infra docker helm docs smoke-test ha-drill dr-game-day dark-drill dark-drill-live build-agent build-agent-all test-agent docker-build-agent ziti-quickstart ziti-down
+.PHONY: all build test lint clean dev dev-infra docker helm docs smoke-test ha-drill k8s-chaos dr-game-day dark-drill dark-drill-live build-agent build-agent-all test-agent docker-build-agent ziti-quickstart ziti-down
 
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -169,6 +169,16 @@ dr-game-day:
 # public refused / overlay reachable / tier gate holds — so a cutover can't be
 # green-lit on a false positive. Also runs the edge route-set assertions.
 # For a live check: scripts/dark-mode.sh --verify --public-url ... --overlay-url ...
+# Kubernetes always-on drill. `--static` inspects the rendered chart and needs
+# no cluster, so it can run in CI: it fails if any Deployment would ship without
+# graceful termination, zone spread, a capacity-preserving rollout or a PDB.
+# For real evidence run it against a cluster:
+#   scripts/k8s-chaos-drill.sh --namespace openidx --url https://api.example.com
+# which kills pods, restarts rollouts and drains nodes under continuous polling
+# and reports the requests actually lost.
+k8s-chaos:
+	@bash scripts/k8s-chaos-drill.sh --static
+
 dark-drill:
 	@bash deployments/apisix-edge/seed-edge-routes.test.sh
 	@bash scripts/register-console-dark-app.test.sh

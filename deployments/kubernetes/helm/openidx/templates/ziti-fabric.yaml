@@ -153,6 +153,7 @@ metadata:
     app.kubernetes.io/component: ziti-router
 spec:
   replicas: {{ .Values.zitiFabric.router.replicas | default 1 }}
+  {{- include "openidx.rollingStrategy" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "openidx.selectorLabels" . | nindent 6 }}
@@ -167,6 +168,8 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- include "openidx.gracefulTermination" . | nindent 6 }}
+      {{- include "openidx.topologySpread" (dict "ctx" . "component" "ziti-router") | nindent 6 }}
       {{- if gt (int (.Values.zitiFabric.router.replicas | default 1)) 1 }}
       # Spread routers across nodes — they ARE the data plane; two on one node
       # is not redundancy (soft: still schedules on small clusters).
@@ -184,6 +187,7 @@ spec:
       containers:
         - name: ziti-router
           image: {{ .Values.zitiFabric.router.image | quote }}
+          {{- include "openidx.preStopHook" . | nindent 10 }}
           env:
             - name: ZITI_CTRL_ADVERTISED_ADDRESS
               value: {{ .Values.zitiFabric.controller.advertisedAddress | quote }}

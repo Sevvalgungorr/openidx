@@ -179,3 +179,31 @@ ingress:
     - secretName: api-tls
       hosts:
         - api.openidx.example.com
+
+# ----- Zero-trust overlay (Ziti fabric) -----
+#
+# Enabled in prod because the overlay is what lets an internal application be
+# published with NO inbound firewall rule: the app binds loopback, the router
+# dials out, and nothing is exposed. Left off in the default values so a plain
+# `helm install` does not stand up fabric components nobody asked for.
+#
+# Sizing is an availability decision, not a capacity one:
+#   controller.replicas: 3  — Raft needs a majority. 1 is a single point of
+#     failure for the whole overlay control plane, and 2 is worse than 1 for a
+#     quorum (any single loss deadlocks it). 3 survives one loss.
+#   router.replicas: 2      — the data plane. With 1 router, losing it takes
+#     every dark application offline at once. The #all edge-router policies
+#     mean a second router serves traffic with no policy change.
+#
+# The chart adds a PDB and soft node anti-affinity automatically once replicas
+# exceed 1, so a node drain cannot take the quorum with it.
+zitiFabric:
+  enabled: true
+  controller:
+    replicas: 3
+    persistence:
+      # Raft state must survive a pod reschedule; ephemeral storage would lose
+      # the cluster's own membership record.
+      size: 10Gi
+  router:
+    replicas: 2
