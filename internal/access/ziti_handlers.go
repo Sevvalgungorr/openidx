@@ -174,6 +174,11 @@ func (s *Service) handleCreateZitiService(c *gin.Context) {
 		Host        string   `json:"host" binding:"required"`
 		Port        int      `json:"port" binding:"required"`
 		Attributes  []string `json:"attributes"`
+		// InterceptAddress is the overlay name clients dial (defaults to
+		// "<name>.ziti"). DialRoles are the identity role attributes allowed to
+		// dial (defaults to "#<name>-clients").
+		InterceptAddress string   `json:"intercept_address"`
+		DialRoles        []string `json:"dial_roles"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -184,18 +189,20 @@ func (s *Service) handleCreateZitiService(c *gin.Context) {
 	if req.Protocol == "" {
 		req.Protocol = "tcp"
 	}
-	if req.Protocol != "tcp" && req.Protocol != "udp" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "protocol must be 'tcp' or 'udp'"})
+	// The overlay this provisions is TCP end to end: the host.v1 config pins
+	// "protocol":"tcp" and the service-edge-router policy advertises
+	// allowedProtocols ["tcp"]. Accepting "udp" here would store a value the
+	// fabric does not honour, so the service would look like UDP in the console
+	// while silently carrying TCP. Refuse it instead of provisioning a lie.
+	if req.Protocol != "tcp" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "only 'tcp' services can be provisioned today; the overlay host and edge-router policy are TCP-only",
+		})
 		return
 	}
 	if req.Port < 1 || req.Port > 65535 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "port must be between 1 and 65535"})
 		return
-	}
-
-	attrs := req.Attributes
-	if attrs == nil {
-		attrs = []string{req.Name}
 	}
 
 	org, oerr := orgctx.From(c.Request.Context())
@@ -204,7 +211,36 @@ func (s *Service) handleCreateZitiService(c *gin.Context) {
 		return
 	}
 
-	zitiID, err := s.ziti().CreateService(c.Request.Context(), req.Name, attrs)
+	// Provision the FULL overlay object graph (host.v1 + intercept.v1 + service +
+	// Bind/Dial/service-edge-router policies) so the service is actually dialable.
+	// The old path only created a bare service object with no configs or policies,
+	// so nothing could ever reach it.
+	interceptAddr := strings.TrimSpace(req.InterceptAddress)
+	if interceptAddr == "" {
+		interceptAddr = req.Name + ".ziti"
+	}
+	// Normalize dial roles to Ziti role-attribute syntax: an entry must start with
+	// '#' (role attribute) or '@' (name/id). Accept bare values from the API and
+	// prefix '#', so "ci-clients" and "#ci-clients" both work.
+	dialRoles := make([]string, 0, len(req.DialRoles))
+	for _, r := range req.DialRoles {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			continue
+		}
+		if !strings.HasPrefix(r, "#") && !strings.HasPrefix(r, "@") {
+			r = "#" + r
+		}
+		dialRoles = append(dialRoles, r)
+	}
+	zitiID, err := s.ziti().ProvisionDialableService(c.Request.Context(), DialableServiceSpec{
+		Name:              req.Name,
+		TargetHost:        req.Host,
+		TargetPort:        req.Port,
+		InterceptAddress:  interceptAddr,
+		DialIdentityRoles: dialRoles,
+		ExtraAttributes:   req.Attributes,
+	})
 	if err != nil {
 		apperrors.HandleErrorWithLogger(c, apperrors.Internal("Failed to create ziti service", err), s.logger)
 		return
@@ -223,10 +259,11 @@ func (s *Service) handleCreateZitiService(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":      id,
-		"ziti_id": zitiID,
-		"name":    req.Name,
-		"message": "ziti service created",
+		"id":                id,
+		"ziti_id":           zitiID,
+		"name":              req.Name,
+		"intercept_address": interceptAddr,
+		"message":           "ziti service created",
 	})
 }
 
@@ -244,26 +281,29 @@ func (s *Service) handleDeleteZitiService(c *gin.Context) {
 		return
 	}
 
-	// Get ziti_id from DB
-	var zitiID string
+	// Get ziti_id + name from DB
+	var zitiID, serviceName string
 	err := s.db.Pool.QueryRow(c.Request.Context(),
-		"SELECT ziti_id FROM ziti_services WHERE id=$1 AND org_id=$2", id, org.ID).Scan(&zitiID)
+		"SELECT ziti_id, name FROM ziti_services WHERE id=$1 AND org_id=$2", id, org.ID).Scan(&zitiID, &serviceName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "ziti service not found"})
 		return
 	}
 
-	// Delete from Ziti controller
-	if err := s.ziti().DeleteService(c.Request.Context(), zitiID); err != nil {
+	// Tear down the FULL object graph the create path provisions (host.v1 +
+	// intercept.v1 configs, Bind/Dial/service-edge-router policies, and the
+	// service). Deleting only the service would orphan its configs/policies and a
+	// same-name re-create would then collide on the unique config names.
+	if serviceName != "" {
+		if err := s.ziti().TeardownZitiServiceByName(c.Request.Context(), serviceName); err != nil {
+			s.logger.Warn("Failed to fully tear down ziti service graph", zap.String("service", serviceName), zap.Error(err))
+		}
+	} else if err := s.ziti().DeleteService(c.Request.Context(), zitiID); err != nil {
 		s.logger.Error("Failed to delete ziti service from controller", zap.Error(err))
-		// Continue to delete from DB anyway
 	}
 
 	// Clean up any BrowZer proxy_routes linked to this service
-	var serviceName string
-	if err := s.db.Pool.QueryRow(c.Request.Context(),
-		`SELECT name FROM ziti_services WHERE id = $1 AND org_id = $2`, id, org.ID,
-	).Scan(&serviceName); err == nil && serviceName != "" {
+	if serviceName != "" {
 		s.db.Pool.Exec(c.Request.Context(),
 			`DELETE FROM proxy_routes WHERE ziti_service_name = $1 AND browzer_enabled = true AND org_id = $2`, serviceName, org.ID)
 	}

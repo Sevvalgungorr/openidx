@@ -2680,3 +2680,141 @@ func (zm *ZitiManager) EnsureRouterRoleAttribute(ctx context.Context) error {
 	}
 	return nil
 }
+
+// DialableServiceSpec describes an admin-created Ziti service that must be
+// reachable (dialable) by client identities, not just registered as a bare
+// service. The UI "Add Service" form maps onto this.
+type DialableServiceSpec struct {
+	// Name is the service name (and its role attribute #<Name>).
+	Name string
+	// TargetHost/TargetPort is where the edge router forwards (the real backend,
+	// e.g. an internal IP:port).
+	//
+	// The transport is always TCP: CreateHostV1ConfigFixed pins "protocol":"tcp"
+	// and the service-edge-router policy advertises allowedProtocols ["tcp"], so
+	// carrying a caller-supplied protocol here would be a field that silently
+	// does nothing. UDP would need a different host.v1 shape, and is added by
+	// changing those config builders rather than by passing a string through.
+	TargetHost string
+	TargetPort int
+	// InterceptAddress is the overlay name a client dials (e.g. "secops.ziti").
+	// Defaults to "<Name>.ziti" when empty.
+	InterceptAddress string
+	// DialIdentityRoles are the identity role attributes allowed to dial the
+	// service (e.g. []string{"#ci-clients"}). Defaults to []string{"#<Name>-clients"}.
+	DialIdentityRoles []string
+	// ExtraAttributes are additional service role attributes beyond #<Name>.
+	ExtraAttributes []string
+}
+
+// ProvisionDialableService creates (idempotently) everything an admin-defined
+// Ziti service needs to actually be dialable end-to-end:
+//
+//	host.v1 config      → edge router forwards to TargetHost:TargetPort
+//	intercept.v1 config → clients dial InterceptAddress:TargetPort off their tun
+//	service             → carries role attribute #Name (+ openidx-managed)
+//	Bind policy         → edge routers (#ziti-routers) host the terminator
+//	Dial policy         → DialIdentityRoles may dial #Name
+//	service-edge-router-policy → service available on all edge routers
+//
+// Mirrors provisionEntryZitiService (the PAM path) but for generic services, so
+// the admin console's "Add Service" produces a working overlay service instead
+// of a bare, undialable service object. Returns the Ziti service id.
+func (zm *ZitiManager) ProvisionDialableService(ctx context.Context, spec DialableServiceSpec) (string, error) {
+	if spec.Name == "" || spec.TargetHost == "" || spec.TargetPort < 1 || spec.TargetPort > 65535 {
+		return "", fmt.Errorf("invalid dialable service spec: name/target host/port required")
+	}
+	intercept := spec.InterceptAddress
+	if intercept == "" {
+		intercept = spec.Name + ".ziti"
+	}
+	dialRoles := spec.DialIdentityRoles
+	if len(dialRoles) == 0 {
+		dialRoles = []string{"#" + spec.Name + "-clients"}
+	}
+
+	// 1. host.v1 — edge router forwards straight to the real backend.
+	hostCfgID, err := zm.CreateHostV1ConfigFixed(ctx, spec.Name+"-host", spec.TargetHost, spec.TargetPort)
+	if err != nil {
+		return "", fmt.Errorf("host.v1 config: %w", err)
+	}
+
+	// 1b. intercept.v1 — clients capture InterceptAddress:port off their tun.
+	interceptCfgID, err := zm.CreateInterceptV1ConfigFixed(ctx, spec.Name+"-intercept", intercept, spec.TargetPort)
+	if err != nil {
+		return "", fmt.Errorf("intercept.v1 config: %w", err)
+	}
+
+	// 2. Service carrying its own role attribute (reuse if present).
+	attrs := append([]string{spec.Name, "openidx-managed"}, spec.ExtraAttributes...)
+	zitiID, err := zm.serviceIDByName(ctx, spec.Name)
+	if err != nil {
+		return "", err
+	}
+	if zitiID == "" {
+		zitiID, err = zm.CreateService(ctx, spec.Name, attrs)
+		if err != nil {
+			return "", fmt.Errorf("create service: %w", err)
+		}
+	}
+
+	// 3. Attach both configs to the service.
+	if err := zm.EnsureServiceConfig(ctx, zitiID, hostCfgID); err != nil {
+		return "", fmt.Errorf("attach host config: %w", err)
+	}
+	if err := zm.EnsureServiceConfig(ctx, zitiID, interceptCfgID); err != nil {
+		return "", fmt.Errorf("attach intercept config: %w", err)
+	}
+
+	// 4. Bind → edge routers host the terminator to the target.
+	if _, err := zm.EnsureServicePolicy(ctx, "openidx-bind-"+spec.Name, "Bind",
+		[]string{"#" + spec.Name}, []string{pamZitiRouterRole}); err != nil {
+		return "", fmt.Errorf("bind policy: %w", err)
+	}
+
+	// 5. Dial → the allowed client identity roles.
+	if _, err := zm.EnsureServicePolicy(ctx, "openidx-dial-"+spec.Name, "Dial",
+		[]string{"#" + spec.Name}, dialRoles); err != nil {
+		return "", fmt.Errorf("dial policy: %w", err)
+	}
+
+	// 6. Make the service available on all edge routers, and ensure routers carry
+	//    the #ziti-routers role the Bind policy targets.
+	if err := zm.EnsureServiceEdgeRouterPolicy(ctx, "openidx-serp-"+spec.Name,
+		[]string{"#" + spec.Name}, []string{"#all"}); err != nil {
+		return "", fmt.Errorf("service-edge-router policy: %w", err)
+	}
+	if err := zm.EnsureRouterRoleAttribute(ctx); err != nil {
+		zm.logger.Warn("ProvisionDialableService: ensure router role attribute failed (non-fatal)", zap.Error(err))
+	}
+
+	return zitiID, nil
+}
+
+// serviceIDByName returns the Ziti service id for a service name, or "" if it
+// does not exist. Used to make provisioning idempotent (reuse over dup-POST).
+func (zm *ZitiManager) serviceIDByName(ctx context.Context, name string) (string, error) {
+	path := fmt.Sprintf("/edge/management/v1/services?filter=name=%q", name)
+	data, status, err := zm.mgmtRequest("GET", path, nil)
+	if err != nil {
+		return "", fmt.Errorf("lookup service %q: %w", name, err)
+	}
+	if status != http.StatusOK {
+		return "", nil
+	}
+	var resp struct {
+		Data []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return "", nil
+	}
+	for _, s := range resp.Data {
+		if s.Name == name && s.ID != "" {
+			return s.ID, nil
+		}
+	}
+	return "", nil
+}

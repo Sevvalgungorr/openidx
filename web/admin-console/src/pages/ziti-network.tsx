@@ -819,7 +819,9 @@ function ServicesTab() {
   // "How this works": the behind-the-scenes chain for one resource, so an
   // admin can see which link is broken without dropping to the CLI.
   const [explainName, setExplainName] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', host: '', port: 8080, protocol: 'tcp' })
+  // intercept_address / dial_roles let the form provision a service that is
+  // actually dialable, instead of a bare service object nobody can reach.
+  const [form, setForm] = useState({ name: '', description: '', host: '', port: 8080, protocol: 'tcp', intercept_address: '', dial_roles: '' })
 
   const { data, isLoading } = useQuery({
     queryKey: ['ziti-services'],
@@ -827,13 +829,31 @@ function ServicesTab() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) => api.post('/api/v1/access/ziti/services', data),
+    mutationFn: (data: typeof form) => {
+      // dial_roles is a comma-separated UI field; send an array of role
+      // attributes (each normalized to "#role"). Empty → backend defaults to
+      // "#<name>-clients".
+      const dial_roles = data.dial_roles
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean)
+        .map((r) => (r.startsWith('#') ? r : `#${r}`))
+      return api.post('/api/v1/access/ziti/services', {
+        name: data.name,
+        description: data.description,
+        host: data.host,
+        port: data.port,
+        protocol: data.protocol,
+        intercept_address: data.intercept_address.trim(),
+        dial_roles,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ziti-services'] })
       queryClient.invalidateQueries({ queryKey: ['ziti-status'] })
       setCreateModal(false)
-      setForm({ name: '', description: '', host: '', port: 8080, protocol: 'tcp' })
-      toast({ title: 'Service created', description: 'Ziti service has been created.' })
+      setForm({ name: '', description: '', host: '', port: 8080, protocol: 'tcp', intercept_address: '', dial_roles: '' })
+      toast({ title: 'Service created', description: 'Ziti service is now dialable over the overlay.' })
     },
     onError: () => toast({ title: 'Error', description: 'Failed to create Ziti service.', variant: 'destructive' }),
   })
@@ -996,6 +1016,16 @@ function ServicesTab() {
                   <option value="udp">UDP</option>
                 </select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Intercept Address</Label>
+              <Input value={form.intercept_address} onChange={(e) => setForm({ ...form, intercept_address: e.target.value })} placeholder={form.name ? `${form.name}.ziti (default)` : 'internal-app.ziti'} />
+              <p className="text-xs text-muted-foreground">The overlay hostname clients dial (what the tunneler resolves). Leave blank to use <code>&lt;name&gt;.ziti</code>.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Dial Roles</Label>
+              <Input value={form.dial_roles} onChange={(e) => setForm({ ...form, dial_roles: e.target.value })} placeholder={form.name ? `${form.name}-clients (default)` : 'ci-clients, partner-x'} />
+              <p className="text-xs text-muted-foreground">Comma-separated identity role attributes allowed to reach this service (least-privilege). Leave blank to use <code>#&lt;name&gt;-clients</code>. Assign the same role to the identities that should dial it.</p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setCreateModal(false)}>Cancel</Button>
