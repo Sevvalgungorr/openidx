@@ -96,6 +96,7 @@ import {
   UserProfile,
   MyAccess,
   MyDevices,
+  MyNetwork,
   TrustedBrowsers,
   DeviceAuthorization,
   AccessRequests,
@@ -229,6 +230,7 @@ function App() {
         <Route path="my-access" element={<MyAccess />} />
         <Route path="my-privileged-access" element={<MyPrivilegedAccess />} />
         <Route path="my-devices" element={<MyDevices />} />
+        <Route path="my-network" element={<MyNetwork />} />
         <Route path="my-security" element={<MySecurity />} />
         <Route path="trusted-browsers" element={<TrustedBrowsers />} />
         {/* RFC 8628 verification page. The path must stay "/device": it is what

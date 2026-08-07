@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Smartphone, Monitor, Tablet, Shield, ShieldCheck, ShieldX, Trash2, Edit, Plus, MoreHorizontal, Network, Copy, FileKey, Download, Wifi, WifiOff } from 'lucide-react'
+import { Smartphone, Monitor, Tablet, Shield, ShieldCheck, ShieldX, Trash2, Edit, Plus, MoreHorizontal, Network, Copy, Download, Wifi, WifiOff } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
@@ -238,7 +238,7 @@ export function MyDevicesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">My Devices</h1>
           <p className="text-muted-foreground">
-            Manage devices and zero-trust network enrollment
+            Manage your devices and how they connect
           </p>
         </div>
         <Button onClick={() => setRegisterDialog(true)}>
@@ -247,71 +247,76 @@ export function MyDevicesPage() {
         </Button>
       </div>
 
-      {/* Ziti Network Identity Card */}
+      {/* Network access status — plain language. The underlying overlay identity
+          is an implementation detail; users care whether this device can reach
+          internal systems directly, and what to do if it can't. */}
       {zitiIdentity && (
         <Card className={zitiIdentity.linked ? 'border-green-200 bg-green-50/30' : 'border-amber-200 bg-amber-50/30'}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Network className="h-5 w-5 text-blue-600" />
-              Zero Trust Network Identity
+              Direct network access
             </CardTitle>
             <CardDescription>
-              {zitiIdentity.linked
-                ? 'Your account is linked to a Ziti network identity for secure access.'
-                : 'Your account does not yet have a Ziti network identity. Contact your administrator.'}
+              {!zitiIdentity.linked
+                ? 'This account is not set up for direct network access yet. Most resources still open in your browser from My Network.'
+                : zitiIdentity.enrolled
+                  ? 'This device can reach internal systems directly.'
+                  : 'Optional. Most resources already open in your browser from My Network — you only need this for a few tools that connect outside the browser.'}
             </CardDescription>
           </CardHeader>
           {zitiIdentity.linked && (
             <CardContent>
               <div className="flex flex-wrap items-center gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Identity:</span>{' '}
-                  <span className="font-medium">{zitiIdentity.name}</span>
-                </div>
                 <Badge variant={zitiIdentity.enrolled ? 'default' : 'secondary'}>
-                  {zitiIdentity.enrolled ? 'Enrolled' : 'Pending Enrollment'}
+                  {zitiIdentity.enrolled ? 'Active on this device' : 'Not set up on this device'}
                 </Badge>
-                {zitiIdentity.attributes && zitiIdentity.attributes.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground">Roles:</span>
-                    {zitiIdentity.attributes.map((attr) => (
-                      <Badge key={attr} variant="outline" className="text-xs">{attr}</Badge>
-                    ))}
-                  </div>
-                )}
               </div>
 
-              {/* Enrollment section for unenrolled identities */}
+              {/* Guided setup, only for the minority of cases that need it. The
+                  raw token stays collapsed under "Advanced" so it is available
+                  for support without being the first thing a user sees. */}
               {!zitiIdentity.enrolled && zitiIdentity.enrollment_jwt && (
-                <div className="mt-4 p-3 bg-white rounded-lg border">
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <FileKey className="h-4 w-4" />
-                    Enrollment Token
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Use this token with the OpenZiti Desktop Edge tunneler to connect your device to the network.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setShowJwt(!showJwt)}>
-                      {showJwt ? 'Hide Token' : 'Show Token'}
+                <div className="mt-4 p-3 bg-white rounded-lg border space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Set up this device</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Step 1 — install the OpenIDX network client for your operating system.
+                      Step 2 — open it and paste the setup key below. You only do this once.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => window.open('https://openziti.io/downloads', '_blank')}
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1.5" /> Get the client
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => {
                       navigator.clipboard.writeText(zitiIdentity.enrollment_jwt!)
-                      toast({ title: 'Copied', description: 'Enrollment JWT copied to clipboard.' })
+                      toast({ title: 'Setup key copied', description: 'Paste it into the network client.' })
                     }}>
-                      <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={downloadJwt}>
-                      <Download className="h-3.5 w-3.5 mr-1.5" /> Download .jwt
+                      <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy setup key
                     </Button>
                   </div>
-                  {showJwt && (
-                    <textarea
-                      readOnly
-                      value={zitiIdentity.enrollment_jwt}
-                      className="mt-2 w-full h-24 rounded-md border bg-muted p-2 text-xs font-mono"
-                    />
-                  )}
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer select-none">Advanced</summary>
+                    <div className="mt-2 flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setShowJwt(!showJwt)}>
+                        {showJwt ? 'Hide key' : 'Show key'}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={downloadJwt}>
+                        <Download className="h-3.5 w-3.5 mr-1.5" /> Download key file
+                      </Button>
+                    </div>
+                    {showJwt && (
+                      <textarea
+                        readOnly
+                        value={zitiIdentity.enrollment_jwt}
+                        className="mt-2 w-full h-24 rounded-md border bg-muted p-2 text-xs font-mono"
+                      />
+                    )}
+                  </details>
                 </div>
               )}
             </CardContent>
@@ -319,15 +324,15 @@ export function MyDevicesPage() {
         </Card>
       )}
 
-      {/* Endpoint Agents — Ziti compliance/posture for the user's enrolled agents */}
+      {/* Devices set up for direct access, with their live security posture. */}
       {endpointAgents.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Network className="h-4 w-4 text-green-600" />My Endpoint Agents
+              <Network className="h-4 w-4 text-green-600" />Devices with direct access
             </CardTitle>
             <CardDescription>
-              Zero-trust network agents running on your devices, with their live compliance posture.
+              Devices set up for direct network access, and whether they meet your security policy.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -456,7 +461,7 @@ export function MyDevicesPage() {
                           </Badge>
                         ) : device.trusted && zitiIdentity?.linked && !zitiIdentity?.enrolled ? (
                           <Badge className="bg-yellow-100 text-yellow-800">
-                            Pending Enrollment
+                            Setup not finished
                           </Badge>
                         ) : !device.trusted ? (
                           <Badge variant="outline" className="text-muted-foreground">

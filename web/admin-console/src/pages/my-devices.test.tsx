@@ -80,27 +80,28 @@ describe('MyDevicesPage', () => {
 
     expect(await screen.findByText('My Devices')).toBeInTheDocument()
     expect(
-      screen.getByText(/manage devices and zero-trust network enrollment/i),
+      screen.getByText(/manage your devices and how they connect/i),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /register this device/i }),
     ).toBeInTheDocument()
   })
 
-  it('renders the Zero Trust Network Identity card for a linked identity', async () => {
+  it('describes direct network access in plain language for a linked identity', async () => {
     render(<MyDevicesPage />, { wrapper: createWrapper() })
 
+    expect(await screen.findByText(/direct network access/i)).toBeInTheDocument()
     expect(
-      await screen.findByText(/zero trust network identity/i),
+      screen.getByText(/this device can reach internal systems directly/i),
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(/your account is linked to a ziti network identity/i),
-    ).toBeInTheDocument()
-    expect(screen.getByText('alice-laptop')).toBeInTheDocument()
-    expect(screen.getByText('Enrolled')).toBeInTheDocument()
+    expect(screen.getByText(/active on this device/i)).toBeInTheDocument()
 
-    expect(screen.getByText('engineering')).toBeInTheDocument()
-    expect(screen.getByText('on-call')).toBeInTheDocument()
+    // The overlay's internals (identity name, role attributes) are deliberately
+    // NOT shown to end users — they carry no meaning for someone who just wants
+    // to reach a machine.
+    const text = document.body.textContent?.toLowerCase() || ''
+    expect(text).not.toContain('ziti')
+    expect(text).not.toContain('enrollment token')
   })
 
   it('lists the user devices with their name + Trusted/Untrusted badge', async () => {

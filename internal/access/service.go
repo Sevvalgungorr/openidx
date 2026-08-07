@@ -469,6 +469,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		// Self-service: the caller's own correlated devices (compliance visibility).
 		api.GET("/my-devices", svc.handleMyDevices)
 
+		// Self-service: "My Network" — what the caller can reach, in plain
+		// language (no overlay vocabulary). Deliberately not adminOnly.
+		api.GET("/my/resources", svc.handleMyResources)
+
 		// Phase 3: Posture checks (definitions are admin-managed; device
 		// self-report + evaluate are data-plane and stay open).
 		api.GET("/ziti/posture/checks", svc.handleListPostureChecks)
