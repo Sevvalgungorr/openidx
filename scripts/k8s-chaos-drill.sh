@@ -44,7 +44,10 @@ unknown() { printf '  ⚠️  %s (ÖLÇÜLEMEDİ — başarı sayılmaz)\n' "$1"
 static_checks() {
 	echo "── Statik: üretilen manifest ──"
 	if [ ! -x "$HELM" ]; then unknown "helm bulunamadı"; return; fi
-	local rendered; rendered="$(mktemp)"
+	# The suffix matters: kubeconform skips files it does not recognise as
+	# YAML/JSON and then reports "0 resources found", which would read as a
+	# clean validation of a manifest it never actually looked at.
+	local rendered; rendered="$(mktemp --suffix=.yaml)"
 	if ! "$HELM" template chaos "$CHART" -f "$VALUES" >"$rendered" 2>/dev/null; then
 		fail "helm template başarısız — chart dağıtılamaz durumda"
 		return
@@ -91,6 +94,36 @@ PYCHK
 	fi
 	if [ "${npdb:-0}" -gt 0 ]; then pass "PodDisruptionBudget: $npdb"
 	else fail "PodDisruptionBudget yok"; fi
+
+	# Schema validation against the real Kubernetes API. A chart can render
+	# perfectly valid YAML that the API server still rejects (wrong field name,
+	# wrong type, deprecated apiVersion), and that failure would only appear at
+	# deploy time — during the outage you were trying to prevent.
+	if command -v kubeconform >/dev/null 2>&1 || [ -x /tmp/k8sha/kubeconform ]; then
+		local kc; kc="$(command -v kubeconform 2>/dev/null || echo /tmp/k8sha/kubeconform)"
+		# Reuse the render produced above instead of making a second one: one
+		# source of truth, and no chance of the two drifting.
+		#
+		# CRDs (ExternalSecret, PrometheusRule) have no upstream schema, so they
+		# are skipped; every core resource must validate strictly.
+		#
+		# The counts are parsed rather than grepped for "Invalid: 0", because
+		# that substring also matches "Invalid: 10" — a broken manifest would be
+		# reported as healthy, exactly the false-green this drill prevents. A
+		# zero-resource result is treated as failure too: an empty render means
+		# the chart cannot deploy at all.
+		local kcout ninvalid nvalid
+		kcout="$("$kc" -strict -summary -ignore-missing-schemas "$rendered" 2>&1 | tail -1)"
+		ninvalid="$(printf '%s' "$kcout" | sed -n 's/.*Invalid: \([0-9][0-9]*\).*/\1/p')"
+		nvalid="$(printf '%s' "$kcout" | sed -n 's/.*[^n]Valid: \([0-9][0-9]*\).*/\1/p')"
+		if [ "${ninvalid:-1}" = "0" ] && [ "${nvalid:-0}" -gt 0 ]; then
+			pass "Kubernetes API şema doğrulaması (strict): $nvalid kaynak"
+		else
+			fail "manifest gerçek API şemasına uymuyor (geçerli:${nvalid:-?} geçersiz:${ninvalid:-?})"
+		fi
+	else
+		unknown "kubeconform yok: şema doğrulaması yapılamadı"
+	fi
 	rm -f "$rendered"
 }
 
