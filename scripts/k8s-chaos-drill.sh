@@ -155,6 +155,47 @@ PYRULES
 	else
 		unknown "promtool yok: uyarı kuralları doğrulanamadı"
 	fi
+
+	# Alert delivery. Rules that fire into nothing are the worst kind of
+	# monitoring: the dashboard is green, the rules exist, and everyone assumes
+	# someone is being paged. An enabled Alertmanager route whose receiver has
+	# no delivery method configured is exactly that, and it is easy to ship by
+	# accident because the manifest is perfectly valid.
+	local delivery
+	delivery="$(python3 - "$rendered" <<'PYALERT'
+import sys, yaml
+docs=[d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+rules=sum(len(g.get('rules',[])) for d in docs if d.get('kind')=='PrometheusRule'
+          for g in d['spec'].get('groups',[]))
+cfgs=[d for d in docs if d.get('kind')=='AlertmanagerConfig']
+if not cfgs:
+    # No route at all is a real gap when rules exist, but it is a deliberate
+    # opt-in: report it as informational rather than a failure.
+    print(f"NOROUTE {rules}")
+else:
+    empty=[r['name'] for c in cfgs for r in c['spec'].get('receivers',[])
+           if not [k for k in r if k != 'name']]
+    print(f"ROUTED {rules} {len(empty)} {','.join(empty)}")
+PYALERT
+)"
+	case "$delivery" in
+	NOROUTE*)
+		local nr; nr="$(printf '%s' "$delivery" | awk '{print $2}')"
+		if [ "${nr:-0}" -gt 0 ]; then
+			printf '  ℹ️  %s uyarı kuralı tanımlı, teslim yolu yapılandırılmamış (monitoring.alerting.enabled=false)\n' "$nr"
+		fi
+		;;
+	ROUTED*)
+		local nempty names
+		nempty="$(printf '%s' "$delivery" | awk '{print $3}')"
+		names="$(printf '%s' "$delivery" | awk '{print $4}')"
+		if [ "${nempty:-1}" = "0" ]; then
+			pass "Uyarı teslim yolu yapılandırılmış"
+		else
+			fail "alıcıda teslim yolu yok (${names:-?}) — uyarılar sessizce kaybolur"
+		fi
+		;;
+	esac
 	rm -f "$rendered"
 }
 

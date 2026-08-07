@@ -531,6 +531,70 @@ monitoring:
     enabled: true
     adminPassword: ""  # Set via secret
 
+  # Alert delivery.
+  #
+  # The alert rules decide what is worth waking someone for; this decides where
+  # those alerts go. Without a route they evaluate, fire, and then sit in the
+  # Prometheus UI where nobody is looking — a quietly expensive failure, because
+  # everyone assumes someone is being paged.
+  #
+  # Left disabled by default: an install cannot guess your channel, and a
+  # half-configured receiver drops alerts just as silently as no receiver.
+  # Enable it and fill in exactly one delivery method (or several).
+  alerting:
+    enabled: false
+    defaultReceiver: openidx-default
+    # Optional separate destination for severity=critical (for example a pager
+    # rotation while everything else goes to a chat channel). Leave empty to
+    # send everything to defaultReceiver.
+    criticalReceiver: ""
+
+    # Wait before the first notification so a rollout or node failure arrives as
+    # one message instead of one per replica.
+    groupWait: 30s
+    groupInterval: 5m
+    # Re-send while still firing: long enough not to be noise, short enough that
+    # a forgotten incident resurfaces.
+    repeatInterval: 4h
+    criticalRepeatInterval: 1h
+
+    # Simplest option, and the one that needs no secret: post to an HTTP
+    # endpoint. OpenIDX's own webhook subscriptions can receive these.
+    webhook:
+      enabled: false
+      url: ""
+      sendResolved: true
+
+    # Secrets are referenced, never inlined: a chat webhook URL is a credential
+    # and does not belong in values.yaml or in git.
+    slack:
+      enabled: false
+      channel: "#alerts"
+      secretName: alertmanager-slack
+      secretKey: webhook-url
+      sendResolved: true
+
+    email:
+      enabled: false
+      to: ""
+      from: ""
+      smarthost: ""
+      secretName: alertmanager-smtp
+      secretKey: password
+      sendResolved: true
+
+    # Applied to criticalReceiver when one is configured.
+    criticalWebhook:
+      enabled: false
+      url: ""
+      sendResolved: true
+
+    pagerduty:
+      enabled: false
+      secretName: alertmanager-pagerduty
+      secretKey: routing-key
+      sendResolved: true
+
 # Ingress
 ingress:
   enabled: true

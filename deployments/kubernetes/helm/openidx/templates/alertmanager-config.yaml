@@ -1,0 +1,99 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.alerting.enabled }}
+{{/*
+Alert delivery.
+
+The PrometheusRule shipped alongside this file defines what is worth waking
+someone for. It does not decide where those alerts go — that is Alertmanager's
+job, and without a route the rules evaluate, fire, and then sit in the
+Prometheus UI where nobody is looking.
+
+That failure mode is quietly expensive: the dashboard is green, the rules exist,
+and everyone assumes someone is being paged. This resource closes the loop.
+
+Grouping is chosen so a real incident arrives as one message rather than a
+storm: when a node dies, every pod on it alerts at once, and twenty separate
+notifications are harder to act on than one that names them together.
+*/}}
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: {{ include "openidx.fullname" . }}-alerts
+  labels:
+    {{- include "openidx.labels" . | nindent 4 }}
+spec:
+  route:
+    receiver: {{ .Values.monitoring.alerting.defaultReceiver | default "openidx-default" }}
+    # Group by alert name and service so one broken service produces one thread,
+    # not one message per replica.
+    groupBy: ["alertname", "job", "deployment"]
+    # Wait briefly before the first notification: a rollout or node failure
+    # trips several rules within seconds, and this lets them arrive together.
+    groupWait: {{ .Values.monitoring.alerting.groupWait | default "30s" }}
+    groupInterval: {{ .Values.monitoring.alerting.groupInterval | default "5m" }}
+    # How often to re-send an alert that is still firing. Long enough not to be
+    # noise, short enough that a forgotten incident resurfaces.
+    repeatInterval: {{ .Values.monitoring.alerting.repeatInterval | default "4h" }}
+    routes:
+      # Critical alerts mean the service is down or about to be. They bypass the
+      # normal grouping delay and repeat sooner, because a slow page for an
+      # outage is close to no page at all.
+      - receiver: {{ .Values.monitoring.alerting.criticalReceiver | default (.Values.monitoring.alerting.defaultReceiver | default "openidx-default") }}
+        matchers:
+          - name: severity
+            value: critical
+        groupWait: 10s
+        repeatInterval: {{ .Values.monitoring.alerting.criticalRepeatInterval | default "1h" }}
+  receivers:
+    - name: {{ .Values.monitoring.alerting.defaultReceiver | default "openidx-default" }}
+      {{- with .Values.monitoring.alerting.webhook }}
+      {{- if .enabled }}
+      webhookConfigs:
+        - url: {{ .url | quote }}
+          sendResolved: {{ .sendResolved | default true }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.monitoring.alerting.slack }}
+      {{- if .enabled }}
+      slackConfigs:
+        - apiURL:
+            name: {{ .secretName | default "alertmanager-slack" }}
+            key: {{ .secretKey | default "webhook-url" }}
+          channel: {{ .channel | quote }}
+          sendResolved: {{ .sendResolved | default true }}
+          title: '{{ "{{ .CommonLabels.alertname }}" }} — {{ "{{ .CommonLabels.severity }}" }}'
+          text: '{{ "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}" }}'
+      {{- end }}
+      {{- end }}
+      {{- with .Values.monitoring.alerting.email }}
+      {{- if .enabled }}
+      emailConfigs:
+        - to: {{ .to | quote }}
+          from: {{ .from | quote }}
+          smarthost: {{ .smarthost | quote }}
+          authPassword:
+            name: {{ .secretName | default "alertmanager-smtp" }}
+            key: {{ .secretKey | default "password" }}
+          sendResolved: {{ .sendResolved | default true }}
+      {{- end }}
+      {{- end }}
+    {{- $crit := .Values.monitoring.alerting.criticalReceiver | default "" }}
+    {{- if and $crit (ne $crit (.Values.monitoring.alerting.defaultReceiver | default "openidx-default")) }}
+    - name: {{ $crit }}
+      {{- with .Values.monitoring.alerting.criticalWebhook }}
+      {{- if .enabled }}
+      webhookConfigs:
+        - url: {{ .url | quote }}
+          sendResolved: {{ .sendResolved | default true }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.monitoring.alerting.pagerduty }}
+      {{- if .enabled }}
+      pagerdutyConfigs:
+        - routingKey:
+            name: {{ .secretName | default "alertmanager-pagerduty" }}
+            key: {{ .secretKey | default "routing-key" }}
+          sendResolved: {{ .sendResolved | default true }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}
