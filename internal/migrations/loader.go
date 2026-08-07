@@ -915,5 +915,12 @@ func allMigrations() []*Migration {
 			UpSQL:       seedEmailTemplatesUp,
 			DownSQL:     seedEmailTemplatesDown,
 		},
+		{
+			Version:     130,
+			Name:        "upstream_pools",
+			Description: "Add upstream_pools + upstream_pool_members and a nullable proxy_routes.upstream_pool_id, so a route can point at several weighted backends with active health checking instead of the single address in to_url. Measured before this change: 0 of 19 edge routes had more than one node and none had a health check, so a dead backend took its route down with it. The link column is NULLABLE and defaults to NULL, meaning 'keep using to_url exactly as before', so no existing route changes behaviour. RLS mirrors proxy_routes (org-scoped, bypassable by the reconciler).",
+			UpSQL:       upstreamPoolsUp,
+			DownSQL:     upstreamPoolsDown,
+		},
 	}
 }
