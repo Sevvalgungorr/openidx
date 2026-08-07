@@ -493,6 +493,20 @@ func (s *Service) handleAuthDecide(c *gin.Context) {
 		return
 	}
 
+	// Group check. allowed_groups is configurable in the admin UI and was
+	// previously stored but never evaluated, so a route restricted only by group
+	// was open to every authenticated user in the org.
+	if len(route.AllowedGroups) > 0 &&
+		!routeGroupsAllow(route.AllowedGroups, s.userGroupNames(c.Request.Context(), session.UserID)) {
+		s.logAuditEvent(c, "proxy_access_denied", route.ID, "proxy_route", map[string]interface{}{
+			"reason":  "insufficient_groups",
+			"user_id": session.UserID,
+			"path":    originalURI,
+		})
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
+		return
+	}
+
 	// Context-aware evaluation
 	accessCtx, err := s.buildAccessContext(c, route, session)
 	if err != nil {

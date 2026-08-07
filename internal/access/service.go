@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -134,6 +135,9 @@ type Service struct {
 	// encryption is unconfigured — the recording download handler then streams
 	// plaintext unchanged. Same keyring the sealer worker uses.
 	guacRecordingRing *recordingKeyring
+	// groupCache memoizes per-user group membership for route authorization
+	// (allowed_groups), keyed by user id with a short TTL.
+	groupCache sync.Map
 }
 
 // handleAgentAPKDownload serves the hosted Android agent APK without auth so
@@ -1996,6 +2000,19 @@ func (s *Service) handleProxy(c *gin.Context) {
 		if len(route.AllowedRoles) > 0 && !hasAnyRole(session.Roles, route.AllowedRoles) {
 			s.logAuditEvent(c, "proxy_access_denied", route.ID, "proxy_route", map[string]interface{}{
 				"reason":  "insufficient_roles",
+				"user_id": session.UserID,
+				"path":    c.Request.URL.Path,
+			})
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
+			return
+		}
+
+		// Check groups. Stored in allowed_groups and settable in the admin UI,
+		// but historically never evaluated here.
+		if len(route.AllowedGroups) > 0 &&
+			!routeGroupsAllow(route.AllowedGroups, s.userGroupNames(c.Request.Context(), session.UserID)) {
+			s.logAuditEvent(c, "proxy_access_denied", route.ID, "proxy_route", map[string]interface{}{
+				"reason":  "insufficient_groups",
 				"user_id": session.UserID,
 				"path":    c.Request.URL.Path,
 			})
