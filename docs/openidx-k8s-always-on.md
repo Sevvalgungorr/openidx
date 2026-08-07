@@ -96,19 +96,25 @@ Bu, kopyaları öldürüp düğüm boşaltırken **gerçekten kaybolan istek say
 
 ---
 
-## 5. Kalan işler
+## 5. Sonradan kapatılanlar
 
 | Konu | Durum |
 |---|---|
-| Canlı kaos testi | **Küme bekliyor** (yukarıdaki komut hazır) |
+| **Uyarı teslimi** | **Kapatıldı.** 19 kural ateşleniyordu ama gidecek yer yoktu. Alertmanager yönlendirmesi eklendi: gruplama tek olay = tek bildirim, kritik uyarılar ayrı ve daha hızlı rotada, sırlar referansla. Tatbikat artık "yönlendirme açık ama alıcı boş" tuzağını da yakalıyor |
+| **Azure altyapısı** | **Kapatıldı.** AKS + yönetilen Postgres/Redis. Düğüm havuzu bölgelere yayılıyor (chart'ın bölge yayılımını anlamlı kılan şey), üretimde bölge-yedekli veritabanı ve replikalı Redis. Gerçek sağlayıcı şemasına karşı `terraform validate` ile doğrulandı |
+| **Otomatik sertifika** | **Zaten vardı.** İlk incelemede eksik sanmıştım; ölçüm düzeltti — ingress'ler cert-manager annotation'ı taşıyor, üretim değerlerinde de miras alınıyor |
+
+## 6. Hâlâ kalan
+
+| Konu | Durum |
+|---|---|
+| Canlı kaos testi | **Küme bekliyor** (komut yukarıda) |
 | Bölge yayılımının gerçek etkisi | Çok bölgeli kümede ölçülmeli |
-| Azure altyapı modülü | Yok (AWS mevcut) |
-| Otomatik sertifika yenileme | Elle |
-| Uyarıların gerçekten ulaşması | Kural var, teslim yolu doğrulanmadı |
+| Uyarının **gerçekten ulaştığı** | Yol yapılandırılabilir; bir uyarı kasten tetiklenip bildirimin vardığı görülmeli |
 
 ---
 
-## 6. Özet
+## 7. Özet
 
 | Soru | Cevap |
 |---|---|
