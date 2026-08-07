@@ -1400,6 +1400,11 @@ func RegisterRoutes(router *gin.Engine, svc *Service, clientMgmtAuth gin.Handler
 
 	// Social login endpoints
 	svc.RegisterSocialLoginRoutes(router)
+
+	// Self-service account linking. The login flow refuses to auto-link a
+	// social account onto an existing local user by email (account-takeover
+	// guard); these endpoints are the supported way to establish that link.
+	svc.RegisterSocialLinkRoutes(router)
 }
 
 // discoverySubjectTypes returns the OIDC subject types the provider actually

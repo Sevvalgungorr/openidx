@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
+import { LinkedAccountsCard } from '../components/linked-accounts-card'
 
 interface InsightDevice {
   name: string
@@ -202,6 +203,8 @@ export function MySecurityPage() {
           </CardContent>
         </Card>
       </div>
+
+      <LinkedAccountsCard />
     </div>
   )
 }
