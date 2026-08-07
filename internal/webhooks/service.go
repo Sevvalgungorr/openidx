@@ -19,6 +19,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/openidx/openidx/internal/common/orgctx"
+
 	"github.com/openidx/openidx/internal/common/database"
 	"github.com/openidx/openidx/internal/common/leader"
 	"github.com/openidx/openidx/internal/common/resilience"
@@ -126,11 +128,22 @@ func (s *Service) CreateSubscription(ctx context.Context, name, url, secret stri
 		return nil, fmt.Errorf("failed to encrypt webhook secret: %w", err)
 	}
 
-	query := `INSERT INTO webhook_subscriptions (id, name, url, secret, events, status, created_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5::TEXT[], $6, $7, $8, $9)`
+	// Persist org_id explicitly from the request context. The column has a
+	// hardcoded DEFAULT (the seeded default org) that only matches org 010; for
+	// every other tenant that default violates the RLS WITH CHECK
+	// (org_id must equal app.org_id), so the row would either be rejected or land
+	// in the wrong org and never appear in the tenant's list. Sourcing org_id
+	// from orgctx makes create/list consistent for all tenants.
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("webhook create requires organization context: %w", err)
+	}
+
+	query := `INSERT INTO webhook_subscriptions (id, org_id, name, url, secret, events, status, created_by, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6::TEXT[], $7, $8, $9, $10)`
 
 	_, err = s.db.Pool.Exec(ctx, query,
-		sub.ID, sub.Name, sub.URL, encSecret, sub.Events,
+		sub.ID, org.ID, sub.Name, sub.URL, encSecret, sub.Events,
 		sub.Status, sub.CreatedBy, sub.CreatedAt, sub.UpdatedAt,
 	)
 	if err != nil {

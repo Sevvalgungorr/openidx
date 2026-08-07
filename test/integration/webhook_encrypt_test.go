@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/openidx/openidx/internal/common/database"
+	"github.com/openidx/openidx/internal/common/orgctx"
 	"github.com/openidx/openidx/internal/common/secretcrypt"
 	"github.com/openidx/openidx/internal/webhooks"
 )
@@ -41,6 +42,15 @@ func TestWebhookSecretEncryptedAtRest(t *testing.T) {
 	svc := webhooks.NewService(db, rc, zaptest.NewLogger(t), cipher)
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// Webhook rows are tenant-scoped: CreateSubscription reads org_id from the
+	// request context and the RLS WITH CHECK on webhook_subscriptions rejects a
+	// row whose org_id does not match app.org_id. So the whole test runs inside
+	// a real org context rather than a bare background context.
+	orgID := seedOrg(t, db.Pool, "wh-enc-"+suffix)
+	t.Cleanup(func() { bypassExec(t, db.Pool, "DELETE FROM organizations WHERE id=$1", orgID) })
+	ctx = orgctx.With(orgctx.WithBypassRLS(ctx), orgctx.Org{ID: orgID})
+
 	const plaintext = "whsec_ABC123_do_not_store_plaintext"
 
 	sub, err := svc.CreateSubscription(ctx, "enc-"+suffix, "https://example.test/hook",
@@ -69,10 +79,10 @@ func TestWebhookSecretEncryptedAtRest(t *testing.T) {
 	// A legacy plaintext row (no tag) still reads through unchanged.
 	legacyID := uuid.NewString()
 	_, err = db.Pool.Exec(ctx,
-		`INSERT INTO webhook_subscriptions (id, name, url, secret, events, status)
-		 VALUES ($1, $2, $3, $4, $5::TEXT[], 'active')`,
+		`INSERT INTO webhook_subscriptions (id, name, url, secret, events, status, org_id)
+		 VALUES ($1, $2, $3, $4, $5::TEXT[], 'active', $6)`,
 		legacyID, "legacy-"+suffix, "https://example.test/legacy", "legacy-plaintext-secret",
-		[]string{"user.created"})
+		[]string{"user.created"}, orgID)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = db.Pool.Exec(context.Background(), "DELETE FROM webhook_subscriptions WHERE id=$1", legacyID)

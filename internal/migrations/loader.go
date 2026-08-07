@@ -901,5 +901,19 @@ func allMigrations() []*Migration {
 			UpSQL:       socialProvidersNullableProviderIDUp,
 			DownSQL:     socialProvidersNullableProviderIDDown,
 		},
+		{
+			Version:     128,
+			Name:        "normalize_agent_compliance_score",
+			Description: "Clamp enrolled_agents.compliance_score into its documented 0.0-1.0 range. Some agents reported an already-percentage 0-100 value that was stored verbatim; the console multiplies by 100 to render a percent, so a stored 100 showed as '10000%'. Values in (1,100] are divided by 100, >100 clamped to 1.0, negatives floored at 0.0. The write path now clamps too.",
+			UpSQL:       normalizeAgentComplianceScoreUp,
+			DownSQL:     normalizeAgentComplianceScoreDown,
+		},
+		{
+			Version:     129,
+			Name:        "seed_email_templates",
+			Description: "Seed the standard transactional email templates (magic link, invitation, password reset, email verification, MFA enrollment, welcome). The Email Templates admin page had no create endpoint and the table was never seeded, so it was permanently empty and the edit workflow was untestable (QA 10.4). Idempotent via ON CONFLICT (slug) DO NOTHING.",
+			UpSQL:       seedEmailTemplatesUp,
+			DownSQL:     seedEmailTemplatesDown,
+		},
 	}
 }

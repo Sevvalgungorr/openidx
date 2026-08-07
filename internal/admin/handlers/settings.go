@@ -6,13 +6,49 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
+
+// registerBrandingValidators wires the custom "httpurl_or_path" validator into
+// gin's binding engine exactly once. It accepts an empty string (paired with
+// omitempty), an absolute http(s) URL, or a same-origin root-relative path
+// ("/assets/logo.png"). The default "url" tag rejects relative paths, which is
+// how the platform's own default branding failed to save (QA 10.6).
+var registerBrandingValidatorsOnce sync.Once
+
+func registerBrandingValidators() {
+	registerBrandingValidatorsOnce.Do(func() {
+		v, ok := binding.Validator.Engine().(*validator.Validate)
+		if !ok {
+			return
+		}
+		_ = v.RegisterValidation("httpurl_or_path", func(fl validator.FieldLevel) bool {
+			s := strings.TrimSpace(fl.Field().String())
+			if s == "" {
+				return true // omitempty handles the empty case
+			}
+			// Root-relative same-origin path.
+			if strings.HasPrefix(s, "/") {
+				return true
+			}
+			u, err := url.Parse(s)
+			if err != nil {
+				return false
+			}
+			return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+		})
+	})
+}
 
 // SettingsHandler handles settings-related requests
 type SettingsHandler struct {
@@ -22,6 +58,7 @@ type SettingsHandler struct {
 
 // NewSettingsHandler creates a new settings handler
 func NewSettingsHandler(logger *zap.Logger, db *pgxpool.Pool) *SettingsHandler {
+	registerBrandingValidators()
 	return &SettingsHandler{
 		logger: logger.With(zap.String("handler", "settings")),
 		db:     db,
@@ -131,8 +168,12 @@ type LockoutPolicy struct {
 
 // BrandingSection contains branding customization settings
 type BrandingSection struct {
-	LogoURL          string `json:"logo_url" binding:"omitempty,url"`
-	FaviconURL       string `json:"favicon_url" binding:"omitempty,url"`
+	// logo/favicon may be an absolute http(s) URL or a same-origin relative path
+	// (the platform's own defaults are "/assets/logo.png"). The stock "url" tag
+	// rejects relative paths, which made saving the server's own defaults fail
+	// with a 400 (QA 10.6), so use the custom "httpurl_or_path" validator.
+	LogoURL          string `json:"logo_url" binding:"omitempty,httpurl_or_path"`
+	FaviconURL       string `json:"favicon_url" binding:"omitempty,httpurl_or_path"`
 	PrimaryColor     string `json:"primary_color" binding:"required"`
 	SecondaryColor   string `json:"secondary_color" binding:"required"`
 	LoginPageTitle   string `json:"login_page_title" binding:"required,max=255"`

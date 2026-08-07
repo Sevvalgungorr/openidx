@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/openidx/openidx/internal/common/database"
+	"github.com/openidx/openidx/internal/common/orgctx"
 	"github.com/openidx/openidx/internal/common/secretcrypt"
 	"github.com/openidx/openidx/internal/common/testutil"
 )
@@ -56,7 +57,9 @@ type webhookCall struct {
 func setupTest(t *testing.T) *testContext {
 	logger := zaptest.NewLogger(t)
 
-	ctx := context.Background()
+	// CreateSubscription now sources org_id from the request context (the fix for
+	// QA 10.5), so the test context must carry an organization.
+	ctx := orgctx.With(context.Background(), orgctx.Org{ID: "00000000-0000-0000-0000-000000000010"})
 
 	// Create mock Redis
 	mockRedis := testutil.NewMockRedis(logger)
@@ -134,6 +137,7 @@ func setupTestDB(ctx context.Context, t *testing.T, db *database.PostgresDB) err
 	schema := `
 		CREATE TABLE IF NOT EXISTS webhook_subscriptions (
 			id TEXT PRIMARY KEY,
+			org_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000010',
 			name TEXT NOT NULL,
 			url TEXT NOT NULL,
 			secret TEXT NOT NULL,
@@ -234,6 +238,57 @@ func TestComputeSignature(t *testing.T) {
 // ============================================================================
 // Tests for CreateSubscription
 // ============================================================================
+
+// TestCreateSubscriptionPersistsOrgFromContext is the regression guard for QA
+// 10.5: create reported success but the webhook never appeared in the list for
+// any tenant other than the seeded default org. The INSERT omitted org_id and
+// relied on a hardcoded column DEFAULT (org 010); for every other org that
+// default violates the RLS WITH CHECK, so the row was rejected or invisible.
+// This asserts the persisted org_id matches the request context's org and that
+// two orgs' webhooks stay isolated.
+func TestCreateSubscriptionPersistsOrgFromContext(t *testing.T) {
+	tc := setupTest(t)
+	defer tc.teardown()
+
+	if tc.db == nil {
+		t.Skip("no test database available")
+	}
+
+	_, _ = tc.db.Pool.Exec(tc.ctx, "DELETE FROM webhook_subscriptions")
+
+	const (
+		orgA = "00000000-0000-0000-0000-000000000010"
+		orgB = "b607a956-c471-4e9d-a7ac-6e8928521444"
+	)
+	ctxA := orgctx.With(context.Background(), orgctx.Org{ID: orgA})
+	ctxB := orgctx.With(context.Background(), orgctx.Org{ID: orgB})
+
+	subA, err := tc.service.CreateSubscription(ctxA, "HookA", "https://example.com/a", "secret-a-16chars", []string{EventUserCreated}, "user-a")
+	if err != nil {
+		t.Fatalf("create under org A: %v", err)
+	}
+	subB, err := tc.service.CreateSubscription(ctxB, "HookB", "https://example.com/b", "secret-b-16chars", []string{EventUserCreated}, "user-b")
+	if err != nil {
+		t.Fatalf("create under org B: %v", err)
+	}
+
+	// The persisted org_id must match the creating context, not the column default.
+	var gotOrgA, gotOrgB string
+	if err := tc.db.Pool.QueryRow(context.Background(),
+		"SELECT org_id::text FROM webhook_subscriptions WHERE id = $1", subA.ID).Scan(&gotOrgA); err != nil {
+		t.Fatalf("read org A row: %v", err)
+	}
+	if err := tc.db.Pool.QueryRow(context.Background(),
+		"SELECT org_id::text FROM webhook_subscriptions WHERE id = $1", subB.ID).Scan(&gotOrgB); err != nil {
+		t.Fatalf("read org B row: %v", err)
+	}
+	if gotOrgA != orgA {
+		t.Fatalf("org A webhook persisted with org_id %q, want %q", gotOrgA, orgA)
+	}
+	if gotOrgB != orgB {
+		t.Fatalf("org B webhook persisted with org_id %q, want %q (fell back to the hardcoded default = the 10.5 bug)", gotOrgB, orgB)
+	}
+}
 
 func TestCreateSubscription(t *testing.T) {
 	tc := setupTest(t)
@@ -2084,9 +2139,16 @@ func TestServiceWithNilDatabase(t *testing.T) {
 	service := NewService(nil, redisClient, logger, testCipher())
 
 	t.Run("create subscription with nil database panics", func(t *testing.T) {
+		// CreateSubscription first requires an organization context (the QA 10.5
+		// fix). With an org present it reaches the nil DB and panics; without one
+		// it returns a graceful error instead. Assert both.
+		ctxWithOrg := orgctx.With(context.Background(), orgctx.Org{ID: "00000000-0000-0000-0000-000000000010"})
 		assert.Panics(t, func() {
-			_, _ = service.CreateSubscription(context.Background(), "Test", "https://example.com", "secret", []string{EventUserCreated}, "user")
+			_, _ = service.CreateSubscription(ctxWithOrg, "Test", "https://example.com", "secret", []string{EventUserCreated}, "user")
 		})
+		if _, err := service.CreateSubscription(context.Background(), "Test", "https://example.com", "secret", []string{EventUserCreated}, "user"); err == nil {
+			t.Error("expected an organization-context error when ctx has no org")
+		}
 	})
 
 	t.Run("list subscriptions with nil database panics", func(t *testing.T) {
