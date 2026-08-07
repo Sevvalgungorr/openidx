@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ var jargonWords = []string{
 
 // seedMyResources creates one browser-reachable route and two brokered entries
 // (one open, one approval-gated) plus a second org's route that must never leak.
-func seedMyResources(t *testing.T, s *Service, orgA, orgB, userA string) {
+func seedMyResources(t *testing.T, s *Service, orgA, orgB, userA, liveURL string) {
 	t.Helper()
 	ctx := orgctx.WithBypassRLS(context.Background())
 	exec := func(q string, args ...interface{}) {
@@ -40,7 +41,7 @@ func seedMyResources(t *testing.T, s *Service, orgA, orgB, userA string) {
 
 	// Browser-reachable (BrowZer-fronted) web route in org A.
 	exec(`INSERT INTO proxy_routes (org_id, name, from_url, to_url, enabled, browzer_enabled)
-	      VALUES ($1,'Wiki','https://localhost','http://10.0.0.5:8080',true,true)`, orgA)
+	      VALUES ($1,'Wiki',$2,'http://10.0.0.5:8080',true,true)`, orgA, liveURL)
 	// Same shape in org B — must never appear for an org A caller.
 	exec(`INSERT INTO proxy_routes (org_id, name, from_url, to_url, enabled, browzer_enabled)
 	      VALUES ($1,'OtherOrgWiki','https://other.example.org','http://10.9.9.9:80',true,true)`, orgB)
@@ -115,7 +116,14 @@ func TestMyResourcesContract(t *testing.T) {
 		orgB  = "00000000-0000-0000-0000-0000000000b7"
 		userA = "22222222-0000-0000-0000-0000000000a1"
 	)
-	seedMyResources(t, s, orgA, orgB, userA)
+	// A real listener so the readiness probe sees a live target, mirroring how a
+	// published web resource behaves in production.
+	live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer live.Close()
+
+	seedMyResources(t, s, orgA, orgB, userA, live.URL)
 
 	body, raw := fetchMyResources(t, s, orgA, userA, []string{"user"})
 	rows, _ := body["resources"].([]interface{})
@@ -291,10 +299,15 @@ func TestMyResourcesBrowserPathNeedsNoEnrollment(t *testing.T) {
 		orgA  = "00000000-0000-0000-0000-000000000010"
 		userA = "22222222-0000-0000-0000-0000000000c1"
 	)
+	live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer live.Close()
+
 	seedCtx := orgctx.WithBypassRLS(context.Background())
 	if _, err := s.db.Pool.Exec(seedCtx,
 		`INSERT INTO proxy_routes (org_id, name, from_url, to_url, enabled, browzer_enabled)
-		 VALUES ($1,'Portal','https://localhost','http://10.0.0.7:80',true,true)`, orgA); err != nil {
+		 VALUES ($1,'Portal',$2,'http://10.0.0.7:80',true,true)`, orgA, live.URL); err != nil {
 		t.Fatalf("seed route: %v", err)
 	}
 
@@ -311,5 +324,57 @@ func TestMyResourcesBrowserPathNeedsNoEnrollment(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("a user with no enrolled device must still get browser-reachable resources: %s", raw)
+	}
+}
+
+// TestUrlAnswersTreatsAuthChallengesAsLive pins the liveness rule that decides
+// whether a user is shown a working button. A login prompt or a redirect proves
+// the whole path is up and the app is simply asking the user to sign in — those
+// must count as reachable. Only "nothing answered at all" is a failure.
+//
+// This exists because a real resource on production (kibana-dev) answers 302 to
+// its login page, and es-dev answers 401; treating those as broken would hide
+// working resources, while treating a dead host as ready hands the user a button
+// that fails in the browser.
+func TestUrlAnswersTreatsAuthChallengesAsLive(t *testing.T) {
+	s := &Service{logger: zap.NewNop()}
+
+	cases := []struct {
+		name string
+		code int
+	}{
+		{"ok", 200},
+		{"login redirect", 302},
+		{"needs auth", 401},
+		{"forbidden", 403},
+		{"not found still proves the path is live", 404},
+		{"server error still proves the path is live", 500},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(c.code)
+			}))
+			defer srv.Close()
+			reachCache.Delete(srv.URL)
+
+			if !s.urlAnswers(srv.URL) {
+				t.Fatalf("HTTP %d must count as reachable — the path answered", c.code)
+			}
+		})
+	}
+
+	// Nothing listening: the server is closed before the probe runs.
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	reachCache.Delete(deadURL)
+	if s.urlAnswers(deadURL) {
+		t.Fatal("a dead target must not be reported as reachable")
+	}
+
+	// An empty URL is never reachable.
+	if s.urlAnswers("") {
+		t.Fatal("empty URL must not be reported as reachable")
 	}
 }

@@ -9,6 +9,7 @@ package access
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -172,11 +173,15 @@ func (s *Service) browserResources(ctx context.Context, orgID string, c *gin.Con
 
 		host, port := hostPortFromURL(fromURL)
 
-		// Honesty check: a route can be fully configured and still be unusable
-		// because its public hostname was never published in DNS. Advertising it
-		// as "ready" hands the user a button that fails in the browser, which is
-		// exactly the kind of false promise this page exists to remove. Report it
-		// as needing setup instead, and say so in plain words.
+		// Honesty check. A route can be fully configured and still hand the user
+		// a button that fails in the browser — the exact false promise this page
+		// exists to remove. DNS alone is not enough: a name can resolve while the
+		// path behind it is dead. So probe the published URL and only call it
+		// ready when something actually answers.
+		//
+		// ANY HTTP status counts as reachable, including 401/302: a login prompt
+		// or redirect proves the whole path works and the app is simply asking
+		// the user to authenticate. Only "nothing answered at all" is a failure.
 		r := MyResource{
 			ID:     id,
 			Name:   name,
@@ -189,14 +194,52 @@ func (s *Service) browserResources(ctx context.Context, orgID string, c *gin.Con
 			Action: MyResourceAction{Label: "Open", Kind: "open_url", URL: fromURL},
 			Note:   "Opens in this browser. Nothing to install.",
 		}
-		if host != "" && !s.hostResolves(host) {
+		switch {
+		case host != "" && !s.hostResolves(host):
 			r.Status = statusNeedsSetup
 			r.Action = MyResourceAction{Label: "Report a problem", Kind: "request", Target: id}
 			r.Note = "This address is not published yet, so it will not open. Let an administrator know."
+		case !s.urlAnswers(fromURL):
+			r.Status = statusNeedsSetup
+			r.Action = MyResourceAction{Label: "Report a problem", Kind: "request", Target: id}
+			r.Note = "This is not responding right now, so it will not open. Let an administrator know."
 		}
 		out = append(out, r)
 	}
 	return out
+}
+
+// urlAnswers reports whether the published URL responds at all. Any HTTP status
+// means the path is live — a 401 or a redirect to a login page is a working
+// resource asking the user to sign in, not a broken one. Only a transport-level
+// failure (nothing listening, TLS never completes, timeout) marks it unusable.
+//
+// Certificate validation is skipped deliberately: this is a liveness probe, not
+// a trust decision, and internal targets legitimately use private CAs. Results
+// are cached briefly so the page stays fast.
+func (s *Service) urlAnswers(rawURL string) bool {
+	if rawURL == "" {
+		return false
+	}
+	if v, ok := reachCache.Load(rawURL); ok {
+		if e, ok := v.(resolveEntry); ok && time.Since(e.at) < reachTTL {
+			return e.ok
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), reachTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := reachClient.Do(req)
+	ok := err == nil
+	if resp != nil {
+		resp.Body.Close()
+	}
+	reachCache.Store(rawURL, resolveEntry{ok: ok, at: time.Now()})
+	return ok
 }
 
 // hostResolves reports whether a hostname can be resolved. Results are cached
@@ -225,6 +268,28 @@ type resolveEntry struct {
 var (
 	resolveCache sync.Map
 	resolveTTL   = 60 * time.Second
+
+	// reachCache memoizes the liveness probe. Kept short so a resource coming
+	// back up is reflected quickly, long enough that a page load does not
+	// re-probe every row.
+	reachCache   sync.Map
+	reachTTL     = 60 * time.Second
+	reachTimeout = 4 * time.Second
+
+	// reachClient probes internal targets. It does not follow redirects (a 302
+	// already proves liveness) and does not verify certificates, because this is
+	// a liveness check rather than a trust decision and internal hosts commonly
+	// use a private CA.
+	reachClient = &http.Client{
+		Timeout: reachTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // liveness probe only; no data is read from the response
+			DisableKeepAlives: true,
+		},
+	}
 )
 
 // brokeredResources lists systems (RDP/SSH/database) the caller holds a grant
