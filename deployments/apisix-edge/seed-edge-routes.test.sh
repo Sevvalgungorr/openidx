@@ -63,6 +63,17 @@ grep -q 'ctrl-mgmt-restricted.*ip-restriction' seed-edge-routes.sh \
   || fail "ziti: management route MUST carry an IP allow-list"
 grep -q 'ctrl-mgmt-restricted.*"uri":"/edge/management/v1/\*","priority":70' seed-edge-routes.sh \
   || fail "ziti: management route MUST outrank ctrl-host (priority 20), else it never matches"
+
+# Kaynak NAT tuzagi: whitelist bir SNAT router'inin kaynak IP'sini kapsarsa,
+# router uzerinden gelen HER dis istek izinli gorunur ve kisit sessizce
+# anlamsizlasir. Whitelist'in gateway'i kapsamadigi python ile hesaplanarak
+# dogrulanir -- CIDR'lari gozle okumak guvenilir degil.
+python3 - "$(grep -o '"whitelist":\[[^]]*\]' seed-edge-routes.sh | head -1)" <<'PYEOF' || fail "ziti: whitelist MUST NOT cover the LAN gateway (SNAT would bypass the restriction)"
+import sys, json, ipaddress
+nets = json.loads("{" + sys.argv[1] + "}")["whitelist"]
+gw = ipaddress.ip_address("192.168.31.1")
+sys.exit(1 if any(gw in ipaddress.ip_network(n) for n in nets) else 0)
+PYEOF
 echo "OK ziti control plane (management API internal-only)"
 
 echo "ALL PASS"
