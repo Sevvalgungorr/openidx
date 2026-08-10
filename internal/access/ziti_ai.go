@@ -92,8 +92,16 @@ type ZitiAnomaly struct {
 
 // ZitiIdentityRisk is the fused per-identity risk assessment.
 type ZitiIdentityRisk struct {
-	IdentityID      string   `json:"identity_id"`
-	IdentityName    string   `json:"identity_name"`
+	IdentityID   string `json:"identity_id"`
+	IdentityName string `json:"identity_name"`
+	// Subject answers "whose access is this?". The overlay names a synced
+	// identity after the user's UUID, which tells an admin nothing — and the
+	// only action on this screen (quarantine) cuts that person off. Resolving
+	// it here means the destructive action is never offered anonymously.
+	Subject         string   `json:"subject"`
+	SubjectKind     string   `json:"subject_kind"`
+	Email           string   `json:"email,omitempty"`
+	Source          string   `json:"source,omitempty"`
 	Score           int      `json:"score"`
 	Level           string   `json:"level"`
 	Signals         []string `json:"signals"`
@@ -834,6 +842,13 @@ func (zm *ZitiManager) ComputeZitiIdentityRisks(ctx context.Context) ([]ZitiIden
 		zm.logger.Debug("ziti ai: load baselines for risk failed", zap.Error(err))
 	}
 	profiles := buildZitiIdentityProfiles(baselines)
+	// Resolve every identity to the account behind it in one query, so each
+	// row can say who it is rather than showing a bare UUID.
+	names := make([]string, 0, len(identities))
+	for _, ident := range identities {
+		names = append(names, ident.Name)
+	}
+	subjects := zm.resolveIdentitySubjects(ctx, names)
 
 	now := time.Now()
 	out := make([]ZitiIdentityRisk, 0, len(identities))
@@ -848,9 +863,17 @@ func (zm *ZitiManager) ComputeZitiIdentityRisks(ctx context.Context) ([]ZitiIden
 			sig.DormantDays = int(now.Sub(p.lastSeen).Hours() / 24)
 		}
 		score, level, reasons := scoreZitiIdentityRisk(sig)
+		subj, ok := subjects[ident.Name]
+		if !ok {
+			subj = IdentitySubject{DisplayName: ident.Name, Kind: "unknown"}
+		}
 		out = append(out, ZitiIdentityRisk{
 			IdentityID:      ident.ID,
 			IdentityName:    ident.Name,
+			Subject:         subj.DisplayName,
+			SubjectKind:     subj.Kind,
+			Email:           subj.Email,
+			Source:          subj.Source,
 			Score:           score,
 			Level:           level,
 			Signals:         reasons,

@@ -29,6 +29,13 @@ interface ControllerFeatures {
 interface IdentityRisk {
   identity_id: string
   identity_name: string
+  // Who this identity belongs to. The overlay names synced identities after
+  // the user's UUID, so identity_name alone tells an admin nothing — and the
+  // action on this row cuts that person off the network.
+  subject?: string
+  subject_kind?: string
+  email?: string
+  source?: string
   score: number
   level: string
   signals: string[]
@@ -353,8 +360,24 @@ export function ZitiAIInsightsPage() {
                 {(insights?.top_risks || []).map((risk) => (
                   <tr key={risk.identity_id} className="hover:bg-muted/50">
                     <td className="p-4">
-                      <div className="font-medium">{risk.identity_name || risk.identity_id}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{risk.identity_id}</div>
+                      {/* Lead with the person, not the UUID: the action in this
+                          row disconnects them, so who it affects has to be the
+                          first thing read. The fabric name stays visible
+                          underneath for anyone debugging the overlay. */}
+                      <div className="font-medium">{risk.subject || risk.identity_name || risk.identity_id}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {risk.email ? `${risk.email} · ` : ''}
+                        {risk.subject_kind === 'user'
+                          ? risk.source
+                            ? `person (${risk.source})`
+                            : 'person'
+                          : risk.subject_kind === 'agent'
+                            ? 'device agent'
+                            : risk.subject_kind === 'unresolved'
+                              ? 'account not visible here'
+                              : risk.subject_kind || 'service'}
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">{risk.identity_name}</div>
                     </td>
                     <td className="p-4 font-mono">{risk.score}</td>
                     <td className="p-4">
