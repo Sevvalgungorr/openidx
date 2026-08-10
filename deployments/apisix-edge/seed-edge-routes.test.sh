@@ -64,16 +64,25 @@ grep -q 'ctrl-mgmt-restricted.*ip-restriction' seed-edge-routes.sh \
 grep -q 'ctrl-mgmt-restricted.*"uri":"/edge/management/v1/\*","priority":70' seed-edge-routes.sh \
   || fail "ziti: management route MUST outrank ctrl-host (priority 20), else it never matches"
 
-# Kaynak NAT tuzagi: whitelist bir SNAT router'inin kaynak IP'sini kapsarsa,
-# router uzerinden gelen HER dis istek izinli gorunur ve kisit sessizce
-# anlamsizlasir. Whitelist'in gateway'i kapsamadigi python ile hesaplanarak
-# dogrulanir -- CIDR'lari gozle okumak guvenilir degil.
-python3 - "$(grep -o '"whitelist":\[[^]]*\]' seed-edge-routes.sh | head -1)" <<'PYEOF' || fail "ziti: whitelist MUST NOT cover the LAN gateway (SNAT would bypass the restriction)"
+# Source-NAT trap: if the allow-list covers the source IP of a NAT router doing
+# masquerade, every external request looks internal and the restriction silently
+# becomes a no-op. The gateway address is site-specific, so this check runs only
+# when EDGE_GATEWAY_IP is supplied; it is SKIPPED loudly rather than passing
+# quietly, because a silent pass here would be a false green.
+if [ -n "${EDGE_GATEWAY_IP:-}" ]; then
+  # Effective allow-list: env override wins, otherwise the script default.
+  effective="${MGMT_ALLOW_CIDRS:-$(sed -n "s/^MGMT_ALLOW_CIDRS=\${MGMT_ALLOW_CIDRS:-'\(.*\)'}$/\1/p" seed-edge-routes.sh)}"
+  [ -n "$effective" ] || fail "ziti: could not determine the management allow-list"
+  python3 - "$effective" "$EDGE_GATEWAY_IP" <<'PYEOF' || fail "ziti: allow-list MUST NOT cover the LAN gateway (source NAT would bypass the restriction)"
 import sys, json, ipaddress
-nets = json.loads("{" + sys.argv[1] + "}")["whitelist"]
-gw = ipaddress.ip_address("192.168.31.1")
+nets = json.loads("[" + sys.argv[1] + "]")
+gw = ipaddress.ip_address(sys.argv[2])
 sys.exit(1 if any(gw in ipaddress.ip_network(n) for n in nets) else 0)
 PYEOF
+  echo "OK ziti management allow-list excludes the gateway"
+else
+  echo "SKIP gateway/allow-list check (set EDGE_GATEWAY_IP to enable)"
+fi
 echo "OK ziti control plane (management API internal-only)"
 
 echo "ALL PASS"

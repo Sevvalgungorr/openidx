@@ -11,6 +11,15 @@ KEY=${APISIX_ADMIN_KEY:-CHANGE_ME_ADMIN_KEY}
 CERT=${TDV_CERT:-/home/cmit/oidx-runtime/oidx-tls/tdv-fullchain.pem}
 KEYF=${TDV_KEY:-/home/cmit/oidx-runtime/oidx-tls/tdv-key.pem}
 
+# Management API allow-list -- SITE SPECIFIC, override per deployment.
+# When the edge is published through a NAT this MUST exclude the LAN gateway
+# address: a router doing source NAT (masquerade) rewrites every external
+# request to its own LAN IP, so if that IP falls inside the allow-list the
+# restriction silently becomes a no-op and the audit trail (actor_ip) collapses
+# to a single address. Only destination NAT (port forwarding) should be used.
+# See docs/ziti-nat-firewall-requirements.md.
+MGMT_ALLOW_CIDRS=${MGMT_ALLOW_CIDRS:-'"127.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"'}
+
 # DARK_MODE controls how much of the platform is reachable at the public edge
 # (see docs/superpowers/specs/2026-07-17-dark-platform-ziti-first-design.md):
 #   off   (default) — today's full public route set.
@@ -97,12 +106,7 @@ put ctrl-host    '{"hosts":["ctrl.tdv.org"],"uri":"/*","priority":20,"enable_web
 #
 # ip-restriction matches on the real TCP source (remote_addr), not on
 # X-Forwarded-For, so it cannot be bypassed by forging a header.
-# Yonetim API'si yalniz ic aglardan. LAN araligi kasten GATEWAY (192.168.31.1)
-# HARIC yazildi: internete acilirken router yalnizca hedef NAT yapmali. Kaynak
-# NAT (SNAT/masquerade) yapan bir router tum dis istekleri kendi LAN IP'siyle
-# gosterir; o IP izin listesinde olsaydi bu kisit sessizce anlamsizlasirdi ve
-# ayrica 69 yerde kullanilan audit actor_ip alani tek bir IP'ye duserdi.
-put ctrl-mgmt-restricted '{"hosts":["ctrl.tdv.org"],"uri":"/edge/management/v1/*","priority":70,"enable_websocket":true,"plugins":{"ip-restriction":{"whitelist":["127.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.31.0/32","192.168.31.2/31","192.168.31.4/30","192.168.31.8/29","192.168.31.16/28","192.168.31.32/27","192.168.31.64/26","192.168.31.128/25"]}},"upstream":{"type":"roundrobin","scheme":"https","pass_host":"pass","nodes":{"127.0.0.1:1280":1},"tls":{"verify":false},"timeout":{"connect":60,"send":86400,"read":86400}}}'
+put ctrl-mgmt-restricted '{"hosts":["ctrl.tdv.org"],"uri":"/edge/management/v1/*","priority":70,"enable_websocket":true,"plugins":{"ip-restriction":{"whitelist":['"${MGMT_ALLOW_CIDRS}"']}},"upstream":{"type":"roundrobin","scheme":"https","pass_host":"pass","nodes":{"127.0.0.1:1280":1},"tls":{"verify":false},"timeout":{"connect":60,"send":86400,"read":86400}}}'
 
 # --- *.tdv.org one-click apps -> access-proxy (auth enforced by the proxy itself) ---
 put access-proxy-wildcard '{"hosts":["*.tdv.org"],"uri":"/*","priority":-50,"enable_websocket":true,"upstream":{"type":"roundrobin","scheme":"http","pass_host":"pass","nodes":{"127.0.0.1:8007":1},"timeout":{"connect":60,"send":86400,"read":86400}}}'
