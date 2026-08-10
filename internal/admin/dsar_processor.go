@@ -11,11 +11,22 @@ import (
 	"github.com/openidx/openidx/internal/common/orgctx"
 )
 
-// systemActorID is the actor recorded on data_subject_requests.processed_by
-// when an automated processor (rather than a logged-in admin) executes a
-// DSAR. Distinguishable in the audit trail from any real user id (which is
-// a UUID).
-const systemActorID = "system-dsar-processor"
+// systemActorID is the actor passed to the executor when the background
+// processor (rather than a logged-in admin) runs a DSAR.
+//
+// It is deliberately EMPTY. data_subject_requests.processed_by is a nullable
+// uuid column, so a descriptive string like "system-dsar-processor" cannot be
+// stored there: the UPDATE fails with SQLSTATE 22P02 and the request stays
+// pending, which means the processor retries it every tick forever. That is
+// exactly what was happening in production — 864 identical failures in 24h
+// against 3 stuck export requests, none of which could ever complete.
+//
+// The executor maps an empty actor to NULL (see nilIfEmpty), and NULL is the
+// honest value: no human processed this request. "Which admin did it" is
+// answered by processed_by; "was it automated" is answered by processed_by
+// being NULL while the request is completed. The audit trail keeps the full
+// story either way.
+const systemActorID = ""
 
 // dsarAutoExecutableTypes is the allow-list of DSAR types the background
 // processor will run unattended. We auto-execute `export` because it's
