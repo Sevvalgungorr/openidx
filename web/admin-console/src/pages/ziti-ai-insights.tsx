@@ -377,7 +377,12 @@ export function ZitiAIInsightsPage() {
                               ? 'account not visible here'
                               : risk.subject_kind || 'service'}
                       </div>
-                      <div className="text-xs text-muted-foreground font-mono">{risk.identity_name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                          {/* Only show the fabric name when the row is led by
+                              something else. Otherwise it is the same string
+                              rendered twice, which reads like two identities. */}
+                          {risk.subject ? risk.identity_name : null}
+                        </div>
                     </td>
                     <td className="p-4 font-mono">{risk.score}</td>
                     <td className="p-4">

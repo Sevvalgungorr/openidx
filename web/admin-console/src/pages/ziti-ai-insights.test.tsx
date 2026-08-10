@@ -185,6 +185,36 @@ describe('ZitiAIInsightsPage', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument()
   })
 
+  it('does not print the fabric name twice when there is no resolved subject', async () => {
+    // The row leads with `subject`, and falls back to `identity_name` when the
+    // overlay could not resolve a person. The fabric name is also shown
+    // underneath for overlay debugging. Without a guard those two are the same
+    // string, so the row renders the identity twice and reads like two
+    // different accounts -- on a table whose buttons cut people off the
+    // network. The fixture has no `subject`, which is exactly that case.
+    render(<ZitiAIInsightsPage />, { wrapper: createWrapper() })
+    expect(await screen.findByText('Identity Risk')).toBeInTheDocument()
+    expect(screen.getAllByText('Bob')).toHaveLength(1)
+  })
+
+  it('shows both the subject and the fabric name once the subject resolves', async () => {
+    // The inverse: when the overlay does resolve a person, the fabric name is
+    // still needed underneath, so the guard must not drop it.
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/ziti/ai/insights')) {
+        return Promise.resolve({
+          ...insights,
+          top_risks: [{ ...insights.top_risks[1], subject: 'bob@example.com', subject_kind: 'user' }],
+        }) as ReturnType<typeof api.get>
+      }
+      return routeGet(url) as ReturnType<typeof api.get>
+    })
+    render(<ZitiAIInsightsPage />, { wrapper: createWrapper() })
+    expect(await screen.findByText('Identity Risk')).toBeInTheDocument()
+    expect(await screen.findByText('bob@example.com')).toBeInTheDocument()
+    expect(screen.getByText('Bob')).toBeInTheDocument()
+  })
+
   it('renders the policy-hygiene recommendations', async () => {
     render(<ZitiAIInsightsPage />, { wrapper: createWrapper() })
     expect(await screen.findByText('Policy Hygiene Recommendations')).toBeInTheDocument()
