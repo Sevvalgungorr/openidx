@@ -148,7 +148,41 @@ Hedef dağıtım Kubernetes olduğunda aynı ilke şuna dönüşür:
   ele geçirilmiş bir pod politikanın izin verdiği yoldan geçer.
 - Ingress tek giriş noktasıdır; admin API'ler Ingress'e **hiç** bağlanmaz.
 
-## 7. Host firewall (üçüncü katman)
+## 7. Bir servisi yeniden yaratırken: reboot tuzağı
+
+Bu belgedeki düzeltmelerin çoğu container'ı **yeniden yaratmayı** gerektirir
+(bağlama adresi container oluşturulurken sabitlenir). `podman generate systemd`
+ile üretilmiş unit'lerde bu sessiz bir arıza üretir:
+
+```ini
+Type=forking
+PIDFile=/run/.../overlay-containers/<CONTAINER-ID>/userdata/conmon.pid
+```
+
+`<CONTAINER-ID>` yeniden yaratmada **değişir**. Unit eski ID'yi göstermeye
+devam eder, systemd conmon PID'ini bulamaz ve servisi `failed` sayar.
+Container elle çalıştığı için her şey normal görünür; sorun ancak **makine
+yeniden başladığında** ortaya çıkar ve o an servis gelmez.
+
+Unit'i ID'den bağımsız yapın:
+
+```ini
+Type=simple
+ExecStart=/usr/bin/podman start --attach <ad>
+# PIDFile satırı yok
+```
+
+Denetim:
+
+```bash
+scripts/check-systemd-container-units.sh
+```
+
+Bir güvenlik düzeltmesinden sonra `systemctl --user is-active <unit>`
+çıktısını **mutlaka** doğrulayın: container'ın çalışıyor olması, yeniden
+başlatmadan sonra da çalışacağı anlamına gelmez.
+
+## 8. Host firewall (üçüncü katman)
 
 Yukarıdaki iki katman doğruysa, host firewall'ı savunmayı derinleştirir.
 `nftables` ile asgari bir taban:
