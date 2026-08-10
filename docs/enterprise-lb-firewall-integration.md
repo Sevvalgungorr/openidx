@@ -328,6 +328,7 @@ Bu rehberdeki teknik iddiaların dayanağı:
 | Sağlık uçları `/health/live`, `/health/ready` | `internal/common/health/health.go` |
 | AWS altyapısı (VPC/EKS/RDS/ElastiCache/overlay) | `deployments/terraform/` |
 | Kubernetes girişi, NLB ve kaynak IP koruma | `deployments/kubernetes/ingress-nginx-values.yaml` |
+| Ziti NAT/firewall gereksinimleri, Palo Alto SSL decryption | `docs/ziti-nat-firewall-requirements.md` |
 
 > Ürün komutları (**ŞABLON** etiketli olanlar) doğrulanmamıştır; F5/NetScaler
 > sürümünüzde teyit ederek uygulayın.
