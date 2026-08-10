@@ -107,9 +107,13 @@ startup.
 - Pin the Redis version (do not track `:latest`). The session-cleanup
   flake the v1.1.0 / v1.2.0 cycle hit was sensitive to a Redis client
   behavior change.
-- Use a non-default `REQUIREPASS`. The validator does not enforce
-  this because the wire is TLS-protected, but a leaked DSN is much
-  more dangerous when the password is empty.
+- Bind Redis to `127.0.0.1` unless remote access is genuinely
+  required. See `docs/host-firewall-baseline.md`.
+- Use a non-default `REQUIREPASS`. Do not skip this on the assumption
+  that the wire is TLS-protected: that assumption fails the moment
+  Redis is published on a non-loopback address, and Redis holds
+  session and rate-limit state. A leaked DSN is far more dangerous
+  when the password is empty.
 - Consider Redis Sentinel if a single-node failure would page someone;
   the project already supports it (see the `redis_sentinel_*`
   config fields).
