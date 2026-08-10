@@ -82,6 +82,23 @@ fi
 put browzer-host '{"hosts":["browzer.tdv.org"],"uri":"/*","priority":20,"enable_websocket":true,"upstream":{"type":"roundrobin","scheme":"https","pass_host":"rewrite","upstream_host":"browzer.tdv.org","nodes":{"127.0.0.1:8445":1},"tls":{"verify":false},"timeout":{"connect":60,"send":86400,"read":86400}}}'
 put ctrl-host    '{"hosts":["ctrl.tdv.org"],"uri":"/*","priority":20,"enable_websocket":true,"upstream":{"type":"roundrobin","scheme":"https","pass_host":"pass","nodes":{"127.0.0.1:1280":1},"tls":{"verify":false},"timeout":{"connect":60,"send":86400,"read":86400}}}'
 
+# Ziti management API: internal networks only.
+#
+# The controller must be reachable from the internet for clients to enrol and
+# open sessions — that is the whole point of an overlay. The MANAGEMENT API is
+# a different matter: creating identities, editing policies and enrolling
+# routers all live under /edge/management/v1. It already demands credentials
+# (401 without them), but an authenticated endpoint exposed to the internet is
+# still a credential-guessing surface on the control plane of the whole
+# network.
+#
+# Higher priority than ctrl-host so it wins for this path prefix; the catch-all
+# above is left untouched, so client and enrolment traffic is unaffected.
+#
+# ip-restriction matches on the real TCP source (remote_addr), not on
+# X-Forwarded-For, so it cannot be bypassed by forging a header.
+put ctrl-mgmt-restricted '{"hosts":["ctrl.tdv.org"],"uri":"/edge/management/v1/*","priority":70,"enable_websocket":true,"plugins":{"ip-restriction":{"whitelist":["127.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}},"upstream":{"type":"roundrobin","scheme":"https","pass_host":"pass","nodes":{"127.0.0.1:1280":1},"tls":{"verify":false},"timeout":{"connect":60,"send":86400,"read":86400}}}'
+
 # --- *.tdv.org one-click apps -> access-proxy (auth enforced by the proxy itself) ---
 put access-proxy-wildcard '{"hosts":["*.tdv.org"],"uri":"/*","priority":-50,"enable_websocket":true,"upstream":{"type":"roundrobin","scheme":"http","pass_host":"pass","nodes":{"127.0.0.1:8007":1},"timeout":{"connect":60,"send":86400,"read":86400}}}'
 

@@ -41,4 +41,28 @@ has   "$t1" openidx-wellknown       || fail "tier1: well-known MUST stay (Tier 0
 has   "$t1" openidx-oauth           || fail "tier1: oauth auth surface MUST stay (Tier 0)"
 echo "OK tier1 (Tier-0 bootstrap only)"
 
+# --- ziti control plane: management API must stay internal-only ---
+#
+# The controller is reachable from the internet by design (clients enrol and
+# open sessions there). /edge/management/v1 is not: it creates identities,
+# edits policies and enrols routers. It already requires credentials, but an
+# authenticated management endpoint on the public internet is still a
+# credential-guessing surface on the control plane of the entire network.
+#
+# These assertions pin the decision, not the wording: a restricted route must
+# exist, it must carry an IP allow-list, and it must outrank the catch-all —
+# a lower priority would silently make it dead configuration.
+z=$(DRY_RUN=1 bash seed-edge-routes.sh 2>&1)
+has "$z" ctrl-host              || fail "ziti: client/enrolment route MUST stay reachable"
+has "$z" ctrl-mgmt-restricted   || fail "ziti: management API MUST have a restricted route"
+# DRY_RUN prints route names only, so the body is asserted against the script
+# source itself. Without these two checks the route could exist and still be
+# useless: no allow-list means it restricts nothing, and a priority at or below
+# ctrl-host (20) means the catch-all wins and this route never matches.
+grep -q 'ctrl-mgmt-restricted.*ip-restriction' seed-edge-routes.sh \
+  || fail "ziti: management route MUST carry an IP allow-list"
+grep -q 'ctrl-mgmt-restricted.*"uri":"/edge/management/v1/\*","priority":70' seed-edge-routes.sh \
+  || fail "ziti: management route MUST outrank ctrl-host (priority 20), else it never matches"
+echo "OK ziti control plane (management API internal-only)"
+
 echo "ALL PASS"
