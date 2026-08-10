@@ -1,0 +1,16 @@
+[Unit]
+Description=Rotate OpenIDX service logs
+
+[Timer]
+# Hourly rather than daily. The config also carries maxsize=100M, and that
+# ceiling is only useful if something checks it often enough: a service that
+# turns chatty at 09:00 should not be able to write unchecked until the next
+# midnight. Rotation is a no-op when nothing has grown, so hourly is cheap.
+OnCalendar=hourly
+RandomizedDelaySec=300
+# A missed run (machine off) fires on the next boot instead of silently
+# skipping a day.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

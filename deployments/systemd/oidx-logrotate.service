@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenIDX service log rotation
+Documentation=file:%h/.config/oidx/logrotate.conf
+
+[Service]
+Type=oneshot
+# Own state file under the user's config, not /var/lib: this runs as a user
+# unit and must never need root.
+ExecStart=/usr/sbin/logrotate --state %h/.config/oidx/logrotate.state %h/.config/oidx/logrotate.conf
+# Rotation competes with live traffic for disk; yield to the services.
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target
