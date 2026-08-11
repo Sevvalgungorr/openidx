@@ -74,7 +74,7 @@ test.describe('Temporary Access Links', () => {
                 name: 'RDP Access - Windows Server',
                 description: 'Emergency maintenance access',
                 protocol: 'rdp',
-                target_host: '192.168.31.100',
+                target_host: '198.51.100.10',
                 target_port: 3389,
                 created_by_email: 'admin@openidx.local',
                 expires_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // Expired

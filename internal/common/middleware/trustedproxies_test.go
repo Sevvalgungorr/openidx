@@ -27,13 +27,13 @@ func TestConfigureTrustedProxies_IgnoresSpoofedLeftmostXFF(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/ip", nil)
 	// Simulate the edge (loopback) appending the real client IP after the
-	// attacker's spoofed value: attacker sent 10.10.2.22, real remote is 203.0.113.9.
-	req.Header.Set("X-Forwarded-For", "10.10.2.22, 203.0.113.9")
+	// attacker's spoofed value: attacker sent 198.51.100.7, real remote is 203.0.113.9.
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 203.0.113.9")
 	req.RemoteAddr = "127.0.0.1:12345" // connection comes from the trusted edge
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	if got == "10.10.2.22" {
+	if got == "198.51.100.7" {
 		t.Fatalf("spoofed leftmost X-Forwarded-For was honored as client IP (got %q); auto-approve/geo-block bypass", got)
 	}
 	if got != "203.0.113.9" {
@@ -58,7 +58,7 @@ func TestConfigureTrustedProxies_UntrustedDirectClientNotSpoofable(t *testing.T)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/ip", nil)
-	req.Header.Set("X-Forwarded-For", "10.10.2.22")
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
 	req.RemoteAddr = "198.51.100.7:9999" // untrusted direct client
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

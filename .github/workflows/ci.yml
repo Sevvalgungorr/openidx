@@ -17,6 +17,35 @@ env:
   CACHE_VERSION: v1
 
 jobs:
+  # Site-specific internal addresses are not credentials, so the secret
+  # scanners never flag them -- but this repository is public, and a real
+  # gateway plus its subnet layout is an internal network map. This runs on
+  # docs too, which is why it sits outside the detect-changes skip.
+  no-internal-topology:
+    name: No internal topology
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The check diffs the PR against its base, so the base commit must
+          # be present; a shallow checkout would make it silently scan nothing.
+          fetch-depth: 0
+      - name: Verify the checker itself works
+        # A guard that cannot go red is worse than no guard: the first version
+        # of this script used an invalid grep flag and passed on a repository
+        # that DID contain internal addresses.
+        run: bash scripts/check-no-internal-topology.test.sh
+      - name: Scan changed lines
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base commit to diff against; sweeping the tree (advisory)"
+            bash scripts/check-no-internal-topology.sh --all || true
+            exit 0
+          fi
+          bash scripts/check-no-internal-topology.sh --range "$base"
+
   # Conditional: Skip CI for documentation-only changes
   detect-changes:
     runs-on: ubuntu-latest
