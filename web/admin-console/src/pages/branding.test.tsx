@@ -69,6 +69,41 @@ describe('BrandingPage', () => {
     expect(screen.getByText('Custom CSS')).toBeInTheDocument()
   })
 
+  it('never paints the form before the branding request resolves', async () => {
+    // Regression: the branding query is chained to the org query, and react-query
+    // reports isLoading=false while a query is disabled. The page therefore used
+    // to render the form with empty defaults for one tick, then swap it for the
+    // spinner. A MutationObserver catches that add/remove pair; a plain
+    // queryByText after the fact does not, because the node is already gone.
+    // The user-visible symptom is a flash of blank inputs on every page load.
+    const events: string[] = []
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach((n) => {
+          if ((n.textContent ?? '').includes('Logo & colors')) events.push('add')
+        })
+        m.removedNodes.forEach((n) => {
+          if ((n.textContent ?? '').includes('Logo & colors')) events.push('remove')
+        })
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    // Hold the branding response open so the intermediate state is observable.
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.includes('/organizations')) return Promise.resolve(orgs)
+      return new Promise(() => {})
+    }) as unknown as typeof api.get)
+
+    render(<BrandingPage />, { wrapper: createWrapper() })
+    await screen.findByText('Branding')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    observer.disconnect()
+
+    expect(events).toEqual([])
+    expect(screen.queryByText('Logo & colors')).not.toBeInTheDocument()
+  })
+
   it('loads the org branding into the form fields', async () => {
     render(<BrandingPage />, { wrapper: createWrapper() })
     expect(await screen.findByDisplayValue('https://cdn.example/logo.svg')).toBeInTheDocument()

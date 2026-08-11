@@ -60,6 +60,15 @@ export function BrandingPage() {
     enabled: orgID !== '',
   })
 
+  // The branding query is chained to the org query: it stays disabled until the
+  // effect above picks an org. react-query reports isLoading=false for a
+  // disabled query, so gating on brandingLoading alone paints the form with
+  // empty defaults for one tick and then replaces it with the spinner. Users
+  // see a flash of blank inputs; tests see the cards attach and immediately
+  // detach. Treat "we know there is an org but have not asked for its branding
+  // yet" as loading too.
+  const waitingForOrg = orgID === '' && orgs.length > 0
+
   useEffect(() => {
     if (branding) setForm({ ...emptyBranding, ...branding })
   }, [branding])
@@ -90,7 +99,7 @@ export function BrandingPage() {
         )}
       </div>
 
-      {brandingLoading ? (
+      {brandingLoading || waitingForOrg ? (
         <LoadingSpinner />
       ) : (
         <form
