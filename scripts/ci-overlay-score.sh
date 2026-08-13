@@ -134,7 +134,12 @@ FMF="${FAULT_MATRIX_RESULT:-/tmp/cifault/last-result}"
 if [ -f "$FMF" ]; then
   read -r fmts fmres fmsha < "$FMF"
   age=$(( $(date -u +%s) - $(date -u -d "$fmts" +%s 2>/dev/null || echo 0) ))
-  head_sha=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)
+  # Must match the stamp the matrix writes: a hash of the files the matrix
+  # exercises, NOT HEAD. See run-fault-matrix.sh for why.
+  head_sha=$( { cat "$ROOT/deployments/ci/azure-pipelines-ziti.yml" \
+                    "$ROOT/deployments/ci/faulttest/fake-origin.py" \
+                    "$ROOT/deployments/ci/faulttest/run-fault-matrix.sh"; } \
+              2>/dev/null | sha256sum | cut -c1-7)
   if [ "$age" -gt 21600 ]; then fmv="STALE($fmres)"
   elif [ -n "$head_sha" ] && [ "$fmsha" != "$head_sha" ]; then fmv="OTHER_SHA($fmres)"
   else fmv="$fmres"; [ "$fmres" = "6/6" ] && fm=1; fi

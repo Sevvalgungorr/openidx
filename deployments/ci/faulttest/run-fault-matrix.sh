@@ -124,7 +124,18 @@ echo "FAULT_MATRIX=$pass/$tot"
 #    the aging rule did its job -- but a metric that depends on the caller''"'"'s
 #    environment is not a metric. FAULT_MATRIX_RESULT still overrides.
 RESULT_FILE="${FAULT_MATRIX_RESULT:-/tmp/cifault/last-result}"
+# The stamp is the hash of the INPUTS this matrix actually exercises, not
+# HEAD. Keying on HEAD looked stricter but was wrong in a way that would have
+# eroded the gate: every unrelated commit invalidated a still-valid result, so
+# a 3-minute matrix had to be re-run to prove something no change had touched.
+# A check that demands busywork for nothing gets skipped, and then the aging
+# rule protects nothing. Keying on the inputs stays correct in both
+# directions: touch the pipeline or the harness and the evidence expires
+# immediately; touch anything else and it does not.
+INPUT_SHA="$( { cat deployments/ci/azure-pipelines-ziti.yml \
+                    deployments/ci/faulttest/fake-origin.py \
+                    "$0"; } 2>/dev/null | sha256sum | cut -c1-7)"
 mkdir -p "$(dirname "$RESULT_FILE")" 2>/dev/null \
-  && printf '%s %s/%s %s\n' "$(date -u +%FT%TZ)" "$pass" "$tot" "$(git rev-parse --short HEAD 2>/dev/null || echo nogit)" \
+  && printf '%s %s/%s %s\n' "$(date -u +%FT%TZ)" "$pass" "$tot" "$INPUT_SHA" \
      > "$RESULT_FILE"
 [ "$pass" = "$tot" ]
