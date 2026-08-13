@@ -9,7 +9,7 @@ kimliğiyle doğrulanır ve servise overlay üzerinden bağlanır; firewall'da
 **hiçbir gelen kural açılmaz**.
 
 Bu belgedeki her davranış çalışan bir kurulumda **ölçülerek** doğrulanmıştır.
-Doğrulama komutları bölüm 9'da.
+Doğrulama komutları bölüm 10'da.
 
 ---
 
@@ -274,7 +274,58 @@ uydurma bir yol **404 → düşer**.
 
 ---
 
-## 8. Sorun giderme
+## 8. Tarama adımı ve sessiz sıfır-bulgu
+
+Upload adımı bir rapor dosyası ister. Pipeline Semgrep ile üretir.
+
+### Format parser ile eşleşmeli
+
+OpenSecOps'ta parser **"Semgrep JSON Report"** adını taşıyor, yani `--json`
+çıktısı bekleniyor — **SARIF değil**. İçe aktarıcı parser'ı formata göre
+seçtiği için, eşleşmeyen bir dosya **sıfır bulguyla ve "başarılı" diyerek**
+içe aktarılır.
+
+### Kural seti seçimi sonucu değiştirir
+
+Gerçek bir `subprocess(..., shell=True)` açığı içeren tek bir dosyada ölçüldü:
+
+| Kural seti | Bulgu |
+|---|---|
+| `p/ci` | **0** (`errors: []` — temiz tarama gibi görünüyor) |
+| `p/default` | 1 |
+| `p/python` | 1 |
+| `auto` | 1 |
+
+`p/ci` hiçbir hata vermeden sıfır döndü. **Dar bir kural seti, güvenli koddan
+ayırt edilemez.** Bu yüzden varsayılan `auto`; `SEMGREP_RULES` ile
+değiştirilebilir.
+
+### Tarama bulgu bulunca build düşmemeli
+
+Adım `--error` kullanmaz ve `|| true` ile devam eder. Amaç bulguları
+**yayınlamak**; tarama adımı kırmızıya dönerse upload adımına hiç sıra
+gelmez ve bulgular OpenSecOps'a **hiç ulaşmaz**.
+
+Doğrulandı: bulgu varken de temiz kodda da `exit=0`.
+
+### "Yeşil" ile "yüklendi" aynı şey değil
+
+Upload adımı üç durumu ayırır:
+
+| Log | Anlamı |
+|---|---|
+| `NOT UPLOADED: no scan file at ...` | Rapor yok — adım yeşil ama **hiçbir şey yüklenmedi** |
+| `UPLOADED` + `findings parsed: N` | Yüklendi ve **ayrıştırıldı** |
+| `NOT UPLOADED: rejected (401)` | Reddedildi |
+
+`findings parsed` satırı bilerek eklendi: bir parser hatası yüzünden her
+upload `completed` + `findings_count: 0` dönebiliyordu ve HTTP 200 geldiği
+için kimse fark etmiyordu. Bulgu beklediğiniz bir boru hattında
+`FAIL_ON_ZERO_FINDINGS: "true"` yapın.
+
+---
+
+## 9. Sorun giderme
 
 | Belirti | Sebep | Çözüm |
 |---|---|---|
@@ -287,7 +338,7 @@ uydurma bir yol **404 → düşer**.
 
 ---
 
-## 9. Doğrulama komutları
+## 10. Doğrulama komutları
 
 ```bash
 # DİKKAT: 'limit' vermezseniz sadece 10 kayıt döner. Bu, var olan nesnelerin
@@ -305,7 +356,7 @@ DARKPROBE_TLS=1 go run ./tools/darkprobe <rolsuz-kimlik>.json <servis> /health
 
 ---
 
-## 10. Geri alma
+## 11. Geri alma
 
 ```bash
 SERVICE=<svc> TARGET_HOST=<adres> ./setup-ci-overlay-access.sh --rollback

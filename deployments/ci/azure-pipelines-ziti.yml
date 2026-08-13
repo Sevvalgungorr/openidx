@@ -147,6 +147,36 @@ steps:
       echo "reachable over the overlay"
     displayName: "OpenSecOps: connectivity check"
 
+  # Produce the report the upload step publishes. Semgrep is used here because
+  # OpenSecOps ships a "Semgrep JSON Report" parser, so this is `--json`, NOT
+  # SARIF: the importer keys parsers by format and a mismatched file imports as
+  # zero findings while still reporting success.
+  #
+  # RULESET MATTERS, measured on a file with a real subprocess(shell=True) bug:
+  #   p/ci      -> 0 findings   (and errors: [] -- it looks like a clean scan)
+  #   p/default -> 1
+  #   p/python  -> 1
+  #   auto      -> 1
+  # So `auto` is the default here. A narrow ruleset that silently finds nothing
+  # is indistinguishable from secure code, which is the failure mode this whole
+  # pipeline is written to avoid.
+  - script: |
+      set -euo pipefail
+      python3 -m pip install --quiet --user semgrep
+      export PATH="$HOME/.local/bin:$PATH"
+      semgrep --version
+      # --error would fail the build on findings; we want them PUBLISHED, so
+      # the scan itself must succeed even when it finds problems.
+      semgrep scan --config="$SEMGREP_RULES" --json --quiet \
+        -o "$SCAN_FILE" . || true
+      [ -s "$SCAN_FILE" ] || { echo "semgrep produced no report"; exit 1; }
+      count="$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['results']))" "$SCAN_FILE")"
+      echo "semgrep findings: $count"
+    displayName: "Semgrep: scan repository"
+    env:
+      SCAN_FILE: "$(Build.SourcesDirectory)/semgrep.json"
+      SEMGREP_RULES: "auto"
+
   - script: |
       set -euo pipefail
       # A missing scan file is not an error, but it MUST NOT look like a
@@ -204,7 +234,7 @@ steps:
       esac
     displayName: "OpenSecOps: upload scan results over the overlay"
     env:
-      SCAN_FILE: "$(Build.SourcesDirectory)/results.sarif"
+      SCAN_FILE: "$(Build.SourcesDirectory)/semgrep.json"
       # Set to "true" once you expect findings, so a report that silently
       # parses to nothing fails the build instead of passing quietly.
       FAIL_ON_ZERO_FINDINGS: "false"
