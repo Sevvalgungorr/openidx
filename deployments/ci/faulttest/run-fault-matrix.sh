@@ -8,7 +8,7 @@
 # treated as an INPUT and reproduced locally, while the metric is our own
 # reaction to it.
 #
-THIS GATE IS DETERMINISTIC. It was not at first: the flapping case used the
+# THIS GATE IS DETERMINISTIC. It was not at first: the flapping case used the
 # measured 7% success rate directly, so the matrix itself failed ~5% of runs
 # (0.93^40) and reported 5/6 with nothing broken. I hit that live. A gate that
 # cries wolf one run in twenty teaches people to ignore it, which is worse than
