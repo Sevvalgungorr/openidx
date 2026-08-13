@@ -7,10 +7,17 @@
 // loopback, so a successful response can only have arrived over the overlay.
 //
 // Usage: darkprobe <identity.json> <service-name> [http-path]
+//
+// If the service terminates TLS (e.g. an HTTPS app on 443), set DARKPROBE_TLS=1.
+// The overlay already provides mutual authentication and end-to-end encryption,
+// so certificate verification is skipped here: the target presents a
+// certificate for its public name while we dial it by service name, and this
+// tool exists to prove reachability and authorisation, not chain validity.
 package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -47,16 +54,43 @@ func main() {
 	// Every connection goes through the overlay. A plain TCP dial to the target
 	// would fail (the app binds loopback only), so anything that succeeds here
 	// is proof the overlay carried it.
-	client := &http.Client{
-		Timeout: 15 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return ctx.Dial(service)
-			},
-		},
+	dial := func(_ context.Context, _, _ string) (net.Conn, error) {
+		return ctx.Dial(service)
 	}
+	transport := &http.Transport{DialContext: dial}
+	scheme := "http://"
+	if os.Getenv("DARKPROBE_TLS") == "1" {
+		scheme = "https://"
+		// The target is dialled by Ziti service name, but it selects its
+		// certificate by SNI. Sending the service name as SNI makes a
+		// virtual-hosted origin fail the handshake outright, so allow the real
+		// hostname to be supplied. This mirrors what a tunneller does: it
+		// intercepts the app's own DNS name, so SNI is the app name there too.
+		sni := os.Getenv("DARKPROBE_SNI")
+		transport.DialTLSContext = func(c context.Context, n, a string) (net.Conn, error) {
+			raw, err := dial(c, n, a)
+			if err != nil {
+				return nil, err
+			}
+			//nolint:gosec // see the note above: the overlay is the trust boundary here.
+			return tls.Client(raw, &tls.Config{InsecureSkipVerify: true, ServerName: sni}), nil
+		}
+	}
+	client := &http.Client{Timeout: 15 * time.Second, Transport: transport}
 
-	resp, err := client.Get("http://" + service + path)
+	// The Host header defaults to the service name. A virtual-hosted origin
+	// (or a reverse proxy routing by host) will answer 404 for that, which
+	// looks like a broken service but is really a wrong Host. Let the caller
+	// send the app's real name; the overlay hop is unaffected either way.
+	req, err := http.NewRequest(http.MethodGet, scheme+service+path, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request:", err)
+		os.Exit(1)
+	}
+	if host := os.Getenv("DARKPROBE_HOST"); host != "" {
+		req.Host = host
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "DENIED or unreachable:", err)
 		os.Exit(1)

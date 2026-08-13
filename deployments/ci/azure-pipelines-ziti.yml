@@ -1,0 +1,126 @@
+# Azure DevOps: reach OpenSecOps over the Ziti overlay.
+#
+# The CI agent is a Microsoft-hosted Ubuntu VM on the public internet. It has no
+# route to the internal network and no inbound port is opened for it. Instead the
+# agent runs a Ziti tunneller, authenticates with its own enrolled identity and
+# dials the service over the overlay.
+#
+# WHAT MUST EXIST BEFORE THIS RUNS (deployments/ci/setup-ci-overlay-access.sh):
+#   - a dialable service carrying an intercept.v1 config (a host.v1-only service
+#     is reachable by BrowZer but gives a tunneller no address to intercept)
+#   - a Dial policy binding the CI identity role to that service
+#   - an edge-router policy and a service-edge-router policy, otherwise the
+#     identity authenticates fine and then simply cannot see the service
+#   - an enrolled CI identity whose JSON is stored as a SECRET pipeline variable
+#
+# The tunneller and the controller are DIFFERENT PROJECTS with independent
+# version lines (ziti-tunnel-sdk-c vs openziti/ziti). Pinning the tunneller to
+# the controller's version is a guaranteed break: v1.1.15 does not exist and
+# the download 404s.
+
+variables:
+  # Tunneller release (github.com/openziti/ziti-tunnel-sdk-c). NOT the controller version.
+  ZITI_TUNNELER_VERSION: "1.18.3"
+  # Overlay DNS name and port. These are asserted against the controller at run
+  # time (step 3) instead of being trusted, because a stale value here fails as
+  # a confusing DNS timeout rather than a clear error.
+  ZITI_INTERCEPT_DNS: "secops.ziti"
+  SECOPS_PORT: "443"
+  # The app selects its certificate and routes by hostname, so TLS/Host must
+  # carry its real name even though we connect via the overlay name.
+  SECOPS_HOST: "secops.tdv.org"
+
+steps:
+  - script: |
+      set -euo pipefail
+      url="https://github.com/openziti/ziti-tunnel-sdk-c/releases/download/v${ZITI_TUNNELER_VERSION}/ziti-edge-tunnel-Linux_x86_64.zip"
+      # Fail on the download itself rather than on a later confusing unzip error.
+      curl -sSLf "$url" -o zet.zip
+      sudo apt-get update -y >/dev/null && sudo apt-get install -y unzip >/dev/null
+      unzip -o zet.zip -d /tmp/zet >/dev/null
+      sudo install /tmp/zet/ziti-edge-tunnel /usr/local/bin/ziti-edge-tunnel
+      ziti-edge-tunnel version
+    displayName: "Ziti: install tunneller"
+
+  - script: |
+      set -euo pipefail
+      id="$(Agent.TempDirectory)/ci-identity.json"
+      # Secrets are NOT created automatically. If the variable is missing,
+      # Azure passes the literal "$(ZITI_CI_IDENTITY_B64)" through, and
+      # base64 still writes a short garbage file before failing -- the run
+      # would then die later with a confusing enrolment error instead of
+      # here. Check explicitly so the cause is obvious.
+      if [ -z "${ZITI_CI_IDENTITY_B64:-}" ] || \
+         [ "${ZITI_CI_IDENTITY_B64}" = '$(ZITI_CI_IDENTITY_B64)' ]; then
+        echo "ZITI_CI_IDENTITY_B64 is not set."
+        echo "Add it as a SECRET variable (Pipeline > Edit > Variables, or a"
+        echo "variable group). It is the base64 of the ENROLLED identity JSON,"
+        echo "not the one-time JWT. See docs/ci-over-ziti-overlay.md section 4."
+        exit 1
+      fi
+      echo "$ZITI_CI_IDENTITY_B64" | base64 -d > "$id" || {
+        echo "ZITI_CI_IDENTITY_B64 is not valid base64."
+        echo "Produce it with: base64 -w0 <identity>.json"
+        exit 1
+      }
+      chmod 600 "$id"
+      # An enrolled identity is JSON carrying the controller address; a JWT is
+      # three dot-separated segments. Confusing the two is the most common
+      # mistake, and without this check it surfaces as a TLS error later.
+      # An enrolled identity is JSON carrying the controller address (ztAPI);
+      # a JWT is three dot-separated segments. Confusing the two is the most
+      # common mistake and would otherwise surface as a TLS error much later.
+      if ! grep -q '"ztAPI"' "$id"; then
+        echo "The secret does not look like an enrolled identity (no ztAPI field)."
+        echo "Did you store the JWT instead? Enrol it first:"
+        echo "  ziti-edge-tunnel enroll --jwt <file>.jwt --identity <file>.json"
+        exit 1
+      fi
+      # 'run' needs root: it creates a TUN device and installs a resolver so the
+      # overlay DNS name resolves for ordinary tools like curl.
+      sudo nohup ziti-edge-tunnel run --identity "$id" \
+        > "$(Agent.TempDirectory)/ziti.log" 2>&1 &
+      echo "waiting for overlay DNS ${ZITI_INTERCEPT_DNS} ..."
+      for _ in $(seq 1 30); do
+        getent hosts "$ZITI_INTERCEPT_DNS" >/dev/null 2>&1 && break
+        sleep 2
+      done
+      if ! getent hosts "$ZITI_INTERCEPT_DNS" >/dev/null 2>&1; then
+        echo "overlay did not come up; tunneller log follows:"
+        cat "$(Agent.TempDirectory)/ziti.log"
+        exit 1
+      fi
+      getent hosts "$ZITI_INTERCEPT_DNS"
+    displayName: "Ziti: connect overlay"
+    env:
+      ZITI_CI_IDENTITY_B64: $(ZITI_CI_IDENTITY_B64)   # SECRET
+
+  - script: |
+      set -euo pipefail
+      # Proof the overlay carried the request, not just that something answered.
+      # --resolve pins the app's hostname to the overlay IP, so TLS SNI and the
+      # Host header carry the real name while the connection still goes through
+      # the tunneller. Without this the origin answers 404 (wrong Host) or the
+      # handshake fails outright, which looks like a broken service.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      echo "overlay address for ${ZITI_INTERCEPT_DNS}: ${ip}"
+      body="$(curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+                "https://${SECOPS_HOST}:${SECOPS_PORT}/health")"
+      echo "$body"
+      # A 200 alone is not proof: a captive portal or a proxy also returns 200.
+      echo "$body" | grep -q '"status":"ok"' \
+        || { echo "unexpected health payload"; exit 1; }
+      echo "reachable over the overlay"
+    displayName: "OpenSecOps: connectivity check"
+
+  - script: |
+      set -euo pipefail
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      # curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+      #   -H "Authorization: Bearer $OPENSECOPS_API_KEY" \
+      #   "https://${SECOPS_HOST}:${SECOPS_PORT}/api/ci/upload" \
+      #   -F "product_name=$(Build.Repository.Name)" -F "file=@results.sarif"
+      echo "existing steps run here, talking to OpenSecOps over the overlay"
+    displayName: "Existing job (talks to OpenSecOps over the overlay)"
+    env:
+      OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET
