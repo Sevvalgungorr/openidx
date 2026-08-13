@@ -383,8 +383,17 @@ tarafın sağlığı değil, **bizim tepkimizdir**: origin bozulduğunda boru ha
 doğru katmanı mı suçluyor, yoksa yanlış ekibi mi arattırıyor.
 
 ```bash
+bash scripts/ci-overlay-score.sh                       # skor  -> SCORE=15/15
 bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=6/6
 bash deployments/ci/faulttest/run-fault-matrix.sh --stat 8   # bilgi -> FLAP_STAT=n/8
+```
+
+Skorbord saha değerlerini ortam değişkeninden alır, bu makineye çakılı
+değildir:
+
+```bash
+APP_HOST=app.example.org ZITI_CONTAINER=my-controller SERVICE=myapp \
+  bash scripts/ci-overlay-score.sh
 ```
 
 Matris sonucu ayrıca `/tmp/cifault/last-result` dosyasına **zaman ve commit
