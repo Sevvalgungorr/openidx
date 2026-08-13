@@ -57,7 +57,10 @@ import os
 print('SECOPS_HOST=localhost\nSECOPS_PORT='+os.environ['PORT']+'\nZITI_INTERCEPT_DNS=secops.ziti')
 print('SCAN_FILE='+os.environ.get('SCAN_FILE','/dev/null'))
 print('SECOPS_PRODUCT_ID=1\nOPENSECOPS_API_KEY=fake-key-for-local-fault-injection')
-print('SCAN_TYPE=semgrep\nFAIL_ON_ZERO_FINDINGS=false')
+# Both are overridable so a case can exercise the opt-in zero-findings gate
+# and the "no report produced" path without editing the extracted step.
+print('SCAN_TYPE=semgrep')
+print('FAIL_ON_ZERO_FINDINGS='+os.environ.get('FAIL_ON_ZERO_FINDINGS','false'))
 print(s)
 PY
 }
@@ -66,9 +69,18 @@ prep(){ extract "$1" | sed 's#https://\${SECOPS_HOST}#http://${SECOPS_HOST}#g; s
 
 run(){ # mode expected_rc must_contain [step]
   local mode="$1" exp="$2" needle="$3" step="${4:-connectivity}"
-  MODE=$mode python3 "$(dirname "$0")/fake-origin.py" $PORT & local pid=$!
+  # Two cases are not origin behaviours but CALLER conditions, so they map to
+  # a healthy origin plus one environment change. Keeping them in the same
+  # table means the opt-in gate and the missing-report path are measured by
+  # the same rule as everything else, instead of living in a comment.
+  local omode="$mode" strict=false scan="$SCAN_FILE"
+  case "$mode" in
+    zero_find_strict) omode=zero_find; strict=true ;;
+    no_report)        omode=healthy;   scan="$WORK/does-not-exist.json" ;;
+  esac
+  MODE=$omode python3 "$(dirname "$0")/fake-origin.py" $PORT & local pid=$!
   sleep 0.6
-  PORT=$PORT prep "$step" > "$WORK/step.sh"
+  PORT=$PORT FAIL_ON_ZERO_FINDINGS=$strict SCAN_FILE="$scan" prep "$step" > "$WORK/step.sh"
   bash "$WORK/step.sh" >"$WORK/out.txt" 2>&1; local rc=$?
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   local okrc=0 okmsg=0
@@ -100,6 +112,11 @@ for spec in "healthy|0|reachable over the overlay" \
             "flapping|0|API routed" \
             "no_route|1|OVERLAY PROBLEM" \
             "api_500|1|SERVER-side exception|upload" \
+            "bad_key|1|rejected (401)|upload" \
+            "bad_type|1|rejected the form fields|upload" \
+            "zero_find|0|findings parsed: 0|upload" \
+            "zero_find_strict|1|parsed to 0 findings|upload" \
+            "no_report|0|NOT UPLOADED: no scan file|upload" \
             "healthy|0|findings parsed|upload"; do
   IFS='|' read -r m e n st <<<"$spec"; tot=$((tot+1))
   if [ "$m" = no_route ]; then

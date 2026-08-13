@@ -190,7 +190,16 @@ if [ -f "$FMF" ]; then
               2>/dev/null | sha256sum | cut -c1-7)
   if [ "$age" -gt 21600 ]; then fmv="STALE($fmres)"
   elif [ -n "$head_sha" ] && [ "$fmsha" != "$head_sha" ]; then fmv="OTHER_SHA($fmres)"
-  else fmv="$fmres"; [ "$fmres" = "6/6" ] && fm=1; fi
+  else
+    # Hedef SABIT SAYI degil ORAN: matrise yeni ariza vakasi eklemek kapsami
+    # ARTIRIR, skoru dusurmemeli. "6/6" beklemek, vaka ekleyeni skor kaybiyla
+    # cezalandirip kapsami dondururdu. Ayrica pay 0 ise (0/0) gecerli sayilmaz.
+    fmv="$fmres"
+    fmpass="${fmres%%/*}"; fmtot="${fmres##*/}"
+    case "$fmpass$fmtot" in *[!0-9]*|"") : ;;
+      *) [ "$fmtot" -gt 0 ] && [ "$fmpass" = "$fmtot" ] && fm=1 ;;
+    esac
+  fi
 fi
-p FAULT_MATRIX        "$fmv"    "6/6"  "$fm"
+p FAULT_MATRIX        "$fmv"    "hepsi" "$fm"
 echo "SCORE=$r/15"

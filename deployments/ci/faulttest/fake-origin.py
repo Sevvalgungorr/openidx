@@ -12,6 +12,10 @@ MODE env:
   flapstat  - /api good ~7% of the time at random (the measured ratio)
   no_route  - connection refused (overlay problem)
   api_500   - upload answers 500 (the importer bug)
+  bad_key   - upload answers 401 (key missing/wrong/out of scope)
+  bad_type  - upload answers 422 (scan_type is an enum, not a display name)
+  zero_find - upload answers 201 but findings_count is 0 (SILENT regression:
+              green pipeline, nothing published; this is the one that hides)
 
 WHY TWO FLAPPING MODES. The honest model of production is random: 4 of 60.
 But a random model makes the MATRIX ITSELF fail ~5% of the time (0.93^40),
@@ -60,6 +64,11 @@ class H(http.server.BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         self.rfile.read(n)
         if MODE == "api_500": return self._send(500, b'{"detail":"Server Error"}')
+        if MODE == "bad_key": return self._send(401, b'{"detail":"Invalid token."}')
+        if MODE == "bad_type":
+            return self._send(422, b'{"scan_type":["\\"Semgrep JSON Report\\" is not a valid choice."]}')
+        if MODE == "zero_find":
+            return self._send(201, b'{"import_id":1,"findings_count":0}')
         return self._send(201, b'{"import_id":1,"findings_count":3}')
 
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
