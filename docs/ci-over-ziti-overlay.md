@@ -9,7 +9,8 @@ kimliğiyle doğrulanır ve servise overlay üzerinden bağlanır; firewall'da
 **hiçbir gelen kural açılmaz**.
 
 Bu belgedeki her davranış çalışan bir kurulumda **ölçülerek** doğrulanmıştır.
-Doğrulama komutları bölüm 10'da.
+Doğrulama komutları bölüm 10'da. Boru hattının arıza davranışını
+yerelde sınamak için bölüm 12.
 
 ---
 
@@ -335,6 +336,9 @@ için kimse fark etmiyordu. Bulgu beklediğiniz bir boru hattında
 | `tls: internal error` | SNI yanlış | `--resolve` kullanın |
 | `404 Route Not Found` | Host başlığı yanlış | `--resolve` kullanın |
 | İndirme 404 | Tunneller sürümü yok | Yayınlanmış bir sürüm seçin |
+| `APPLICATION PROBLEM ... 502` | Overlay **çalışıyor**; origin'in backend havuzu hasta | Bu bizde değil: uygulamanın sahibi ekibe gidin. 2026-08-13'te `/api` 60 denemenin sadece 4'ünde cevap verdi |
+| `OVERLAY PROBLEM: no HTTP response` | Hiç HTTP cevabı yok: kimlik, dial policy veya router yolu | Bölüm 9'un ilk satırları + `darkprobe` ile aynı yolu deneyin |
+| Import `HTTP 500`, gövde boş | Rapor şekli parser'ı patlatıyor (`extra.metadata` yok, ya da bilinmeyen severity) | Log artık raporun şeklini basıyor; oradan okuyun. Yerel tepki testi: bölüm 12 |
 
 ---
 
@@ -369,6 +373,82 @@ kimlikler **korunur**.
 > politikasını da siliyordu; tek bir servisin geri alınması, **aynı rolü
 > paylaşan başka bir CI kimliğinin tüm router erişimini** anında kesiyordu.
 > Paylaşılan nesneler artık yalnızca oluşturulur, asla silinmez.
+
+---
+
+## 12. Boru hattının arıza davranışını yerelde sınamak
+
+Bu bölüm pipeline'ı **değiştirmeden önce** çalıştırılır. Ölçtüğü şey karşı
+tarafın sağlığı değil, **bizim tepkimizdir**: origin bozulduğunda boru hattı
+doğru katmanı mı suçluyor, yoksa yanlış ekibi mi arattırıyor.
+
+```bash
+bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=6/6
+bash deployments/ci/faulttest/run-fault-matrix.sh --stat 8   # bilgi -> FLAP_STAT=n/8
+```
+
+Matris, adımı **ayrıştırılmış YAML'den çıkarıp gerçekten çalıştırır**; kaynak
+dosyada metin araması yapmaz. Böylece YAML'e gömülü kabuk kodunun kendisi
+sınanır.
+
+| Senaryo | Origin ne yapıyor | Boru hattı ne demeli |
+|---|---|---|
+| `healthy` | her şey 200/401 | `reachable over the overlay`, rc=0 |
+| `dead_api` | `/` 200, `/api` 502 | `APPLICATION PROBLEM` — **overlay değil**, rc=1 |
+| `flapping` | `/api` ancak N denemede bir cevaplıyor | `API routed`, rc=0 (yeniden deneme işini yapmalı) |
+| `no_route` | hiç dinleyen yok | `OVERLAY PROBLEM`, rc=1 |
+| `api_500` (upload) | import 500 dönüyor | `SERVER-side exception`, rc=1 |
+| `healthy` (upload) | import 201 | `findings parsed`, rc=0 |
+
+### Bu döngünün bulduğu gerçek kusurlar
+
+Bunlar tahmin değil, testin ürettiği ölçümlerdir:
+
+1. **Ölü kod.** Bağlantı reddedildiğinde `curl` 7 ile çıkıyor ve `set -e`
+   yüzünden adım, `OVERLAY PROBLEM` dalına **hiç ulaşamadan** ölüyordu. En çok
+   ihtiyaç duyulan mesaj asla basılmıyordu.
+2. **Şansla geçen yeniden deneme.** 12 deneme, ölçülen %7 başarı oranında
+   `0.93^12` = **%42 kaçırır**. Canlıda 5/5 geçmişti; bu şanstı. 40'a çıkarıldı
+   (~%5). Sağlıklı durumda ilk denemede çıkılır, maliyeti yoktur.
+3. **Kaymış mesaj.** Döngü 40 denerken metin hâlâ `after 12 tries` diyordu;
+   sayı üç yere kopyalanmıştı. Tek `tries` değişkenine bağlandı.
+
+### Kapı neden deterministik, "gerçekçi" değil
+
+İlk sürüm gerçek %7 oranını doğrudan kullanıyordu, bu yüzden **matrisin kendisi**
+20 koşudan birinde ortada bir sorun yokken 5/6 veriyordu. Yirmi koşuda bir yanlış
+alarm veren kapı, insanlara kapıyı yok saymayı öğretir; bu, kapı olmamasından
+kötüdür ve "tekrar çalıştır geçer" gerçek regresyonların elden kaçtığı yerdir.
+
+Bu yüzden iki soru ayrıldı:
+
+- **Kapı** evet/hayır sorar (döngü, çok sayıda hatadan sonra cevap veren bir
+  backend'i atlatabiliyor mu) ve deterministik bir taklit kullanır: her 20.
+  istekte başarı. 20 sayısı keyfi değil — eski 12'den büyük olduğu için o
+  kusuru hâlâ yakalar, 40'tan küçük olduğu için doğru döngü **her zaman** geçer.
+- **İstatistik** ayrı koşar (`--stat`) ve pass/fail değildir.
+
+Boru hattında bunun için hiçbir şey değişmedi; yeniden deneme sayısı 40 kaldı.
+Sadece test yazı-tura olmaktan çıktı.
+
+### Testlerin kendisi sınandı (mutasyon)
+
+Bir test, kırılmış kodu **kırmızıya çevirebildiği** ölçüde testtir:
+
+| Mutasyon | Sonuç |
+|---|---|
+| katman mesajını sil | 4/4 → 3/4 |
+| yeniden denemeyi kaldır | `flapping` kırmızı |
+| 500 mesajını genelleştir | 6/6 → 5/6 |
+| `tries` 40 → 12 | 6/6 → **5/6** (ölçüldü) |
+
+### Kanıtlanmayan tek şey
+
+Gerçek import 500'ü **bu makineden doğrulanamaz**: API anahtarı Azure tarafında
+bir secret'tır ve burada yoktur. Sahte origin tam da bu yüzden bir anahtar
+üretir. Yani kanıtlanan şey **500'e verilen tepkidir**, 500'ün ortadan kalktığı
+değil. Gerçek doğrulama pipeline yeniden koştuğunda olur; log artık raporun
+şeklini kendisi yazdırdığı için sebep tahmin edilmez, okunur.
 
 ---
 

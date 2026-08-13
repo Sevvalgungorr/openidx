@@ -8,11 +8,23 @@
 # treated as an INPUT and reproduced locally, while the metric is our own
 # reaction to it.
 #
-# NOT DETERMINISTIC BY DESIGN: the flapping case models the measured 7%
-# success rate, and 40 retries still miss ~5% of the time (0.93^40). Measured
-# 11/12 over repeated runs. A single 3/4 result is therefore expected noise,
-# not a regression -- re-run before concluding anything. Making it pass 100%
-# would mean retrying forever, which hides a genuinely dead backend.
+THIS GATE IS DETERMINISTIC. It was not at first: the flapping case used the
+# measured 7% success rate directly, so the matrix itself failed ~5% of runs
+# (0.93^40) and reported 5/6 with nothing broken. I hit that live. A gate that
+# cries wolf one run in twenty teaches people to ignore it, which is worse than
+# having no gate, and "just re-run it" is how real regressions get waved through.
+#
+# Fixed by separating the two questions. The GATE asks a yes/no question -- does
+# the loop survive a backend that only answers after many failures -- and uses a
+# deterministic stand-in (success on exactly every 20th request; 20 > the old 12,
+# so it still catches that defect, and < 40, so a correct loop always passes).
+# The STATISTICAL question -- is 40 retries enough at the real 7% rate -- is a
+# separate run and is not a pass/fail gate:
+#
+#   bash deployments/ci/faulttest/run-fault-matrix.sh --stat 12
+#
+# Nothing in the PIPELINE changed for this; the retry count stays 40. Only the
+# test stopped being a coin toss.
 # Repo root, so the script works from any checkout (it parses the pipeline YAML).
 cd "$(dirname "$0")/../../.." || exit 1
 WORK="$(mktemp -d)"
@@ -67,6 +79,21 @@ run(){ # mode expected_rc must_contain [step]
     "$([ $okmsg = 1 ] && echo ' OK' || echo ' HATA')"
   [ $okrc = 1 ] && [ $okmsg = 1 ] && return 0 || { sed 's/^/      /' "$WORK/out.txt"|tail -4; return 1; }
 }
+# --stat N: run only the random-rate flapping case N times and report the
+# miss rate. Informational; does not gate.
+if [ "${1:-}" = --stat ]; then
+  n="${2:-12}"; ok=0
+  for i in $(seq 1 "$n"); do
+    MODE=flapstat python3 "$(dirname "$0")/fake-origin.py" $PORT & pid=$!
+    sleep 0.6
+    PORT=$PORT prep connectivity > "$WORK/step.sh"
+    if bash "$WORK/step.sh" >/dev/null 2>&1; then ok=$((ok+1)); fi
+    kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  done
+  echo "FLAP_STAT=$ok/$n (random 7% origin, 40 retries; ~5% miss is expected)"
+  exit 0
+fi
+
 pass=0; tot=0
 for spec in "healthy|0|reachable over the overlay" \
             "dead_api|1|APPLICATION PROBLEM" \
