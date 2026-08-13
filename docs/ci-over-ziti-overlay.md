@@ -351,11 +351,18 @@ ziti edge list services 'limit 200'
 ziti fabric list terminators 'limit 200'      # servis için boş OLMAMALI
 
 # Yetkili erişim (200 + sağlık gövdesi bekleriz)
+# DARKPROBE_SNI ŞART: uygulama sertifikayı SNI ile seçer, servis adını SNI
+# olarak göndermek el sıkışmayı düşürür ve bu "erişilemiyor" gibi okunur.
 DARKPROBE_TLS=1 DARKPROBE_SNI=<app-fqdn> DARKPROBE_HOST=<app-fqdn> \
   go run ./tools/darkprobe <kimlik>.json <servis> /health
 
-# Yetkisiz erişim ("service not found" bekleriz)
-DARKPROBE_TLS=1 go run ./tools/darkprobe <rolsuz-kimlik>.json <servis> /health
+# Yetkisiz erişim: servis LİSTEDE BİLE olmamalı.
+# Beklenen tek kabul edilebilir çıktı: service '<ad>' not found
+# (mesaj STDERR'e gider; `go run` ayrıca "exit status 1" basar, bu normaldir).
+# Yalnızca "DENIED" görmek YETMEZ: prob her başarısızlıkta bu öneki basar,
+# TLS düştüğünde de. Erişilebilir bir servis bile SNI'sız denenirse "DENIED"
+# döner; bu bir sahte yeşildi ve ölçüldü.
+DARKPROBE_TLS=1 go run ./tools/darkprobe <kimlik>.json <yetkisiz-servis> /health
 ```
 
 ---
@@ -402,6 +409,30 @@ skorbord 3 dakikalık matrisi her seferinde yeniden koşmadan sonucu okuyabilir.
 Önbelleklenmiş kanıt tehlikelidir, o yüzden okuyan taraf **eskitmelidir**:
 6 saatten eski ya da başka bir commit'e ait sonuç `STALE` / `OTHER_SHA` sayılır
 ve **geçer not değildir**. Kanıt yoksa sonuç *bilinmiyor*, "başarılı" değil.
+
+**Ama önbellek, ancak ölçüm gerçekten pahalıysa savunulabilir.** Overlay
+erişimi (`OVERLAY_REACH_200`) ve yetkisiz reddi (`UNAUTH_DENIED`) uzun süre
+elle tazelenen dosyalardan okundu; gerekçe "gerçek bir tüneller koşusu her
+puanlamada tekrarlanamaz" idi. Bu **ölçümle çürüdü**: `tools/darkprobe` aynı
+dial'i **0,14 saniyede** yapıyor. Artık skorbord bu ikisini **canlı ölçer**;
+kimlik dosyası ya da `go` yoksa eskitilen dosyaya düşer, o da yoksa
+`0 = bilinmiyor`. Ucuza üretilebilen kanıt asla önbelleğe alınmamalıdır.
+
+Bu geçiş, önbelleğin gizlediği **iki ölçüm kusurunu** ortaya çıkardı:
+
+1. **Yanlış kırmızı.** Reddedilme mesajı stdout'a değil **stderr**'e gidiyor;
+   `2>/dev/null` yüzünden metrik **çalışan** sistemde 0 okudu.
+2. **Sahte yeşil.** Kalıp `DENIED` kelimesini de kabul ediyordu, ama prob *her*
+   başarısızlıkta aynı öneki basar — TLS el sıkışması düştüğünde de. Kimliğin
+   **gerçekten gördüğü** bir servis, SNI verilmediğinde `DENIED ... tls:
+   internal error` döndü ve metrik **yine 1** okudu. Yani metrik "servisi
+   göremiyor"u değil "istek başarısız oldu"yu ölçüyordu. Artık yalnızca
+   Ziti'nin `service '<ad>' not found` cevabı sayılır.
+
+Parametrelerin dekoratif olmadığı mutasyonla kanıtlı (sahte değer skoru
+**düşürür**): `SERVICE=yoksun` → 9/15, `DENY_SERVICE=<görülen servis>` → 14/15,
+`CI_IDENTITY` yok → 13/15, `APP_HOST=yok.invalid` → 13/15,
+`ZITI_CONTAINER=yoksun` → 7/15.
 
 Matris, adımı **ayrıştırılmış YAML'den çıkarıp gerçekten çalıştırır**; kaynak
 dosyada metin araması yapmaz. Böylece YAML'e gömülü kabuk kodunun kendisi
