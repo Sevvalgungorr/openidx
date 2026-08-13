@@ -124,9 +124,38 @@ steps:
       # handshake fails outright, which looks like a broken service.
       ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
       echo "overlay address for ${ZITI_INTERCEPT_DNS}: ${ip}"
-      body="$(curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-                "https://${SECOPS_HOST}:${SECOPS_PORT}/health")"
-      echo "$body"
+      # -sSf collapses every failure into "curl: (22) ... error: 502", which
+      # cannot tell an OVERLAY problem from an APPLICATION problem. Measured on
+      # 2026-08-13: / answered 200 while /health and /api answered 502 on 30/30
+      # tries -- the fabric was fine and the API behind the origin proxy was
+      # down. Reading that as "the overlay is broken" sends the wrong team
+      # looking. Capture the status and say which layer failed.
+      hbody="$(mktemp)"
+      hcode=000
+      for attempt in $(seq 1 12); do
+        hcode="$(curl -s -o "$hbody" -w '%{http_code}' \
+          --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+          "https://${SECOPS_HOST}:${SECOPS_PORT}/health")"
+        [ "$hcode" = 200 ] && break
+        sleep 2
+      done
+      echo "HTTP $hcode"; cat "$hbody"; echo
+      if [ "$hcode" = 000 ]; then
+        echo "OVERLAY PROBLEM: no HTTP response at all."
+        echo "The tunneller could not carry the connection: the identity, the"
+        echo "dial policy or the router path is the place to look."
+        exit 1
+      fi
+      case "$hcode" in
+        5*)
+          echo "APPLICATION PROBLEM, NOT AN OVERLAY PROBLEM."
+          echo "The overlay delivered the request and the origin answered"
+          echo "$hcode, so the fabric, the identity and the policies are all"
+          echo "working. The service behind the origin proxy is failing."
+          echo "Check with the OpenSecOps owners; nothing here needs changing."
+          exit 1 ;;
+      esac
+      body="$(cat "$hbody")"
       # A 200 alone is not proof: a captive portal or a proxy also returns 200.
       echo "$body" | grep -q '"status":"ok"' \
         || { echo "unexpected health payload"; exit 1; }
@@ -137,11 +166,26 @@ steps:
       # itself 404s -- only concrete sub-paths are published, so probing the
       # root and concluding "there is no API" is wrong (I made exactly that
       # mistake).
-      code="$(curl -s -o /dev/null -w '%{http_code}' \
-        --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers")"
+      # The origin load-balances across several backends and some of them are
+      # down: measured 2026-08-13, /api/imports/parsers answered correctly on
+      # only 4 of 60 tries (the other 56 were 502 from the origin proxy, not
+      # from the overlay). A single probe therefore fails ~93% of the time even
+      # though the API is reachable. Retry before concluding anything: this is
+      # a read-only GET, so retrying it is free of side effects.
+      code=000
+      for attempt in $(seq 1 12); do
+        code="$(curl -s -o /dev/null -w '%{http_code}' \
+          --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+          "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers")"
+        case "$code" in 200|401|403) break ;; esac
+        sleep 2
+      done
       case "$code" in
         200|401|403) echo "API routed (/api/imports/parsers -> $code)" ;;
+        5*) echo "API not routed (/api/imports/parsers -> $code after 12 tries)"
+            echo "The origin answered, so the OVERLAY IS WORKING. Its backend"
+            echo "pool is unhealthy. This is for the OpenSecOps owners."
+            exit 1 ;;
         *) echo "API not routed (/api/imports/parsers -> $code)"; exit 1 ;;
       esac
       echo "reachable over the overlay"
