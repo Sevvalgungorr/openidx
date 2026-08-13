@@ -170,12 +170,25 @@ steps:
       semgrep scan --config="$SEMGREP_RULES" --json --quiet \
         -o "$SCAN_FILE" . || true
       [ -s "$SCAN_FILE" ] || { echo "semgrep produced no report"; exit 1; }
-      count="$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['results']))" "$SCAN_FILE")"
-      echo "semgrep findings: $count"
+      # Diagnostics, not a gate: shows severities, findings missing
+      # extra.metadata, and any diagnostic sections -- the three things that
+      # make an importer raise and answer 500 with no detail.
+      python3 deployments/ci/semgrep-report-shape.py "$SCAN_FILE"
+      # Semgrep emits diagnostic sections (time, engine_requested, skipped
+      # rules) alongside results. They are large and some importers choke on
+      # them. Keeping only the fields a parser needs is opt-in, because
+      # dropping data should be a deliberate choice, not a silent default.
+      if [ "${SLIM_REPORT:-false}" = "true" ]; then
+        python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); json.dump({k:d.get(k) for k in ('version','results','errors','paths')}, open(p,'w'))" "$SCAN_FILE"
+        echo "slimmed report to $(wc -c <"$SCAN_FILE") bytes"
+      fi
     displayName: "Semgrep: scan repository"
     env:
       SCAN_FILE: "$(Build.SourcesDirectory)/semgrep.json"
       SEMGREP_RULES: "auto"
+      # Set to "true" if the importer rejects the full report (e.g. HTTP 500):
+      # it keeps only version/results/errors/paths.
+      SLIM_REPORT: "false"
 
   - script: |
       set -euo pipefail
@@ -245,6 +258,14 @@ steps:
         401|403) echo "NOT UPLOADED: rejected ($code)."
                  echo "The key is missing, wrong, or lacks scope for this"
                  echo "product. Generate one under Settings > API Keys."; exit 1 ;;
+        5*) echo "NOT UPLOADED: the server failed while processing ($code)."
+            echo "This is a SERVER-side exception, not a bad request: the"
+            echo "upload was accepted and then something threw. The response"
+            echo "body above is all the API discloses; the traceback is in the"
+            echo "OpenSecOps API logs. Include the file that triggered it:"
+            echo "  scan_type=$scan_type, $(wc -c <"$SCAN_FILE") bytes,"
+            echo "  top-level keys: $(python3 -c "import json,sys; print(','.join(json.load(open(sys.argv[1])).keys()))" "$SCAN_FILE" 2>/dev/null)"
+            exit 1 ;;
         422) echo "NOT UPLOADED: the API rejected the form fields ($code)."
              echo "See the body above for the missing/invalid field. If it is"
              echo "scan_type, set SCAN_TYPE to a value from /api/imports/parsers"
@@ -258,6 +279,6 @@ steps:
       # parses to nothing fails the build instead of passing quietly.
       FAIL_ON_ZERO_FINDINGS: "false"
       # Fallback only: the enum is normally discovered from /api/imports/parsers.
-      SCAN_TYPE: "SEMGREP"
+      SCAN_TYPE: "semgrep"
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
       OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group
