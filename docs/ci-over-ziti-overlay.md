@@ -457,6 +457,35 @@ Bir test, kırılmış kodu **kırmızıya çevirebildiği** ölçüde testtir:
 | yeniden denemeyi kaldır | `flapping` kırmızı |
 | 500 mesajını genelleştir | 6/6 → 5/6 |
 | `tries` 40 → 12 | 6/6 → **5/6** (ölçüldü) |
+| kayıp `#`'i geri koy | `bash -n` **geçiyor**, prose kontrolü **yakalıyor** |
+
+### 12.1 `bash -n`'in yakalayamadığı sınıf
+
+Bir yorum satırının başındaki `#` düzenleme sırasında düştü. Sonuç
+**sözdizimsel olarak geçerliydi**: `bash -n` geçti, matris `6/6` bastı, tek iz
+stderr'deki `THIS: command not found` satırıydı. **İki merge edilmiş PR boyunca
+fark edilmedi**; temiz bir klonda çalıştırırken tesadüfen görüldü. Tehlikeli
+şekil budur: başarı raporlarken sessizce çöp çalıştıran bir betik. Aynı kayma
+bir satır aşağıda, `set -e` altında, koşumu öldürürdü.
+
+```bash
+bash scripts/check-shell-prose.sh        # tarama    -> PROSE_IN_SHELL=0
+bash scripts/check-shell-prose.test.sh   # kapının kendi testi -> OK
+```
+
+Her ikisi de CI'da `No prose running as shell` işinde koşar (`.github/workflows/ci.yml`),
+docs-only atlamasının dışındadır. Kural **kasten dardır**: satır yorum
+değilse, iki yorum satırı arasındaysa, 4+ kelimeyse, kabuk metakarakteri
+içermiyorsa, bilinen bir komutla başlamıyorsa ve düzyazı noktalaması
+taşıyorsa uyarır. Son iki kural, ilk sürümün gerçek kod üzerinde ürettiği bir
+yanlış pozitiften doğdu (`rm -rf build dist node_modules`): **çalışan bir satırı
+işaretleyen kontrol, insanlara `--no-verify` öğretir.**
+
+Kapının kendisi de test edilir, çünkü **kırmızıya dönemeyen bir kapı, hiçbir
+şey ifade etmeyen yeşil bir tiktir** — bu repo bunu bir kez öğrendi:
+`check-no-internal-topology.sh`'in ilk sürümü geçersiz bir grep bayrağıyla, iç
+adres **içeren** bir ağaçta geçiyordu. Kapının koruma sağladığı, kasıtlı kusurlu
+bir dalla canlı doğrulandı: o dalda iş **kırmızı**, temiz dalda **yeşil**.
 
 ### Kanıtlanmayan tek şey
 
