@@ -9,7 +9,7 @@ kimliğiyle doğrulanır ve servise overlay üzerinden bağlanır; firewall'da
 **hiçbir gelen kural açılmaz**.
 
 Bu belgedeki her davranış çalışan bir kurulumda **ölçülerek** doğrulanmıştır.
-Doğrulama komutları bölüm 8'de.
+Doğrulama komutları bölüm 9'da.
 
 ---
 
@@ -236,7 +236,45 @@ echo "$body" | grep -q '"status":"ok"' || exit 1
 
 ---
 
-## 7. Sorun giderme
+## 7. Uygulamanın API yüzeyini doğru yoklamak
+
+Bu belgeyi yazarken **yanlış bir sonuca vardım** ve düzeltmek gerekti.
+
+`/api`, `/api/v1`, `/openapi.json` yollarını yokladım, hepsi 404 döndü ve
+"uygulamanın API'si yok" sonucuna vardım. **Yanlıştı.** Kök yollar 404
+veriyor ama **somut alt yollar yayında**:
+
+| Yol | Sonuç | Anlamı |
+|---|---|---|
+| `/api` | 404 | Kök yol yayınlanmamış |
+| `/api/imports/parsers` | **401** | **Var** — kimlik doğrulama istiyor |
+| `/api/imports/upload` | **405** | **Var** — POST bekliyor |
+| `/health` | 200 | Frontend'in sağlık ucu |
+| `/api/health` | 404 | Backend'de böyle bir yol yok |
+
+**Ders:** bir kök yolun 404 vermesi, altındaki yolların da olmadığı anlamına
+gelmez. Çoğu framework yalnızca tanımlı yolları yayınlar. Yokladığınız yolun
+gerçekten beklediğiniz yol olduğundan emin olun.
+
+**401 ve 403 başarıdır**, hata değil: yolun var olduğunu ve kimlik
+doğrulamanın uygulandığını kanıtlar. Bağlantı testi bu yüzden `200|401|403`
+kabul eder.
+
+### Sağlık ucu tek başına yetmez
+
+`/health` frontend tarafından sunulur. Yani host'a erişildiğini kanıtlar, ama
+**arkasındaki API'nin yönlendirildiğini kanıtlamaz**. Pipeline bu yüzden iki
+şeyi ayrı ayrı kontrol eder:
+
+1. `/health` → gövdede `"status":"ok"` (host erişilebilir)
+2. `/api/imports/parsers` → `200|401|403` (API yönlendiriliyor)
+
+İkincisinin gerçekten ayırt ettiği doğrulandı: gerçek uç **401 → geçer**,
+uydurma bir yol **404 → düşer**.
+
+---
+
+## 8. Sorun giderme
 
 | Belirti | Sebep | Çözüm |
 |---|---|---|
@@ -249,7 +287,7 @@ echo "$body" | grep -q '"status":"ok"' || exit 1
 
 ---
 
-## 8. Doğrulama komutları
+## 9. Doğrulama komutları
 
 ```bash
 # DİKKAT: 'limit' vermezseniz sadece 10 kayıt döner. Bu, var olan nesnelerin
@@ -267,7 +305,7 @@ DARKPROBE_TLS=1 go run ./tools/darkprobe <rolsuz-kimlik>.json <servis> /health
 
 ---
 
-## 9. Geri alma
+## 10. Geri alma
 
 ```bash
 SERVICE=<svc> TARGET_HOST=<adres> ./setup-ci-overlay-access.sh --rollback

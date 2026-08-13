@@ -76,20 +76,19 @@ steps:
 
   - script: |
       set -euo pipefail
-      id="$(Agent.TempDirectory)/ci-identity.json"
-      # DownloadSecureFile puts the file in a temp location and exposes the
-      # path as a task output variable. Copy it where the rest of the job
-      # expects it, and fail loudly if the task did not run -- otherwise the
-      # error surfaces much later as a confusing enrolment failure.
-      src="$(zitiIdentity.secureFilePath)"
-      if [ -z "${src:-}" ] || [ ! -s "$src" ]; then
+      # Use the downloaded file WHERE IT IS. DownloadSecureFile already places
+      # it under Agent.TempDirectory, so copying it to a path built from that
+      # same directory makes source and destination identical and cp fails
+      # with "are the same file". Referencing the task output directly also
+      # keeps working if Azure changes the location.
+      id="$(zitiIdentity.secureFilePath)"
+      if [ -z "${id:-}" ] || [ ! -s "$id" ]; then
         echo "Secure file 'ci-identity.json' was not downloaded."
         echo "Upload it under Pipelines > Library > Secure files and grant this"
         echo "pipeline permission. See docs/ci-over-ziti-overlay.md section 5."
         exit 1
       fi
-      cp "$src" "$id"
-      chmod 600 "$id"
+      chmod 600 "$id" 2>/dev/null || true
       # An enrolled identity is JSON carrying the controller address (ztAPI);
       # a JWT is three dot-separated segments. Confusing the two is the most
       # common mistake and would otherwise surface as a TLS error much later.
@@ -131,26 +130,36 @@ steps:
       # A 200 alone is not proof: a captive portal or a proxy also returns 200.
       echo "$body" | grep -q '"status":"ok"' \
         || { echo "unexpected health payload"; exit 1; }
+      # /health is served by the frontend, so it proves the host is reachable
+      # but NOT that the API behind it is routed. Probe a real API path too.
+      # 401 is the expected answer without credentials and is a PASS here: it
+      # means the route exists and authentication is enforced. Note that
+      # /api itself 404s -- only the concrete sub-paths are published, so
+      # probing the root and concluding "no API" is wrong.
+      code="$(curl -s -o /dev/null -w '%{http_code}' \
+        --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers")"
+      case "$code" in
+        200|401|403) echo "API routed (/api/imports/parsers -> $code)" ;;
+        *) echo "API not routed (/api/imports/parsers -> $code)"; exit 1 ;;
+      esac
       echo "reachable over the overlay"
     displayName: "OpenSecOps: connectivity check"
 
   - script: |
       set -euo pipefail
-      # Your existing steps go here. The overlay is already up, so reach the
-      # app by its real hostname pinned to the overlay address:
-      #
-      #   ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
-      #   curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-      #     -H "Authorization: Bearer $OPENSECOPS_API_KEY" \
-      #     "https://${SECOPS_HOST}:${SECOPS_PORT}/<endpoint>" \
-      #     -F "project=$(Build.Repository.Name)" -F "file=@results.sarif"
-      #
-      # NOTE: the ingest endpoint is left as a placeholder on purpose. Probing
-      # the running app found only a web UI (/ and /login answer, /health
-      # returns JSON); /api/*, /openapi.json and /swagger.json all 404. So no
-      # scan/SBOM upload API is published yet. Fill this in once it exists
-      # rather than shipping a path that has never returned anything.
-      echo "existing steps run here, talking to OpenSecOps over the overlay"
-    displayName: "Existing job (talks to OpenSecOps over the overlay)"
+      [ -f "$SCAN_FILE" ] || { echo "no scan result at $SCAN_FILE; skipping"; exit 0; }
+      # --resolve keeps the real hostname on TLS SNI and the Host header while
+      # the connection itself goes over the overlay.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+        -H "Authorization: Token ${OPENSECOPS_API_KEY}" \
+        -F "product_id=${SECOPS_PRODUCT_ID}" \
+        -F "file=@${SCAN_FILE}" \
+        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/upload"
+      echo "scan uploaded for product ${SECOPS_PRODUCT_ID}"
+    displayName: "OpenSecOps: upload scan results over the overlay"
     env:
-      OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET
+      SCAN_FILE: "$(Build.SourcesDirectory)/results.sarif"
+      SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
+      OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group
