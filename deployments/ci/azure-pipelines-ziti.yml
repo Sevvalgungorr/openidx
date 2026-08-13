@@ -133,9 +133,10 @@ steps:
       # /health is served by the frontend, so it proves the host is reachable
       # but NOT that the API behind it is routed. Probe a real API path too.
       # 401 is the expected answer without credentials and is a PASS here: it
-      # means the route exists and authentication is enforced. Note that
-      # /api itself 404s -- only the concrete sub-paths are published, so
-      # probing the root and concluding "no API" is wrong.
+      # means the route exists and authentication is enforced. Note that /api
+      # itself 404s -- only concrete sub-paths are published, so probing the
+      # root and concluding "there is no API" is wrong (I made exactly that
+      # mistake).
       code="$(curl -s -o /dev/null -w '%{http_code}' \
         --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
         "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers")"
@@ -163,31 +164,49 @@ steps:
       ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
       # Capture body and status separately: -sSf alone hides the response, so
       # an API that answers 200 while rejecting the payload would pass silently.
-      # AUTH SCHEME IS UNVERIFIED. Probing the live API without a valid key
-      # cannot distinguish them: "Token X", "Bearer X", "ApiKey X" and the
-      # X-Api-Key header all answer 401 {"detail":"Invalid or missing
-      # credentials"}. If the first real run returns 401, try Bearer or
-      # X-Api-Key here -- the failure message below says so explicitly rather
-      # than leaving you to guess.
+      # Bearer, confirmed by a real upload against the running API. Probing
+      # without a valid key could not settle this -- "Token X", "Bearer X",
+      # "ApiKey X" and X-Api-Key all answer the same 401 -- so the scheme was
+      # only established once a working key was used.
       out="$(mktemp)"
       code="$(curl -s -o "$out" -w '%{http_code}' \
         --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-        -H "Authorization: Token ${OPENSECOPS_API_KEY}" \
+        -H "Authorization: Bearer ${OPENSECOPS_API_KEY}" \
         -F "product_id=${SECOPS_PRODUCT_ID}" \
         -F "file=@${SCAN_FILE}" \
         "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/upload")"
       echo "HTTP $code"
       cat "$out"; echo
       case "$code" in
-        2*) echo "UPLOADED: product ${SECOPS_PRODUCT_ID}" ;;
+        2*)
+          echo "UPLOADED: product ${SECOPS_PRODUCT_ID}"
+          # A 2xx only means the file was ACCEPTED, not that it was parsed.
+          # A parser-lookup bug once made every upload report "completed" with
+          # findings_count 0 -- green pipelines, no findings, nobody noticed.
+          # Surface the count so a silent regression is visible, and let the
+          # build fail on it only if the caller opts in.
+          found="$(grep -o '"findings_count"[[:space:]]*:[[:space:]]*[0-9]*' "$out" \
+                   | grep -o '[0-9]*$' | head -1)"
+          if [ -n "$found" ]; then
+            echo "findings parsed: $found"
+            if [ "$found" = "0" ] && [ "${FAIL_ON_ZERO_FINDINGS:-false}" = "true" ]; then
+              echo "NOT ACCEPTED: report parsed to 0 findings."
+              echo "Either the scan really is clean, or the report format is"
+              echo "not recognised by the importer. Verify before trusting it."
+              exit 1
+            fi
+          fi
+          ;;
         401|403) echo "NOT UPLOADED: rejected ($code)."
-                 echo "Check OPENSECOPS_API_KEY, and try 'Bearer' or the"
-                 echo "X-Api-Key header instead of 'Token' -- the scheme could"
-                 echo "not be confirmed without a valid key."; exit 1 ;;
+                 echo "The key is missing, wrong, or lacks scope for this"
+                 echo "product. Generate one under Settings > API Keys."; exit 1 ;;
         *) echo "NOT UPLOADED: HTTP $code"; exit 1 ;;
       esac
     displayName: "OpenSecOps: upload scan results over the overlay"
     env:
       SCAN_FILE: "$(Build.SourcesDirectory)/results.sarif"
+      # Set to "true" once you expect findings, so a report that silently
+      # parses to nothing fails the build instead of passing quietly.
+      FAIL_ON_ZERO_FINDINGS: "false"
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
       OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group
