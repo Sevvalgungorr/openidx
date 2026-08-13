@@ -57,13 +57,61 @@ cipol=$(echo "$POL"|SVCNAME="$SERVICE" J "import os
 n='#'+os.environ['SVCNAME']
 print(sum(1 for p in d['data'] if p.get('type')=='Dial' and n in (p.get('serviceRoles') or []) and '#ci-clients' in (p.get('identityRoles') or [])))")
 
-# These two come from a real tunneller run, which cannot be re-run cheaply on
-# every scoring pass. They were cached as bare "1", so a result from hours ago
-# kept reading as a pass -- a false green. Age them out: a proof older than
-# 6 hours is UNKNOWN (0), never a success.
+# Bu ikisi GERCEK bir overlay dial'i gerektirir. Onceden ciplak "1" olarak
+# onbelleklenmislerdi; saatler oncesinin sonucu gecer not okunuyordu, yani
+# sahte yesil. Once yaslandirma eklendi (6 saatten eski = 0), ama asil
+# varsayim -- "her puanlamada ucuza yeniden kosulamaz" -- OLCUMLE CURUDU:
+# tools/darkprobe ayni dial'i 0.14 saniyede yapiyor. Onbelleklenmis kanit,
+# ucuza uretilebilen kanittan her zaman kotudur, cunku dogruyu soyledigi an
+# ile okundugu an arasinda dunya degisebilir.
+#
+# Bu yuzden sira su: MUMKUNSE CANLI OLC, olculemiyorsa (kimlik dosyasi yok,
+# go yok) yaslandirilmis kanit dosyasina dus, o da yoksa 0 = BILINMIYOR.
 fresh(){ [ -f "$1" ] && [ -z "$(find "$1" -mmin +360)" ] && cat "$1" || echo 0; }
-reach=$(fresh "$EVID/reach.ok")
-deny=$(fresh "$EVID/deny.ok")
+
+CI_IDENTITY="${CI_IDENTITY:-/tmp/ci-runner.json}"
+# Yetkisiz taraf icin AYRI bir servis kullanilir: ayni kimligin dial yetkisi
+# OLMAYAN bir servisi gormemesi gerekir. Yetkisiz bir KIMLIK dosyasi burada
+# her zaman bulunmaz, ama "gormemesi gereken servis" testi ayni seyi kanitlar
+# ve her yerde kosar.
+DENY_SERVICE="${DENY_SERVICE:-openidx-admin-api}"
+probe=""
+if [ -f "$CI_IDENTITY" ] && command -v go >/dev/null 2>&1 && [ -d "$ROOT/tools/darkprobe" ]; then
+  probe="$(mktemp -d)/dp"
+  go build -o "$probe" "$ROOT/tools/darkprobe" 2>/dev/null || probe=""
+fi
+
+if [ -n "$probe" ]; then
+  # Uygulama TLS'i sonlandiriyor ve sertifikayi SNI ile seciyor; servis adini
+  # SNI olarak gondermek handshake'i dusurur (bu, once yanlis "erisilemiyor"
+  # okundu -- kusur overlay'de degil, olcumdeydi).
+  out=$(DARKPROBE_TLS=1 DARKPROBE_SNI="$APP_HOST" DARKPROBE_HOST="$APP_HOST" \
+    timeout 30 "$probe" "$CI_IDENTITY" "$SERVICE" /health 2>/dev/null|tail -1)
+  case "$out" in status=200*) reach=1 ;; *) reach=0 ;; esac
+  # Yetkisiz taraf: servis LISTEDE BILE gorunmemeli. 403 degil, YOKLUK;
+  # overlay'de gorunmeyen sey saldiri yuzeyi degildir.
+  #
+  # KALIP DAR OLMALI. Ilk surum "DENIED" kelimesini de kabul ediyordu, ama
+  # darkprobe her basarisizlik icin ayni oneki basiyor -- TLS el sikismasi
+  # dustugunde de. Olculdu: kimligin GERCEKTEN gordugu bir servis, SNI
+  # verilmediginde "DENIED ... tls: internal error" dondu ve metrik yine 1
+  # okudu. Yani metrik "servisi goremiyor"u degil "istek basarisiz oldu"yu
+  # olcuyordu; erisilebilir bir servisle bile yesil kalirdi -- SAHTE YESIL.
+  # Artik yalnizca Ziti'nin "servis yok" cevabi sayilir.
+  #
+  # Mesaj STDOUT'a degil STDERR'e gider ve cikis kodu 1'dir; stderr'i
+  # /dev/null'a atmak bu metrigi dogru sistemde 0 gosterir (bu da olculdu).
+  dout=$(DARKPROBE_TLS=1 timeout 30 "$probe" "$CI_IDENTITY" "$DENY_SERVICE" /health 2>&1|tail -1)
+  case "$dout" in
+    *"service '$DENY_SERVICE' not found"*) deny=1 ;;
+    *) deny=0 ;;
+  esac
+  rm -rf "$(dirname "$probe")"
+else
+  reach=$(fresh "$EVID/reach.ok")
+  deny=$(fresh "$EVID/deny.ok")
+fi
+
 
 P="$ROOT/deployments/ci/azure-pipelines-ziti.yml"
 pdns=""; pport=""; pver=""
