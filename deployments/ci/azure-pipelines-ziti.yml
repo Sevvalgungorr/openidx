@@ -11,7 +11,8 @@
 #   - a Dial policy binding the CI identity role to that service
 #   - an edge-router policy and a service-edge-router policy, otherwise the
 #     identity authenticates fine and then simply cannot see the service
-#   - an enrolled CI identity whose JSON is stored as a SECRET pipeline variable
+#   - an enrolled CI identity uploaded as a Secure File (it is ~8 KB, so it
+#     cannot be a pipeline variable: those are capped at 4096 characters)
 #
 # The tunneller and the controller are DIFFERENT PROJECTS with independent
 # version lines (ziti-tunnel-sdk-c vs openziti/ziti). Pinning the tunneller to
@@ -19,16 +20,34 @@
 # the download 404s.
 
 variables:
+  # A variable group is referenced with LIST syntax. Mixing the mapping form
+  # (KEY: value) with a group in the same block is a schema error, so once a
+  # group is used every entry must be a list item.
+  #
+  # Create the group in Pipelines > Library and authorise this pipeline to use
+  # it. The group holds SHORT secrets and values SHARED across pipelines;
+  # per-run values belong below, and the Ziti identity is a Secure File
+  # because it exceeds the variable size limit.
+  - group: ZitiCIVars
+
   # Tunneller release (github.com/openziti/ziti-tunnel-sdk-c). NOT the controller version.
-  ZITI_TUNNELER_VERSION: "1.18.3"
-  # Overlay DNS name and port. These are asserted against the controller at run
-  # time (step 3) instead of being trusted, because a stale value here fails as
-  # a confusing DNS timeout rather than a clear error.
-  ZITI_INTERCEPT_DNS: "secops.ziti"
-  SECOPS_PORT: "443"
+  - name: ZITI_TUNNELER_VERSION
+    value: "1.18.3"
+  # Overlay DNS name and port. Asserted against the controller at run time
+  # (step 3) rather than trusted: a stale value here fails as a confusing DNS
+  # timeout instead of a clear error.
+  - name: ZITI_INTERCEPT_DNS
+    value: "secops.ziti"
+  - name: SECOPS_PORT
+    value: "443"
   # The app selects its certificate and routes by hostname, so TLS/Host must
   # carry its real name even though we connect via the overlay name.
-  SECOPS_HOST: "secops.tdv.org"
+  - name: SECOPS_HOST
+    value: "secops.tdv.org"
+  # Per-RUN values (e.g. $(Build.Repository.Name)) belong HERE, not in a
+  # variable group: groups are static and shared, and a $(...) macro stored
+  # inside one is not guaranteed to expand -- it can arrive empty or as the
+  # literal text.
 
 steps:
   - script: |
@@ -42,36 +61,40 @@ steps:
       ziti-edge-tunnel version
     displayName: "Ziti: install tunneller"
 
+  # The enrolled identity is ~8 KB, and an Azure pipeline VARIABLE is capped at
+  # 4096 characters -- base64 of it is 10908, so it cannot be a variable at all.
+  # Compressing does not help either (gzip+base64 is still 5524). Secure Files
+  # has no such limit and is Microsoft's own recommendation for exactly this.
+  #
+  # Authorise the pipeline once: Pipelines > Library > Secure files >
+  # ci-identity.json > Pipeline permissions.
+  - task: DownloadSecureFile@1
+    name: zitiIdentity
+    displayName: "Ziti: fetch identity (secure file)"
+    inputs:
+      secureFile: ci-identity.json
+
   - script: |
       set -euo pipefail
       id="$(Agent.TempDirectory)/ci-identity.json"
-      # Secrets are NOT created automatically. If the variable is missing,
-      # Azure passes the literal "$(ZITI_CI_IDENTITY_B64)" through, and
-      # base64 still writes a short garbage file before failing -- the run
-      # would then die later with a confusing enrolment error instead of
-      # here. Check explicitly so the cause is obvious.
-      if [ -z "${ZITI_CI_IDENTITY_B64:-}" ] || \
-         [ "${ZITI_CI_IDENTITY_B64}" = '$(ZITI_CI_IDENTITY_B64)' ]; then
-        echo "ZITI_CI_IDENTITY_B64 is not set."
-        echo "Add it as a SECRET variable (Pipeline > Edit > Variables, or a"
-        echo "variable group). It is the base64 of the ENROLLED identity JSON,"
-        echo "not the one-time JWT. See docs/ci-over-ziti-overlay.md section 4."
+      # DownloadSecureFile puts the file in a temp location and exposes the
+      # path as a task output variable. Copy it where the rest of the job
+      # expects it, and fail loudly if the task did not run -- otherwise the
+      # error surfaces much later as a confusing enrolment failure.
+      src="$(zitiIdentity.secureFilePath)"
+      if [ -z "${src:-}" ] || [ ! -s "$src" ]; then
+        echo "Secure file 'ci-identity.json' was not downloaded."
+        echo "Upload it under Pipelines > Library > Secure files and grant this"
+        echo "pipeline permission. See docs/ci-over-ziti-overlay.md section 5."
         exit 1
       fi
-      echo "$ZITI_CI_IDENTITY_B64" | base64 -d > "$id" || {
-        echo "ZITI_CI_IDENTITY_B64 is not valid base64."
-        echo "Produce it with: base64 -w0 <identity>.json"
-        exit 1
-      }
+      cp "$src" "$id"
       chmod 600 "$id"
-      # An enrolled identity is JSON carrying the controller address; a JWT is
-      # three dot-separated segments. Confusing the two is the most common
-      # mistake, and without this check it surfaces as a TLS error later.
       # An enrolled identity is JSON carrying the controller address (ztAPI);
       # a JWT is three dot-separated segments. Confusing the two is the most
       # common mistake and would otherwise surface as a TLS error much later.
       if ! grep -q '"ztAPI"' "$id"; then
-        echo "The secret does not look like an enrolled identity (no ztAPI field)."
+        echo "The secure file is not an enrolled identity (no ztAPI field)."
         echo "Did you store the JWT instead? Enrol it first:"
         echo "  ziti-edge-tunnel enroll --jwt <file>.jwt --identity <file>.json"
         exit 1
@@ -92,8 +115,6 @@ steps:
       fi
       getent hosts "$ZITI_INTERCEPT_DNS"
     displayName: "Ziti: connect overlay"
-    env:
-      ZITI_CI_IDENTITY_B64: $(ZITI_CI_IDENTITY_B64)   # SECRET
 
   - script: |
       set -euo pipefail
@@ -115,11 +136,20 @@ steps:
 
   - script: |
       set -euo pipefail
-      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
-      # curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-      #   -H "Authorization: Bearer $OPENSECOPS_API_KEY" \
-      #   "https://${SECOPS_HOST}:${SECOPS_PORT}/api/ci/upload" \
-      #   -F "product_name=$(Build.Repository.Name)" -F "file=@results.sarif"
+      # Your existing steps go here. The overlay is already up, so reach the
+      # app by its real hostname pinned to the overlay address:
+      #
+      #   ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      #   curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+      #     -H "Authorization: Bearer $OPENSECOPS_API_KEY" \
+      #     "https://${SECOPS_HOST}:${SECOPS_PORT}/<endpoint>" \
+      #     -F "project=$(Build.Repository.Name)" -F "file=@results.sarif"
+      #
+      # NOTE: the ingest endpoint is left as a placeholder on purpose. Probing
+      # the running app found only a web UI (/ and /login answer, /health
+      # returns JSON); /api/*, /openapi.json and /swagger.json all 404. So no
+      # scan/SBOM upload API is published yet. Fill this in once it exists
+      # rather than shipping a path that has never returned anything.
       echo "existing steps run here, talking to OpenSecOps over the overlay"
     displayName: "Existing job (talks to OpenSecOps over the overlay)"
     env:

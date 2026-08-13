@@ -143,48 +143,57 @@ shred -u ./ci-takim.json ./ci-takim.jwt
 
 ---
 
-## 5. Secret'ı Azure DevOps'a eklemek (otomatik değildir)
+## 5. Kimliği Azure DevOps'a koymak
 
-**Secret kendiliğinden oluşmaz.** YAML dosyasını repoya koymak yetmez; değişkeni
-Azure tarafında elle tanımlamanız gerekir. İki yol var:
+**Kimlik bir pipeline değişkeni OLAMAZ.** Azure değişkenleri **4096 karakterle**
+sınırlıdır; kayıtlı kimliğin base64'ü **10.908** karakter. Sıkıştırmak da
+kurtarmaz (gzip+base64 hâlâ **5.524**).
 
-**Tek pipeline için:** Pipeline > Edit > Variables > New variable
-- Name: `ZITI_CI_IDENTITY_B64`
-- Value: `base64 -w0 <kimlik>.json` çıktısı
-- **Keep this value secret** kutusunu işaretleyin
+| Yol | Boyut | Sonuç |
+|---|---|---|
+| base64, tek değişken | 10.908 | **Reddedilir** |
+| gzip+base64, tek değişken | 5.524 | **Reddedilir** |
+| 2 parçaya bölmek | 2.762 ×2 | Çalışır ama kırılgan, birleştirme mantığı gerekir |
+| **Secure Files** | sınırsız | **Önerilen** — Microsoft'un bu durum için önerisi |
+| Azure Key Vault | sınırsız | En sağlam; ek kurulum ister |
 
-**Birden çok pipeline için (önerilen):** Pipelines > Library > Variable group
-oluşturun, değişkeni oraya koyup kilit simgesiyle secret yapın, sonra YAML'a
-ekleyin:
+### Secure Files ile
+
+1. Pipelines > Library > **Secure files** > **+ Secure file**
+2. Kayıtlı kimlik JSON'unu **`ci-identity.json`** adıyla yükleyin
+3. Dosyaya tıklayıp **Pipeline permissions** altında bu pipeline'a yetki verin
+
+Pipeline onu `DownloadSecureFile@1` ile alır; hazır YAML'da tanımlıdır.
+
+> Yetki verilmezse koşum **"Secure file not found"** ile düşer. Hazır YAML bunu
+> önden yakalar ve nereye yükleyeceğinizi yazar (test edildi).
+
+### Neden JWT'yi secret yapmıyoruz
+
+JWT kısa (~1.360 karakter, limite sığar) ama **tek kullanımlıktır ve ~3 saat
+geçerlidir**. Her koşumda yenisini üretmek gerekirdi — CI için uygun değil.
+Uzun ömürlü kimlik bilgisi, kayıttan sonra oluşan JSON'dur.
+
+### Variable group hâlâ gerekli
+
+Kimlik Secure Files'a taşındı, ama diğer değerler grupta kalır:
+
+| Değer | Yer | Neden |
+|---|---|---|
+| Uygulama API anahtarları | **Grup** (secret) | Kısa sır, pipeline'lar arası paylaşılan |
+| Overlay adı/portu, uygulama FQDN'i | **Grup** | Pipeline'lar arası sabit |
+| `$(Build.Repository.Name)`, `$(Build.BuildNumber)` | **Pipeline YAML** | Koşuma özel. Gruplar statiktir; içine konan `$(...)` makrosunun genişleyeceği garanti değildir |
+| Ziti kimliği | **Secure Files** | 4096 sınırını aşıyor |
+
+> **Sözdizimi tuzağı:** grup referansı **liste** biçimi gerektirir; aynı blokta
+> `KEY: value` eşleme biçimiyle karıştırılamaz.
 
 ```yaml
 variables:
-  - group: ziti-ci
+  - group: ZitiCIVars
   - name: ZITI_INTERCEPT_DNS
     value: "<overlay-adi>"
 ```
-
-> **Not:** Secret değişkenler script adımlarına **otomatik geçmez**. Adımın
-> `env:` bloğunda açıkça eşlenmeleri gerekir — hazır YAML'da bu yapılmıştır.
-> Bu, secret'ların yanlışlıkla alt süreçlere sızmasını önleyen bilinçli bir
-> Azure davranışıdır.
-
-### Yanlış kurulum sessizce başarısız olmaz
-
-Değişken tanımlı değilse Azure `$(ZITI_CI_IDENTITY_B64)` metnini **olduğu gibi**
-geçirir. Kontrol edilmezse `base64` kısa bir bozuk dosya yazar ve koşum çok
-sonra anlaşılmaz bir kayıt hatasıyla ölür. Pipeline bu yüzden dört durumu
-önden ayırt eder (hepsi test edildi):
-
-| Durum | Mesaj |
-|---|---|
-| Değişken yok | `ZITI_CI_IDENTITY_B64 is not set.` |
-| Makro çözülmemiş | `ZITI_CI_IDENTITY_B64 is not set.` |
-| Bozuk base64 | `ZITI_CI_IDENTITY_B64 is not valid base64.` |
-| JWT konmuş (kayıtlı JSON yerine) | `no ztAPI field` + kayıt komutu |
-
-Son satır en sık yapılan hatadır: **JWT tek kullanımlıktır**, uzun ömürlü
-kimlik bilgisi kayıttan sonra oluşan **JSON**'dur.
 
 ---
 
