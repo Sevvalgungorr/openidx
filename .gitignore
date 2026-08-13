@@ -120,3 +120,7 @@ PROJECT_STATUS.md
 REBUILD-COMMANDS.txt
 docs/mobile-ziti-pam-live-infra-runbook.md
 tools/minttok/
+
+# Python bytecode
+__pycache__/
+*.pyc

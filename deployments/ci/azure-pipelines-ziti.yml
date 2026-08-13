@@ -173,7 +173,32 @@ steps:
       # Diagnostics, not a gate: shows severities, findings missing
       # extra.metadata, and any diagnostic sections -- the three things that
       # make an importer raise and answer 500 with no detail.
-      python3 deployments/ci/semgrep-report-shape.py "$SCAN_FILE"
+      python3 - "$SCAN_FILE" <<'SHAPE'
+      import json, sys
+      KNOWN = {"CRITICAL", "ERROR", "HIGH", "WARNING", "MEDIUM", "LOW", "INFO"}
+      try:
+          report = json.load(open(sys.argv[1], encoding="utf-8"))
+      except (OSError, ValueError) as exc:
+          print(f"  could not read report: {exc}")
+          sys.exit(0)
+      results = report.get("results") or []
+      print(f"  findings: {len(results)}")
+      sev = sorted({(i.get("extra") or {}).get("severity") for i in results if (i.get("extra") or {}).get("severity")})
+      print(f"  severities: {', '.join(sev) if sev else 'none'}")
+      unknown = [s for s in sev if s.upper() not in KNOWN]
+      if unknown:
+          print(f"  UNKNOWN severities (may fail the import): {', '.join(unknown)}")
+      missing = [i.get("check_id", "?") for i in results if not (i.get("extra") or {}).get("metadata")]
+      print(f"  findings without extra.metadata: {len(missing)}")
+      for check_id in missing[:5]:
+          print(f"   - {check_id}")
+      if missing:
+          print("  a parser that indexes extra.metadata directly will raise on these")
+      extra = [k for k in report if k not in ("version", "results", "errors", "paths")]
+      if extra:
+          print(f"  diagnostic sections present: {', '.join(extra)}")
+          print("  set SLIM_REPORT=true to drop them if the importer rejects the file")
+      SHAPE
       # Semgrep emits diagnostic sections (time, engine_requested, skipped
       # rules) alongside results. They are large and some importers choke on
       # them. Keeping only the fields a parser needs is opt-in, because
