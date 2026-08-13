@@ -46,6 +46,25 @@ jobs:
           fi
           bash scripts/check-no-internal-topology.sh --range "$base"
 
+  # `bash -n` cannot catch this class. A comment in run-fault-matrix.sh lost
+  # its leading '#' during an edit; the file stayed syntactically VALID, the
+  # suite still printed 6/6, and the only trace was one line on stderr. It
+  # survived two merged PRs. A script that reports success while silently
+  # running garbage is the dangerous shape, so it gets a permanent guard.
+  shell-prose:
+    name: No prose running as shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify the checker itself works
+        # Mutation test: it must go red on the real defect and stay green on
+        # working code (an early version flagged `rm -rf build dist`, and a
+        # checker that flags a working line just teaches --no-verify).
+        run: bash scripts/check-shell-prose.test.sh
+      - name: Scan shell scripts
+        run: bash scripts/check-shell-prose.sh
+
   # Conditional: Skip CI for documentation-only changes
   detect-changes:
     runs-on: ubuntu-latest
