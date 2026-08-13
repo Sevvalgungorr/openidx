@@ -132,10 +132,11 @@ steps:
       # looking. Capture the status and say which layer failed.
       hbody="$(mktemp)"
       hcode=000
-      for attempt in $(seq 1 12); do
+      for attempt in $(seq 1 40); do
         hcode="$(curl -s -o "$hbody" -w '%{http_code}' \
           --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-          "https://${SECOPS_HOST}:${SECOPS_PORT}/health")"
+          "https://${SECOPS_HOST}:${SECOPS_PORT}/health" || true)"
+        hcode="${hcode:-000}"
         [ "$hcode" = 200 ] && break
         sleep 2
       done
@@ -172,11 +173,18 @@ steps:
       # from the overlay). A single probe therefore fails ~93% of the time even
       # though the API is reachable. Retry before concluding anything: this is
       # a read-only GET, so retrying it is free of side effects.
+      #
+      # WHY 40 AND NOT 12: at a 7% success rate, 12 tries still miss 0.93^12 =
+      # 42% of the time. I first wrote 12 and it passed 5/5 by luck against the
+      # live origin; a local fault-injection run at the measured rate failed it.
+      # 40 tries miss 5%, and the loop exits as soon as one succeeds, so the
+      # healthy case costs nothing.
       code=000
-      for attempt in $(seq 1 12); do
+      for attempt in $(seq 1 40); do
         code="$(curl -s -o /dev/null -w '%{http_code}' \
           --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
-          "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers")"
+          "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers" || true)"
+        code="${code:-000}"
         case "$code" in 200|401|403) break ;; esac
         sleep 2
       done
