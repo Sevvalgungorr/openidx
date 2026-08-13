@@ -113,3 +113,18 @@ for spec in "healthy|0|reachable over the overlay" \
   run "$m" "$e" "$n" "$st" && pass=$((pass+1))
 done
 echo "FAULT_MATRIX=$pass/$tot"
+# Record the result so a scoreboard can read it WITHOUT re-running a 3-minute
+# matrix on every pass. Three deliberate choices:
+#  - a TIMESTAMP, because a stale pass is a false green and the reader must
+#    age it out rather than trust it forever;
+#  - the COMMIT, because a pass proves nothing about a different tree;
+#  - a FIXED /tmp path, not $TMPDIR. The first version honoured TMPDIR, which
+#    is set in some shells, so writer and reader silently disagreed and the
+#    scoreboard saw no evidence at all. It failed CLOSED (0, not a pass), so
+#    the aging rule did its job -- but a metric that depends on the caller''"'"'s
+#    environment is not a metric. FAULT_MATRIX_RESULT still overrides.
+RESULT_FILE="${FAULT_MATRIX_RESULT:-/tmp/cifault/last-result}"
+mkdir -p "$(dirname "$RESULT_FILE")" 2>/dev/null \
+  && printf '%s %s/%s %s\n' "$(date -u +%FT%TZ)" "$pass" "$tot" "$(git rev-parse --short HEAD 2>/dev/null || echo nogit)" \
+     > "$RESULT_FILE"
+[ "$pass" = "$tot" ]

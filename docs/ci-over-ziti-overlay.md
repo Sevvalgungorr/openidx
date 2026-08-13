@@ -387,6 +387,13 @@ bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=
 bash deployments/ci/faulttest/run-fault-matrix.sh --stat 8   # bilgi -> FLAP_STAT=n/8
 ```
 
+Matris sonucu ayrıca `/tmp/cifault/last-result` dosyasına **zaman ve commit
+damgasıyla** yazılır (`FAULT_MATRIX_RESULT` ile değiştirilebilir). Böylece bir
+skorbord 3 dakikalık matrisi her seferinde yeniden koşmadan sonucu okuyabilir.
+Önbelleklenmiş kanıt tehlikelidir, o yüzden okuyan taraf **eskitmelidir**:
+6 saatten eski ya da başka bir commit'e ait sonuç `STALE` / `OTHER_SHA` sayılır
+ve **geçer not değildir**. Kanıt yoksa sonuç *bilinmiyor*, "başarılı" değil.
+
 Matris, adımı **ayrıştırılmış YAML'den çıkarıp gerçekten çalıştırır**; kaynak
 dosyada metin araması yapmaz. Böylece YAML'e gömülü kabuk kodunun kendisi
 sınanır.
