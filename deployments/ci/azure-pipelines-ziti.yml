@@ -148,16 +148,44 @@ steps:
 
   - script: |
       set -euo pipefail
-      [ -f "$SCAN_FILE" ] || { echo "no scan result at $SCAN_FILE; skipping"; exit 0; }
+      # A missing scan file is not an error, but it MUST NOT look like a
+      # successful upload: say so loudly, because a green step with no upload
+      # is the easiest way to believe results are being published when they
+      # are not.
+      if [ ! -f "$SCAN_FILE" ]; then
+        echo "NOT UPLOADED: no scan file at $SCAN_FILE"
+        echo "Point SCAN_FILE at the report your scanner produces."
+        exit 0
+      fi
+      echo "uploading $(wc -c <"$SCAN_FILE") bytes from $SCAN_FILE"
       # --resolve keeps the real hostname on TLS SNI and the Host header while
       # the connection itself goes over the overlay.
       ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
-      curl -sSf --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+      # Capture body and status separately: -sSf alone hides the response, so
+      # an API that answers 200 while rejecting the payload would pass silently.
+      # AUTH SCHEME IS UNVERIFIED. Probing the live API without a valid key
+      # cannot distinguish them: "Token X", "Bearer X", "ApiKey X" and the
+      # X-Api-Key header all answer 401 {"detail":"Invalid or missing
+      # credentials"}. If the first real run returns 401, try Bearer or
+      # X-Api-Key here -- the failure message below says so explicitly rather
+      # than leaving you to guess.
+      out="$(mktemp)"
+      code="$(curl -s -o "$out" -w '%{http_code}' \
+        --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
         -H "Authorization: Token ${OPENSECOPS_API_KEY}" \
         -F "product_id=${SECOPS_PRODUCT_ID}" \
         -F "file=@${SCAN_FILE}" \
-        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/upload"
-      echo "scan uploaded for product ${SECOPS_PRODUCT_ID}"
+        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/upload")"
+      echo "HTTP $code"
+      cat "$out"; echo
+      case "$code" in
+        2*) echo "UPLOADED: product ${SECOPS_PRODUCT_ID}" ;;
+        401|403) echo "NOT UPLOADED: rejected ($code)."
+                 echo "Check OPENSECOPS_API_KEY, and try 'Bearer' or the"
+                 echo "X-Api-Key header instead of 'Token' -- the scheme could"
+                 echo "not be confirmed without a valid key."; exit 1 ;;
+        *) echo "NOT UPLOADED: HTTP $code"; exit 1 ;;
+      esac
     displayName: "OpenSecOps: upload scan results over the overlay"
     env:
       SCAN_FILE: "$(Build.SourcesDirectory)/results.sarif"

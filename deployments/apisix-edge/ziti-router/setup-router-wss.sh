@@ -15,7 +15,11 @@ ROUTER_NAME="${ROUTER_NAME:-oidx-ziti-router}"
 VOLUME="${VOLUME:-oidx_ziti_router_cfg}"
 IMAGE="${IMAGE:-docker.io/openziti/ziti-router:latest}"
 CTRL_ADDR="${CTRL_ADDR:-ziti-controller.localtest.me}"
-ROUTER_ADDR="${ROUTER_ADDR:-ziti-router.localtest.me}"
+# NAT-facing router advertise FQDN. Must be publicly resolvable + TCP/3022
+# forwarded to this host so off-network SDK/tunneler/mobile clients can reach
+# the data plane (the internal ziti-router.localtest.me → 127.0.0.1 does not
+# work over NAT). Reuses the browzer.tdv.org name + *.tdv.org cert.
+ROUTER_ADDR="${ROUTER_ADDR:-browzer.tdv.org}"
 # the real *.tdv.org cert/key presented on the WSS listener (browser-trusted)
 TDV_CERT="${TDV_CERT:-/home/cmit/oidx-runtime/oidx-tls/tdv-fullchain.pem}"
 TDV_KEY="${TDV_KEY:-/home/cmit/oidx-runtime/oidx-tls/tdv-key.pem}"

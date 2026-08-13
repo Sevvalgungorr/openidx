@@ -21,7 +21,11 @@ link:
   listeners:
     - binding:          transport
       bind:             tls:0.0.0.0:3022
-      advertise:        tls:ziti-router.localtest.me:3022
+      # NAT-facing advertise: clients reach the router data plane at the public
+      # FQDN (browzer.tdv.org), NOT the internal localtest.me name (→127.0.0.1).
+      # Reuses the existing browzer.tdv.org DNS + *.tdv.org cert (SAN below);
+      # only TCP/3022 needs forwarding to this host.
+      advertise:        tls:browzer.tdv.org:3022
       options:
         outQueueSize:   4
 
@@ -30,7 +34,10 @@ listeners:
   - binding: edge
     address: tls:0.0.0.0:3022
     options:
-      advertise: ziti-router.localtest.me:3022
+      # SDK / tunneler / mobile edge — advertise the public NAT FQDN so an
+      # enrolled client off-network is sent to browzer.tdv.org:3022, not to
+      # itself (localtest.me → 127.0.0.1). Forward TCP/3022 to this host.
+      advertise: browzer.tdv.org:3022
       connectTimeoutMs: 5000
       getSessionTimeout: 60
   - binding: edge
