@@ -189,6 +189,20 @@ steps:
         exit 0
       fi
       echo "uploading $(wc -c <"$SCAN_FILE") bytes from $SCAN_FILE"
+      # scan_type is required and is an ENUM, not the human-readable parser
+      # name: sending the display name ("Semgrep JSON Report") makes the
+      # parser lookup miss. Rather than hard-code a guess, ask the API which
+      # parsers it supports and pick the semgrep one. If that fails, fall back
+      # to SCAN_TYPE so a changed listing never blocks the upload.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      discovered="$(curl -s --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+        -H "Authorization: Bearer ${OPENSECOPS_API_KEY}" \
+        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers" \
+        | tr ',' '\n' | grep -oiE '"[A-Za-z0-9_]*SEMGREP[A-Za-z0-9_]*"' \
+        | tr -d '"' | head -1 || true)"
+      scan_type="${discovered:-$SCAN_TYPE}"
+      [ -n "$discovered" ] && echo "scan_type discovered from API: $scan_type" \
+                           || echo "scan_type from SCAN_TYPE variable: $scan_type"
       # --resolve keeps the real hostname on TLS SNI and the Host header while
       # the connection itself goes over the overlay.
       ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
@@ -203,6 +217,7 @@ steps:
         --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
         -H "Authorization: Bearer ${OPENSECOPS_API_KEY}" \
         -F "product_id=${SECOPS_PRODUCT_ID}" \
+        -F "scan_type=${scan_type}" \
         -F "file=@${SCAN_FILE}" \
         "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/upload")"
       echo "HTTP $code"
@@ -230,6 +245,10 @@ steps:
         401|403) echo "NOT UPLOADED: rejected ($code)."
                  echo "The key is missing, wrong, or lacks scope for this"
                  echo "product. Generate one under Settings > API Keys."; exit 1 ;;
+        422) echo "NOT UPLOADED: the API rejected the form fields ($code)."
+             echo "See the body above for the missing/invalid field. If it is"
+             echo "scan_type, set SCAN_TYPE to a value from /api/imports/parsers"
+             echo "-- it is an enum, not the display name."; exit 1 ;;
         *) echo "NOT UPLOADED: HTTP $code"; exit 1 ;;
       esac
     displayName: "OpenSecOps: upload scan results over the overlay"
@@ -238,5 +257,7 @@ steps:
       # Set to "true" once you expect findings, so a report that silently
       # parses to nothing fails the build instead of passing quietly.
       FAIL_ON_ZERO_FINDINGS: "false"
+      # Fallback only: the enum is normally discovered from /api/imports/parsers.
+      SCAN_TYPE: "SEMGREP"
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
       OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group
