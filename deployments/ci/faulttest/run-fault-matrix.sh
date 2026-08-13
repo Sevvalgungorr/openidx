@@ -18,6 +18,13 @@ cd "$(dirname "$0")/../../.." || exit 1
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 PORT=19311
+# A minimal but realistic Semgrep report: one finding WITHOUT extra.metadata,
+# which is the shape that makes a strict importer raise.
+SCAN_FILE="$WORK/semgrep.json"
+cat > "$SCAN_FILE" <<'JSON'
+{"version":"1.173.0","results":[{"check_id":"local.rule.a","extra":{"severity":"ERROR"}}],"errors":[],"paths":{},"time":{}}
+JSON
+export SCAN_FILE
 extract(){ python3 - "$1" <<'PY'
 import yaml,sys
 d=yaml.safe_load(open('deployments/ci/azure-pipelines-ziti.yml'))
@@ -30,24 +37,32 @@ def st(o):
         for v in o: yield from st(v)
 s=list(st(d))[0]['script']
 s=s.replace('ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk \'{print $1}\' | head -1)"','ip=127.0.0.1')
-print('SECOPS_HOST=localhost\nSECOPS_PORT='+__import__('os').environ['PORT']+'\nZITI_INTERCEPT_DNS=secops.ziti')
+import os
+# The upload step needs a report, a product id and a key. The key is a real
+# secret in Azure and is NOT available here, which is exactly why the live
+# import could never be verified from this box: the fake origin supplies one
+# so the pipeline's REACTION to 500 is still measurable.
+print('SECOPS_HOST=localhost\nSECOPS_PORT='+os.environ['PORT']+'\nZITI_INTERCEPT_DNS=secops.ziti')
+print('SCAN_FILE='+os.environ.get('SCAN_FILE','/dev/null'))
+print('SECOPS_PRODUCT_ID=1\nOPENSECOPS_API_KEY=fake-key-for-local-fault-injection')
+print('SCAN_TYPE=semgrep\nFAIL_ON_ZERO_FINDINGS=false')
 print(s)
 PY
 }
 # the step uses https; the fake origin is http, so rewrite the scheme
 prep(){ extract "$1" | sed 's#https://\${SECOPS_HOST}#http://${SECOPS_HOST}#g; s#--resolve [^ ]*##g' ; }
 
-run(){ # mode expected_rc must_contain
-  local mode="$1" exp="$2" needle="$3"
+run(){ # mode expected_rc must_contain [step]
+  local mode="$1" exp="$2" needle="$3" step="${4:-connectivity}"
   MODE=$mode python3 "$(dirname "$0")/fake-origin.py" $PORT & local pid=$!
   sleep 0.6
-  PORT=$PORT prep connectivity > "$WORK/step.sh"
+  PORT=$PORT prep "$step" > "$WORK/step.sh"
   bash "$WORK/step.sh" >"$WORK/out.txt" 2>&1; local rc=$?
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   local okrc=0 okmsg=0
   [ "$rc" = "$exp" ] && okrc=1
   grep -qi "$needle" "$WORK/out.txt" && okmsg=1
-  printf "%-10s rc=%s(bekl %s)%s  mesaj[%s]%s\n" "$mode" "$rc" "$exp" \
+  printf "%-10s rc=%s(bekl %s)%s  mesaj[%s]%s\n" "$mode${4:+/$4}" "$rc" "$exp" \
     "$([ $okrc = 1 ] && echo ' OK' || echo ' HATA')" "$needle" \
     "$([ $okmsg = 1 ] && echo ' OK' || echo ' HATA')"
   [ $okrc = 1 ] && [ $okmsg = 1 ] && return 0 || { sed 's/^/      /' "$WORK/out.txt"|tail -4; return 1; }
@@ -56,8 +71,10 @@ pass=0; tot=0
 for spec in "healthy|0|reachable over the overlay" \
             "dead_api|1|APPLICATION PROBLEM" \
             "flapping|0|API routed" \
-            "no_route|1|OVERLAY PROBLEM"; do
-  IFS='|' read -r m e n <<<"$spec"; tot=$((tot+1))
+            "no_route|1|OVERLAY PROBLEM" \
+            "api_500|1|SERVER-side exception|upload" \
+            "healthy|0|findings parsed|upload"; do
+  IFS='|' read -r m e n st <<<"$spec"; tot=$((tot+1))
   if [ "$m" = no_route ]; then
     PORT=$PORT prep connectivity > "$WORK/step.sh"   # nothing listening
     bash "$WORK/step.sh" >"$WORK/out.txt" 2>&1; rc=$?
@@ -66,6 +83,6 @@ for spec in "healthy|0|reachable over the overlay" \
     else echo "no_route   HATA rc=$rc"; tail -3 "$WORK/out.txt"|sed 's/^/      /'; fi
     continue
   fi
-  run "$m" "$e" "$n" && pass=$((pass+1))
+  run "$m" "$e" "$n" "$st" && pass=$((pass+1))
 done
 echo "FAULT_MATRIX=$pass/$tot"

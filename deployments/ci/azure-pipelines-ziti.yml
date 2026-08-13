@@ -132,7 +132,8 @@ steps:
       # looking. Capture the status and say which layer failed.
       hbody="$(mktemp)"
       hcode=000
-      for attempt in $(seq 1 40); do
+      tries=40
+      for attempt in $(seq 1 "$tries"); do
         hcode="$(curl -s -o "$hbody" -w '%{http_code}' \
           --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
           "https://${SECOPS_HOST}:${SECOPS_PORT}/health" || true)"
@@ -180,7 +181,8 @@ steps:
       # 40 tries miss 5%, and the loop exits as soon as one succeeds, so the
       # healthy case costs nothing.
       code=000
-      for attempt in $(seq 1 40); do
+      tries=40
+      for attempt in $(seq 1 "$tries"); do
         code="$(curl -s -o /dev/null -w '%{http_code}' \
           --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
           "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers" || true)"
@@ -190,7 +192,7 @@ steps:
       done
       case "$code" in
         200|401|403) echo "API routed (/api/imports/parsers -> $code)" ;;
-        5*) echo "API not routed (/api/imports/parsers -> $code after 12 tries)"
+        5*) echo "API not routed (/api/imports/parsers -> $code after $tries tries)"
             echo "The origin answered, so the OVERLAY IS WORKING. Its backend"
             echo "pool is unhealthy. This is for the OpenSecOps owners."
             exit 1 ;;
