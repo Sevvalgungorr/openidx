@@ -65,6 +65,36 @@ jobs:
       - name: Scan shell scripts
         run: bash scripts/check-shell-prose.sh
 
+  # The fault matrix used to run only on a developer's machine, which is the
+  # same defect the prose checker had: a gate nobody runs cannot fail, so the
+  # pipeline's error handling could rot silently. It needs no Ziti, no network
+  # and no secrets -- it drives the REAL pipeline step (extracted from the
+  # Azure YAML) against a local fake origin -- so it belongs in CI.
+  # Deliberately outside the docs-only skip: this file is the thing it guards.
+  fault-matrix:
+    name: Pipeline reacts correctly to every failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PyYAML
+        # The step is extracted from the pipeline YAML rather than copied, so
+        # a drift between what CI tests and what Azure runs is impossible.
+        run: python3 -m pip install --quiet pyyaml
+      - name: Run the fault matrix
+        # Fails if ANY case fails: wrong exit code or wrong diagnosis. The
+        # message matters as much as the code -- blaming the wrong layer sends
+        # the on-call to another team.
+        run: |
+          out="$(bash deployments/ci/faulttest/run-fault-matrix.sh 2>&1)"
+          echo "$out"
+          res="$(echo "$out" | grep -o 'FAULT_MATRIX=[0-9]*/[0-9]*' | tail -1)"
+          pass="${res#FAULT_MATRIX=}"; tot="${pass#*/}"; pass="${pass%/*}"
+          # An empty matrix must not pass: 0/0 is not evidence.
+          if [ -z "$tot" ] || [ "$tot" -lt 1 ] || [ "$pass" != "$tot" ]; then
+            echo "::error::fault matrix failed: ${res:-no result}"; exit 1
+          fi
+
   # Conditional: Skip CI for documentation-only changes
   detect-changes:
     runs-on: ubuntu-latest
