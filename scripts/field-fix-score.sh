@@ -41,8 +41,18 @@ chk RESOLVE_GUARDS "$r/$g" "hepsi" "$([ "$g" -gt 0 ] && [ "$r" = "$g" ] && echo 
 
 # 5. Tool installs must not die numerically. Under `set -euo pipefail` a
 #    failed download exits with curl's code and prints nothing at all.
-i="$(grep -c 'SYFT NOT INSTALLED' deployments/ci/azure-pipelines-ziti.yml || true)"
-chk INSTALL_GUARDS "$i" ">=2" "$([ "$i" -ge 2 ] && echo 1 || echo 0)"
+#    Every tool this pipeline installs must say so by name when it is
+#    missing, otherwise a scan that never ran is indistinguishable from a
+#    clean one. Counting distinct tools, not messages: adding a second
+#    message for one tool must not paper over a tool with none.
+i="$(grep -oE '(SYFT|SEMGREP|TUNNELLER) NOT INSTALLED' deployments/ci/azure-pipelines-ziti.yml \
+  | sort -u | wc -l)"
+chk INSTALL_GUARDS "$i" ">=3" "$([ "$i" -ge 3 ] && echo 1 || echo 0)"
+
+#    Scanners installed with `pip install --user` break on modern images
+#    (PEP 668 refuses it outright). Measured on python3.12 in this box.
+v="$(grep -c 'pip install --quiet --user' deployments/ci/azure-pipelines-ziti.yml || true)"
+chk PEP668_UNSAFE_PIP "$v" 0 "$([ "$v" = 0 ] && echo 1 || echo 0)"
 
 # 6. A scan of zero files must be fatal (it looks exactly like clean code).
 z="$(grep -c 'NOT SCANNED' deployments/ci/azure-pipelines-ziti.yml || true)"

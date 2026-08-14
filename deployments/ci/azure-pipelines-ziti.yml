@@ -53,10 +53,23 @@ steps:
   - script: |
       set -euo pipefail
       url="https://github.com/openziti/ziti-tunnel-sdk-c/releases/download/v${ZITI_TUNNELER_VERSION}/ziti-edge-tunnel-Linux_x86_64.zip"
-      # Fail on the download itself rather than on a later confusing unzip error.
-      curl -sSLf "$url" -o zet.zip
+      # Measured: a wrong ZITI_TUNNELER_VERSION exits 22 and prints only
+      # `curl: (22)`. Under `set -euo pipefail` the step then stops with no
+      # explanation of WHICH artifact was missing or what to change.
+      if ! curl -sSLf "$url" -o zet.zip; then
+        echo "TUNNELLER NOT INSTALLED: could not download"
+        echo "  $url"
+        echo "Check that ZITI_TUNNELER_VERSION=${ZITI_TUNNELER_VERSION} is a"
+        echo "published release, and that the agent can reach github.com."
+        echo "Without the tunneller there is NO overlay, so nothing was scanned."
+        exit 1
+      fi
       sudo apt-get update -y >/dev/null && sudo apt-get install -y unzip >/dev/null
-      unzip -o zet.zip -d /tmp/zet >/dev/null
+      if ! unzip -o zet.zip -d /tmp/zet >/dev/null; then
+        echo "TUNNELLER NOT INSTALLED: the download is not a valid zip."
+        echo "This usually means the URL returned an HTML error page."
+        exit 1
+      fi
       sudo install /tmp/zet/ziti-edge-tunnel /usr/local/bin/ziti-edge-tunnel
       ziti-edge-tunnel version
     displayName: "Ziti: install tunneller"
@@ -230,8 +243,25 @@ steps:
   # pipeline is written to avoid.
   - script: |
       set -euo pipefail
-      python3 -m pip install --quiet --user semgrep
-      export PATH="$HOME/.local/bin:$PATH"
+      # Measured on a python3.12 image: `pip install --user` is refused
+      # outright (PEP 668, externally-managed-environment) and the step dies
+      # with a wall of pip text but no statement that the SCANNER is missing.
+      # A venv is immune to that policy, so it is the default path here.
+      if ! command -v semgrep >/dev/null 2>&1; then
+        if ! python3 -m venv "$(Agent.TempDirectory)/semgrep-venv" >/dev/null 2>&1 \
+           || ! "$(Agent.TempDirectory)/semgrep-venv/bin/pip" install --quiet semgrep; then
+          echo "SEMGREP NOT INSTALLED: could not create a venv or install into it."
+          echo "The agent needs python3-venv and egress to pypi.org."
+          echo "NOTHING WAS SCANNED, so a green build here would be meaningless."
+          exit 1
+        fi
+        export PATH="$(Agent.TempDirectory)/semgrep-venv/bin:$PATH"
+      fi
+      if ! command -v semgrep >/dev/null 2>&1; then
+        echo "SEMGREP NOT INSTALLED: install reported success but semgrep is"
+        echo "not on PATH. NOTHING WAS SCANNED."
+        exit 1
+      fi
       semgrep --version
       # Where to scan. SCAN_PATH defaults to the repo root, but a monorepo can
       # point it at one project. The path is reported so a report that covers
