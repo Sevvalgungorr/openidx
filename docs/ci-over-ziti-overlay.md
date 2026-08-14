@@ -391,7 +391,7 @@ doğru katmanı mı suçluyor, yoksa yanlış ekibi mi arattırıyor.
 
 ```bash
 bash scripts/ci-overlay-score.sh                       # skor  -> SCORE=15/15
-bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=11/11
+bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=14/14
 bash deployments/ci/faulttest/run-fault-matrix.sh --stat 8   # bilgi -> FLAP_STAT=n/8
 ```
 
@@ -504,13 +504,57 @@ Bir test, kırılmış kodu **kırmızıya çevirebildiği** ölçüde testtir:
 |---|---|
 | katman mesajını sil | 4/4 → 3/4 |
 | yeniden denemeyi kaldır | `flapping` kırmızı |
-| 500 mesajını genelleştir | 11/11 → 10/11 |
-| `tries` 40 → 12 | 11/11 → **10/11** (ölçüldü) |
+| 500 mesajını genelleştir | tam → bir eksik |
+| `tries` 40 → 12 | tam → **bir eksik** (ölçüldü) |
 | 401 dalı `exit 1` → `exit 0` | `bad_key` **HATA** (ölçüldü) |
 | sıfır-bulgu kapısı `if false` | `zero_find_strict` **HATA** (ölçüldü) |
 | 'rapor yok' `exit 0` → `exit 1` | `no_report` **HATA** (ölçüldü) |
 | 422 dalını sil | `bad_type` mesajı **HATA** (ölçüldü) |
 | kayıp `#`'i geri koy | `bash -n` **geçiyor**, prose kontrolü **yakalıyor** |
+| bulgu karşılaştırmasını sil | `mismatch` + `mismatch_strict` **HATA**, `healthy` temiz (ölçüldü) |
+| isim-çözümleme korumasını kaldır | 14/14 → **13/14**, yalnızca `no_resolve` düşüyor (ölçüldü) |
+
+### 12.0 SBOM: kodumuz değil, taşıdığımız bağımlılıklar
+
+Semgrep **bizim kodumuzu** okur; sevk ettiğimiz bağımlılıklar hakkında hiçbir
+şey söylemez — CVE'lerin çoğu ise orada yaşar. OpenSecOps `/api/imports/sbom`
+kazandığı için pipeline artık bulguların yanında bir **bileşen envanteri** de
+gönderebiliyor (`UPLOAD_SBOM=true` ile açılır, varsayılan kapalı).
+
+Yazmadan **önce** canlı API'ye overlay üzerinden ölçüm yapıldı:
+
+| endpoint | yanıt | sonuç |
+|---|---|---|
+| `/api/imports/sbom` | GET'e **405** | var, POST bekliyor → adım yazıldı |
+| `/api/imports/archive` | **404** | **yok** → bağlanmadı |
+
+İkincisini tahminle eklemek, her koşuda 404 alan ve `|| true` yüzünden hep
+sağlıklı görünen bir adım üretirdi.
+
+Ölçülen davranış (bu makineden, gerçek overlay üzerinden):
+
+| durum | sonuç |
+|---|---|
+| syft ile envanter (openidx deposu) | **2303 bileşen** |
+| bağımlılığı olmayan depo | `components inventoried: 0` + gürültülü uyarı |
+| geçersiz anahtar | HTTP **401**, sebebi yazılı, `rc=1` |
+| endpoint kaybolursa | HTTP **404**, "API değişti", `rc=1` |
+
+Sıfır bileşenli SBOM, sıfır dosyalık taramanın aynı tuzağı: temiz yüklenir ve
+hiçbir şey bildirmez. Bu yüzden varsayılan olarak **gürültülü**, yalnızca
+`FAIL_ON_EMPTY_SBOM=true` ile ölümcül.
+
+### 12.0.1 Sessizce ölen adım: isim çözülmezse
+
+Dört adım da `ip="$(getent hosts ...)"` ile başlıyordu. `set -euo pipefail`
+altında getent başarısız olduğunda adım **tek kelime etmeden** ölüyordu — ve
+bu, çalışma zamanının **en olası** arızası. Bu makinede birebir gözlendi:
+tünel ayakta, `/health` 200, ama `secops.ziti` çözülmüyor ve SBOM adımı
+`RC=0` ile sessizce bitiyordu.
+
+Artık dördü de sebebi söyleyip `rc=1` veriyor, ve bu matriste `no_resolve`
+vakası olarak kalıcı: korumayı kaldırınca **14/14 → 13/14**, yalnızca kendi
+vakası düşüyor.
 
 ### 12.1 `bash -n`'in yakalayamadığı sınıf
 

@@ -122,7 +122,21 @@ steps:
       # Host header carry the real name while the connection still goes through
       # the tunneller. Without this the origin answers 404 (wrong Host) or the
       # handshake fails outright, which looks like a broken service.
-      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      # `set -euo pipefail` + a failing getent kills the step with NO message
+      # at all: the overlay name not resolving is by far the most likely
+      # runtime failure here, and it was the one failure that said nothing.
+      # Measured: with the tunnel up but the name unresolved, the step exited
+      # silently right here. `|| true` keeps the pipeline alive so the cause
+      # can be reported instead of guessed.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" 2>/dev/null | awk '{print $1}' | head -1 || true)"
+      if [ -z "$ip" ]; then
+        echo "OVERLAY NAME DID NOT RESOLVE: $ZITI_INTERCEPT_DNS"
+        echo "The tunneller is not intercepting this name. Either the identity"
+        echo "has no access to the service, or the tunneller is not running."
+        echo "Without it, --resolve would be malformed and curl would reach"
+        echo "the wrong host (or nothing)."
+        exit 1
+      fi
       echo "overlay address for ${ZITI_INTERCEPT_DNS}: ${ip}"
       # -sSf collapses every failure into "curl: (22) ... error: 502", which
       # cannot tell an OVERLAY problem from an APPLICATION problem. Measured on
@@ -328,7 +342,21 @@ steps:
       # parser lookup miss. Rather than hard-code a guess, ask the API which
       # parsers it supports and pick the semgrep one. If that fails, fall back
       # to SCAN_TYPE so a changed listing never blocks the upload.
-      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      # `set -euo pipefail` + a failing getent kills the step with NO message
+      # at all: the overlay name not resolving is by far the most likely
+      # runtime failure here, and it was the one failure that said nothing.
+      # Measured: with the tunnel up but the name unresolved, the step exited
+      # silently right here. `|| true` keeps the pipeline alive so the cause
+      # can be reported instead of guessed.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" 2>/dev/null | awk '{print $1}' | head -1 || true)"
+      if [ -z "$ip" ]; then
+        echo "OVERLAY NAME DID NOT RESOLVE: $ZITI_INTERCEPT_DNS"
+        echo "The tunneller is not intercepting this name. Either the identity"
+        echo "has no access to the service, or the tunneller is not running."
+        echo "Without it, --resolve would be malformed and curl would reach"
+        echo "the wrong host (or nothing)."
+        exit 1
+      fi
       discovered="$(curl -s --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
         -H "Authorization: Bearer ${OPENSECOPS_API_KEY}" \
         "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/parsers" \
@@ -339,7 +367,21 @@ steps:
                            || echo "scan_type from SCAN_TYPE variable: $scan_type"
       # --resolve keeps the real hostname on TLS SNI and the Host header while
       # the connection itself goes over the overlay.
-      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk '{print $1}' | head -1)"
+      # `set -euo pipefail` + a failing getent kills the step with NO message
+      # at all: the overlay name not resolving is by far the most likely
+      # runtime failure here, and it was the one failure that said nothing.
+      # Measured: with the tunnel up but the name unresolved, the step exited
+      # silently right here. `|| true` keeps the pipeline alive so the cause
+      # can be reported instead of guessed.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" 2>/dev/null | awk '{print $1}' | head -1 || true)"
+      if [ -z "$ip" ]; then
+        echo "OVERLAY NAME DID NOT RESOLVE: $ZITI_INTERCEPT_DNS"
+        echo "The tunneller is not intercepting this name. Either the identity"
+        echo "has no access to the service, or the tunneller is not running."
+        echo "Without it, --resolve would be malformed and curl would reach"
+        echo "the wrong host (or nothing)."
+        exit 1
+      fi
       # Capture body and status separately: -sSf alone hides the response, so
       # an API that answers 200 while rejecting the payload would pass silently.
       # Bearer, confirmed by a real upload against the running API. Probing
@@ -424,5 +466,118 @@ steps:
       FAIL_ON_ZERO_FINDINGS: "false"
       # Fallback only: the enum is normally discovered from /api/imports/parsers.
       SCAN_TYPE: "semgrep"
+      SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
+      OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group
+
+  # ---------------------------------------------------------------------
+  # SBOM. Semgrep reads OUR code; it says nothing about the dependencies we
+  # ship, which is where most CVEs actually live. OpenSecOps grew a
+  # /api/imports/sbom endpoint, so the pipeline can now send a component
+  # inventory as well as findings.
+  #
+  # Measured against the live API over the overlay before writing this:
+  #   /api/imports/sbom     -> 405 to GET  (exists, POST-only)
+  #   /api/imports/archive  -> 404         (does NOT exist; not wired up)
+  # Guessing at the second one would have produced a step that always 404s
+  # and, with `|| true`, always looked fine.
+  # ---------------------------------------------------------------------
+  - script: |
+      set -euo pipefail
+      if [ "${UPLOAD_SBOM:-false}" != "true" ]; then
+        echo "SBOM upload disabled (set UPLOAD_SBOM=true to enable)"
+        exit 0
+      fi
+
+      # syft is pinned. `latest` on a security tool is a silent supply-chain
+      # dependency for the thing that inventories our supply chain.
+      syft_version="${SYFT_VERSION:-1.18.1}"
+      if ! command -v syft >/dev/null 2>&1; then
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+          | sh -s -- -b "$(Agent.TempDirectory)/bin" "v${syft_version}" >/dev/null
+        export PATH="$(Agent.TempDirectory)/bin:$PATH"
+      fi
+      syft --version
+
+      # CycloneDX JSON: the format the endpoint documents.
+      syft scan "dir:${SCAN_PATH:-.}" -o cyclonedx-json="$SBOM_FILE" -q
+      [ -s "$SBOM_FILE" ] || { echo "syft produced no SBOM"; exit 1; }
+
+      # An SBOM with zero components is the same trap as a scan of zero files:
+      # it uploads cleanly and reports nothing. A repo that genuinely has no
+      # dependencies is possible, so this is loud by default and fatal only on
+      # request.
+      comps="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get('components') or []))" "$SBOM_FILE")"
+      echo "components inventoried: $comps"
+      if [ "$comps" -eq 0 ]; then
+        echo "WARNING: the SBOM lists no components. Either this repo has no"
+        echo "dependencies, or syft did not recognise the manifests under"
+        echo "${SCAN_PATH:-.} -- in which case nothing is being monitored."
+        if [ "${FAIL_ON_EMPTY_SBOM:-false}" = "true" ]; then exit 1; fi
+      fi
+
+      # `set -euo pipefail` + a failing getent kills the step with NO message
+      # at all: the overlay name not resolving is by far the most likely
+      # runtime failure here, and it was the one failure that said nothing.
+      # Measured: with the tunnel up but the name unresolved, the step exited
+      # silently right here. `|| true` keeps the pipeline alive so the cause
+      # can be reported instead of guessed.
+      ip="$(getent hosts "$ZITI_INTERCEPT_DNS" 2>/dev/null | awk '{print $1}' | head -1 || true)"
+      if [ -z "$ip" ]; then
+        echo "OVERLAY NAME DID NOT RESOLVE: $ZITI_INTERCEPT_DNS"
+        echo "The tunneller is not intercepting this name. Either the identity"
+        echo "has no access to the service, or the tunneller is not running."
+        echo "Without it, --resolve would be malformed and curl would reach"
+        echo "the wrong host (or nothing)."
+        exit 1
+      fi
+      out="$(mktemp)"
+      code="$(curl -s -o "$out" -w '%{http_code}' \
+        --resolve "${SECOPS_HOST}:${SECOPS_PORT}:${ip}" \
+        -H "Authorization: Bearer ${OPENSECOPS_API_KEY}" \
+        -F "product_id=${SECOPS_PRODUCT_ID}" \
+        -F "file=@${SBOM_FILE}" \
+        "https://${SECOPS_HOST}:${SECOPS_PORT}/api/imports/sbom")"
+      echo "HTTP $code"
+      cat "$out"; echo
+
+      case "$code" in
+        2*)
+          # Same lesson as the findings upload: 2xx means ACCEPTED, not
+          # ingested. Compare what we sent with what was stored, so a
+          # component inventory that quietly shrinks is visible.
+          stored="$(grep -o '"component[s_]*count"[[:space:]]*:[[:space:]]*[0-9]*' "$out" \
+                    | grep -o '[0-9]*$' | head -1)"
+          if [ -n "$stored" ]; then
+            echo "components sent: $comps, stored: $stored"
+            if [ "$comps" != "$stored" ]; then
+              echo "MISMATCH: sent $comps components, the API stored $stored."
+              echo "Components are being dropped; the inventory understates"
+              echo "what we actually ship."
+              if [ "${FAIL_ON_SBOM_MISMATCH:-false}" = "true" ]; then exit 1; fi
+            fi
+          else
+            echo "NOTE: the response carries no component count, so what was"
+            echo "stored could not be verified from here."
+          fi
+          echo "SBOM UPLOADED: product ${SECOPS_PRODUCT_ID}" ;;
+        401|403) echo "SBOM NOT UPLOADED: rejected ($code). The key is missing,"
+                 echo "wrong, or lacks scope for this product."; exit 1 ;;
+        404) echo "SBOM NOT UPLOADED: the endpoint is gone ($code)."
+             echo "/api/imports/sbom answered 405 to GET when this step was"
+             echo "written, i.e. it existed. A 404 now means the API changed."
+             exit 1 ;;
+        422) echo "SBOM NOT UPLOADED: the API rejected the form fields ($code)."
+             echo "See the body above for the missing/invalid field."; exit 1 ;;
+        5*) echo "SBOM NOT UPLOADED: the server failed while processing ($code)."
+            echo "  $(wc -c <"$SBOM_FILE") bytes, $comps components"; exit 1 ;;
+        *) echo "SBOM NOT UPLOADED: HTTP $code"; exit 1 ;;
+      esac
+    displayName: "OpenSecOps: upload SBOM over the overlay"
+    env:
+      SBOM_FILE: "$(Build.SourcesDirectory)/sbom.cyclonedx.json"
+      # Off by default: turning it on without a working key would make every
+      # build red for a feature nobody asked for yet.
+      UPLOAD_SBOM: "false"
+      SCAN_PATH: "."
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
       OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group

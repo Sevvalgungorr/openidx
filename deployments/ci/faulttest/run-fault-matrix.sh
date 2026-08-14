@@ -38,7 +38,7 @@ cat > "$SCAN_FILE" <<'JSON'
 JSON
 export SCAN_FILE
 extract(){ python3 - "$1" <<'PY'
-import yaml,sys
+import yaml,sys,os
 d=yaml.safe_load(open('deployments/ci/azure-pipelines-ziti.yml'))
 want=sys.argv[1]
 def st(o):
@@ -48,8 +48,15 @@ def st(o):
     elif isinstance(o,list):
         for v in o: yield from st(v)
 s=list(st(d))[0]['script']
-s=s.replace('ip="$(getent hosts "$ZITI_INTERCEPT_DNS" | awk \'{print $1}\' | head -1)"','ip=127.0.0.1')
-import os
+# The overlay name cannot resolve on a machine with no tunneller, so the
+# lookup is neutralised -- EXCEPT for the no_resolve case, which is about
+# what the step does when it genuinely fails. The substitution deliberately
+# keeps the guard that follows: replacing the whole block would delete the
+# very branch that case measures.
+if os.environ.get('KEEP_RESOLVE') != '1':
+    s=s.replace('ip="$(getent hosts "$ZITI_INTERCEPT_DNS" 2>/dev/null | awk \'{print $1}\' | head -1 || true)"','ip=127.0.0.1')
+else:
+    s=s.replace('"$ZITI_INTERCEPT_DNS"','"definitely-not-a-real-overlay-name.invalid"')
 # The upload step needs a report, a product id and a key. The key is a real
 # secret in Azure and is NOT available here, which is exactly why the live
 # import could never be verified from this box: the fake origin supplies one
@@ -74,7 +81,7 @@ run(){ # mode expected_rc must_contain [step]
   # a healthy origin plus one environment change. Keeping them in the same
   # table means the opt-in gate and the missing-report path are measured by
   # the same rule as everything else, instead of living in a comment.
-  local omode="$mode" strict=false mism=false scan="$SCAN_FILE"
+  local omode="$mode" strict=false mism=false scan="$SCAN_FILE" keep_resolve=0
   case "$mode" in
     zero_find_strict) omode=zero_find; strict=true ;;
     # Fixture sends 3; drop_find stores 2. Not zero, so the old rule saw
@@ -82,11 +89,16 @@ run(){ # mode expected_rc must_contain [step]
     mismatch)        omode=drop_find ;;
     mismatch_strict) omode=drop_find; mism=true ;;
     no_report)        omode=healthy;   scan="$WORK/does-not-exist.json" ;;
+    # The overlay name not resolving is the most likely runtime failure of
+    # all, and it was the one that said NOTHING: under `set -euo pipefail` a
+    # failing getent killed the step with no message at all. Measured for
+    # real on this box, where the name does not resolve.
+    no_resolve)       omode=healthy;   keep_resolve=1 ;;
   esac
   MODE=$omode python3 "$(dirname "$0")/fake-origin.py" $PORT & local pid=$!
   sleep 0.6
   PORT=$PORT FAIL_ON_ZERO_FINDINGS=$strict FAIL_ON_FINDINGS_MISMATCH=$mism \
-    SCAN_FILE="$scan" prep "$step" > "$WORK/step.sh"
+    KEEP_RESOLVE=$keep_resolve SCAN_FILE="$scan" prep "$step" > "$WORK/step.sh"
   bash "$WORK/step.sh" >"$WORK/out.txt" 2>&1; local rc=$?
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   local okrc=0 okmsg=0
@@ -125,7 +137,8 @@ for spec in "healthy|0|reachable over the overlay" \
             "no_report|0|NOT UPLOADED: no scan file|upload" \
             "mismatch|0|MISMATCH: sent 3 findings, the API stored 2|upload" \
             "mismatch_strict|1|MISMATCH|upload" \
-            "healthy|0|findings sent: 3|upload"; do
+            "healthy|0|findings sent: 3|upload" \
+            "no_resolve|1|OVERLAY NAME DID NOT RESOLVE|upload"; do
   IFS='|' read -r m e n st <<<"$spec"; tot=$((tot+1))
   if [ "$m" = no_route ]; then
     PORT=$PORT prep connectivity > "$WORK/step.sh"   # nothing listening
