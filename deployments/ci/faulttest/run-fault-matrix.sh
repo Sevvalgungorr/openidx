@@ -34,7 +34,7 @@ PORT=19311
 # which is the shape that makes a strict importer raise.
 SCAN_FILE="$WORK/semgrep.json"
 cat > "$SCAN_FILE" <<'JSON'
-{"version":"1.173.0","results":[{"check_id":"local.rule.a","extra":{"severity":"ERROR"}}],"errors":[],"paths":{},"time":{}}
+{"version":"1.173.0","results":[{"check_id":"local.rule.a","extra":{"severity":"ERROR"}},{"check_id":"local.rule.b","extra":{"severity":"WARNING"}},{"check_id":"local.rule.c","extra":{"severity":"INFO"}}],"errors":[],"paths":{},"time":{}}
 JSON
 export SCAN_FILE
 extract(){ python3 - "$1" <<'PY'
@@ -61,6 +61,7 @@ print('SECOPS_PRODUCT_ID=1\nOPENSECOPS_API_KEY=fake-key-for-local-fault-injectio
 # and the "no report produced" path without editing the extracted step.
 print('SCAN_TYPE=semgrep')
 print('FAIL_ON_ZERO_FINDINGS='+os.environ.get('FAIL_ON_ZERO_FINDINGS','false'))
+print('FAIL_ON_FINDINGS_MISMATCH='+os.environ.get('FAIL_ON_FINDINGS_MISMATCH','false'))
 print(s)
 PY
 }
@@ -73,14 +74,19 @@ run(){ # mode expected_rc must_contain [step]
   # a healthy origin plus one environment change. Keeping them in the same
   # table means the opt-in gate and the missing-report path are measured by
   # the same rule as everything else, instead of living in a comment.
-  local omode="$mode" strict=false scan="$SCAN_FILE"
+  local omode="$mode" strict=false mism=false scan="$SCAN_FILE"
   case "$mode" in
     zero_find_strict) omode=zero_find; strict=true ;;
+    # Fixture sends 3; drop_find stores 2. Not zero, so the old rule saw
+    # nothing wrong -- a scan that lost a finding read as clean.
+    mismatch)        omode=drop_find ;;
+    mismatch_strict) omode=drop_find; mism=true ;;
     no_report)        omode=healthy;   scan="$WORK/does-not-exist.json" ;;
   esac
   MODE=$omode python3 "$(dirname "$0")/fake-origin.py" $PORT & local pid=$!
   sleep 0.6
-  PORT=$PORT FAIL_ON_ZERO_FINDINGS=$strict SCAN_FILE="$scan" prep "$step" > "$WORK/step.sh"
+  PORT=$PORT FAIL_ON_ZERO_FINDINGS=$strict FAIL_ON_FINDINGS_MISMATCH=$mism \
+    SCAN_FILE="$scan" prep "$step" > "$WORK/step.sh"
   bash "$WORK/step.sh" >"$WORK/out.txt" 2>&1; local rc=$?
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   local okrc=0 okmsg=0
@@ -117,7 +123,9 @@ for spec in "healthy|0|reachable over the overlay" \
             "zero_find|0|findings parsed: 0|upload" \
             "zero_find_strict|1|parsed to 0 findings|upload" \
             "no_report|0|NOT UPLOADED: no scan file|upload" \
-            "healthy|0|findings parsed|upload"; do
+            "mismatch|0|MISMATCH: sent 3 findings, the API stored 2|upload" \
+            "mismatch_strict|1|MISMATCH|upload" \
+            "healthy|0|findings sent: 3|upload"; do
   IFS='|' read -r m e n st <<<"$spec"; tot=$((tot+1))
   if [ "$m" = no_route ]; then
     PORT=$PORT prep connectivity > "$WORK/step.sh"   # nothing listening

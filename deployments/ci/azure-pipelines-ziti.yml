@@ -326,6 +326,29 @@ steps:
                    | grep -o '[0-9]*$' | head -1)"
           if [ -n "$found" ]; then
             echo "findings parsed: $found"
+            # Only checking for 0 was too weak: a parser that DROPS findings
+            # (12 sent, 1 stored) is silent, and "some findings arrived" reads
+            # as success. So count what we SENT and compare. Reporting fewer
+            # findings than the scanner produced is a security-relevant lie,
+            # so it is always loud; failing the build stays opt-in.
+            sent="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get('results',[])))" \
+                    "$SCAN_FILE" 2>/dev/null || true)"
+            if [ -n "$sent" ]; then
+              echo "findings sent: $sent"
+              if [ "$sent" != "$found" ]; then
+                echo "MISMATCH: sent $sent findings, the API stored $found."
+                echo "The upload was accepted but the report was not fully"
+                echo "parsed. Do NOT read this as a clean scan. Check that"
+                echo "scan_type matches the format the scanner produced."
+                # Written as if/fi, NOT `[ ... ] && exit 1`: under `set -e` a
+                # trailing false test can end the step with a nonzero status
+                # and no message, which is exactly the silent class this
+                # pipeline keeps getting bitten by.
+                if [ "${FAIL_ON_FINDINGS_MISMATCH:-false}" = "true" ]; then
+                  exit 1
+                fi
+              fi
+            fi
             if [ "$found" = "0" ] && [ "${FAIL_ON_ZERO_FINDINGS:-false}" = "true" ]; then
               echo "NOT ACCEPTED: report parsed to 0 findings."
               echo "Either the scan really is clean, or the report format is"
