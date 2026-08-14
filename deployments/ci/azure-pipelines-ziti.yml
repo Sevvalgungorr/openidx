@@ -219,11 +219,50 @@ steps:
       python3 -m pip install --quiet --user semgrep
       export PATH="$HOME/.local/bin:$PATH"
       semgrep --version
+      # Where to scan. SCAN_PATH defaults to the repo root, but a monorepo can
+      # point it at one project. The path is reported so a report that covers
+      # the wrong tree is visible rather than assumed.
+      scan_path="${SCAN_PATH:-.}"
+      echo "scanning: $scan_path"
+
+      # Language auto-detection. The pipeline is shared across repos, and a
+      # .NET repo is the case this was added for: `auto` already loads C#
+      # rules, but build output (bin/obj) is scanned too, so the SAME finding
+      # is reported once from source and once from the copy under bin/ --
+      # inflating counts and pointing reviewers at a generated file.
+      # Detection is by project file, not by extension, so an empty folder
+      # never changes the ruleset.
+      ruleset_args=(--config="$SEMGREP_RULES")
+      if find "$scan_path" \( -name '*.csproj' -o -name '*.sln' -o -name '*.fsproj' -o -name '*.vbproj' \) \
+           -not -path '*/bin/*' -not -path '*/obj/*' -print -quit | grep -q .; then
+        echo "detected: .NET project"
+        # Separate --config flags. A comma-joined list is NOT a list to
+        # semgrep: it looks for a config literally named "auto,p/csharp",
+        # scans 0 files and, with `|| true`, still exits green -- a scan of
+        # nothing that publishes as a clean report. Measured, not assumed.
+        ruleset_args+=(--config=p/csharp)
+        # Build output is not source. Excluding it here (rather than editing a
+        # committed .semgrepignore) keeps the pipeline usable in repos it does
+        # not own.
+        ruleset_args+=(--exclude=bin --exclude=obj)
+      fi
+
       # --error would fail the build on findings; we want them PUBLISHED, so
       # the scan itself must succeed even when it finds problems.
-      semgrep scan --config="$SEMGREP_RULES" --json --quiet \
+      semgrep scan "${ruleset_args[@]}" --json --quiet \
         -o "$SCAN_FILE" . || true
       [ -s "$SCAN_FILE" ] || { echo "semgrep produced no report"; exit 1; }
+      # A report over ZERO files is the dangerous shape: it looks exactly like
+      # clean code. A bad ruleset name produces precisely this, so it is a
+      # hard failure, not a diagnostic.
+      scanned="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len((d.get('paths') or {}).get('scanned') or []))" "$SCAN_FILE" 2>/dev/null || echo 0)"
+      echo "files scanned: $scanned"
+      if [ "$scanned" -eq 0 ]; then
+        echo "NOT SCANNED: semgrep read 0 files. This is not a clean scan."
+        echo "Usual cause: an invalid --config value (a comma-joined list is"
+        echo "not a list), or SCAN_PATH pointing outside the checkout."
+        exit 1
+      fi
       # Diagnostics, not a gate: shows severities, findings missing
       # extra.metadata, and any diagnostic sections -- the three things that
       # make an importer raise and answer 500 with no detail.
@@ -265,6 +304,9 @@ steps:
     env:
       SCAN_FILE: "$(Build.SourcesDirectory)/semgrep.json"
       SEMGREP_RULES: "auto"
+      # Scan the whole checkout by default; set to a subdirectory for a
+      # monorepo (e.g. "src/MyService").
+      SCAN_PATH: "."
       # Set to "true" if the importer rejects the full report (e.g. HTTP 500):
       # it keeps only version/results/errors/paths.
       SLIM_REPORT: "false"
