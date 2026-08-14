@@ -5,7 +5,7 @@ go 1.25.8
 // Build with go1.25.10+, which patches the net/mail, html/template and
 // net/http/httputil stdlib advisories (GO-2026-4976/4977/4980/4982/4986)
 // that govulncheck flags on earlier 1.25.x.
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
