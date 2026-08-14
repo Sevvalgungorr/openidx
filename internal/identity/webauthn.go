@@ -21,7 +21,7 @@ type WebAuthnCredential struct {
 	ID                string     `json:"id"`
 	UserID            string     `json:"user_id"`
 	CredentialID      string     `json:"credential_id"` // Base64URL encoded
-	PublicKey         string     `json:"-"`             // COSE encoded public key (sensitive)
+	PublicKey         string     `json:"-"`             // Base64URL-encoded COSE public key (sensitive)
 	SignCount         uint32     `json:"sign_count"`
 	AAGUID            string     `json:"aaguid,omitempty"`
 	Transports        []string   `json:"transports,omitempty"`
@@ -84,7 +84,7 @@ func (s *Service) BeginWebAuthnRegistration(ctx context.Context, userID string) 
 	webauthnCreds := make([]webauthn.Credential, 0, len(existingCreds))
 	for _, cred := range existingCreds {
 		credID, _ := base64.RawURLEncoding.DecodeString(cred.CredentialID)
-		pubKey := []byte(cred.PublicKey)
+		pubKey := decodeCOSEKey(cred.PublicKey)
 
 		webauthnCreds = append(webauthnCreds, webauthn.Credential{
 			ID:              credID,
@@ -163,7 +163,7 @@ func (s *Service) FinishWebAuthnRegistration(ctx context.Context, userID string,
 	webauthnCreds := make([]webauthn.Credential, 0, len(existingCreds))
 	for _, cred := range existingCreds {
 		credID, _ := base64.RawURLEncoding.DecodeString(cred.CredentialID)
-		pubKey := []byte(cred.PublicKey)
+		pubKey := decodeCOSEKey(cred.PublicKey)
 
 		webauthnCreds = append(webauthnCreds, webauthn.Credential{
 			ID:        credID,
@@ -197,7 +197,7 @@ func (s *Service) FinishWebAuthnRegistration(ctx context.Context, userID string,
 
 	// Store credential in database
 	credentialID := base64.RawURLEncoding.EncodeToString(credential.ID)
-	publicKey := string(credential.PublicKey)
+	publicKey := encodeCOSEKey(credential.PublicKey)
 	aaguidStr := base64.RawURLEncoding.EncodeToString(credential.Authenticator.AAGUID)
 
 	// Set default name if not provided
@@ -266,7 +266,7 @@ func (s *Service) BeginWebAuthnAuthentication(ctx context.Context, username stri
 	webauthnCreds := make([]webauthn.Credential, 0, len(credentials))
 	for _, cred := range credentials {
 		credID, _ := base64.RawURLEncoding.DecodeString(cred.CredentialID)
-		pubKey := []byte(cred.PublicKey)
+		pubKey := decodeCOSEKey(cred.PublicKey)
 
 		webauthnCreds = append(webauthnCreds, webauthn.Credential{
 			ID:        credID,
@@ -345,7 +345,7 @@ func (s *Service) FinishWebAuthnAuthentication(ctx context.Context, username str
 	webauthnCreds := make([]webauthn.Credential, 0, len(credentials))
 	for _, cred := range credentials {
 		credID, _ := base64.RawURLEncoding.DecodeString(cred.CredentialID)
-		pubKey := []byte(cred.PublicKey)
+		pubKey := decodeCOSEKey(cred.PublicKey)
 
 		webauthnCreds = append(webauthnCreds, webauthn.Credential{
 			ID:        credID,
@@ -454,7 +454,7 @@ func (s *Service) FinishWebAuthnDiscoverableAuthentication(ctx context.Context, 
 	webauthnCreds := make([]webauthn.Credential, 0, len(credentials))
 	for _, cred := range credentials {
 		credID, _ := base64.RawURLEncoding.DecodeString(cred.CredentialID)
-		pubKey := []byte(cred.PublicKey)
+		pubKey := decodeCOSEKey(cred.PublicKey)
 		webauthnCreds = append(webauthnCreds, webauthn.Credential{
 			ID:        credID,
 			PublicKey: pubKey,
@@ -522,6 +522,33 @@ func (s *Service) DeleteWebAuthnCredential(ctx context.Context, userID, credenti
 }
 
 // Helper functions
+
+// encodeCOSEKey prepares a COSE public key for a `text` column.
+//
+// The key is raw CBOR: arbitrary bytes, routinely including 0x00 and byte
+// sequences that are not valid UTF-8. PostgreSQL's server encoding here is
+// UTF8 and `text` rejects both, so writing string(credential.PublicKey)
+// failed the INSERT for EVERY registration -- measured: 1000/1000 realistic
+// ES256 keys are invalid UTF-8. The browser had already created the passkey,
+// so the user saw "Passkey saved" and then a 500, with nothing stored.
+//
+// Base64URL keeps the column textual (no migration, no type change) and is
+// total: every byte sequence round-trips.
+func encodeCOSEKey(key []byte) string {
+	return base64.RawURLEncoding.EncodeToString(key)
+}
+
+// decodeCOSEKey reverses encodeCOSEKey. Rows written before this fix could
+// not exist (the INSERT always failed), but a raw-byte row from any other
+// source must not be silently turned into a corrupt key: if the value is not
+// valid base64 it is returned unchanged, so an older row still verifies
+// instead of failing closed on a decode error.
+func decodeCOSEKey(stored string) []byte {
+	if decoded, err := base64.RawURLEncoding.DecodeString(stored); err == nil {
+		return decoded
+	}
+	return []byte(stored)
+}
 
 func (s *Service) getWebAuthnInstance() (*webauthn.WebAuthn, error) {
 	wconfig := &webauthn.Config{
