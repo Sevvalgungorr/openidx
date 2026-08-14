@@ -52,8 +52,15 @@ type CreateSAMLServiceProviderRequest struct {
 	AttributeMappings    map[string]string `json:"attribute_mappings"`
 	WantAssertionsSigned bool              `json:"want_assertions_signed"`
 	EncryptionEnabled    bool              `json:"encryption_enabled"`
-	Enabled              bool              `json:"enabled"`
-	MetadataXML          string            `json:"metadata_xml"` // For uploading metadata directly
+	// Enabled is a POINTER on purpose. As a plain bool, a request that simply
+	// omits the field decodes to Go's zero value (false) and is written to the
+	// column verbatim, silently overriding its DEFAULT true -- so every SP
+	// created by the admin console (whose form has no enable switch) was born
+	// disabled. Measured on the live database: both existing rows have
+	// enabled=f, including one created through the UI. nil now means "not
+	// specified", and the default is enabled.
+	Enabled     *bool  `json:"enabled"`
+	MetadataXML string `json:"metadata_xml"` // For uploading metadata directly
 }
 
 // UpdateSAMLServiceProviderRequest is the request to update an SP
@@ -72,8 +79,34 @@ type UpdateSAMLServiceProviderRequest struct {
 	Enabled              *bool             `json:"enabled"`
 }
 
-// SAMLServiceProviderListResponse is the paginated list response
+// boolPtr returns a pointer to b, for request fields where "unset" and
+// "false" must stay distinguishable.
+func boolPtr(b bool) *bool { return &b }
+
+// resolveSPEnabled turns the tri-state request field into the value written to
+// the column: nil means the caller did not specify, and a new SP is enabled.
+// This lives in one place so the rule is testable rather than restated at each
+// call site (a test that re-implements the rule proves only that the test
+// agrees with itself).
+func resolveSPEnabled(requested *bool) bool {
+	if requested == nil {
+		return true
+	}
+	return *requested
+}
+
+// SAMLServiceProviderListResponse is the paginated list response.
+//
+// The list is emitted under BOTH "service_providers" and "providers". The
+// admin console reads "service_providers" and always has; this handler only
+// ever sent "providers", so every registration succeeded and the list stayed
+// empty ("No SAML service providers found") with no error anywhere -- the
+// worst shape of bug, because the UI looks healthy and the data looks lost.
+// Emitting both keeps any existing consumer of "providers" working, so this
+// is additive rather than a rename that breaks the other half.
 type SAMLServiceProviderListResponse struct {
+	ServiceProviders []SAMLServiceProvider `json:"service_providers"`
+	// Deprecated: kept so an existing client of this field keeps working.
 	Providers []SAMLServiceProvider `json:"providers"`
 	Total     int64                 `json:"total"`
 	Page      int                   `json:"page"`
@@ -157,10 +190,11 @@ func (s *Service) handleListSAMLServiceProviders(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, SAMLServiceProviderListResponse{
-		Providers: providers,
-		Total:     total,
-		Page:      page,
-		PageSize:  pageSize,
+		ServiceProviders: providers,
+		Providers:        providers,
+		Total:            total,
+		Page:             page,
+		PageSize:         pageSize,
 	})
 }
 
@@ -403,7 +437,7 @@ func (s *Service) handleImportSAMLMetadata(c *gin.Context) {
 		MetadataURL:          req.MetadataURL,
 		Certificate:          certificate,
 		WantAssertionsSigned: metadata.SPSSODescriptor.WantAssertionsSigned,
-		Enabled:              true,
+		Enabled:              boolPtr(true),
 		MetadataXML:          req.MetadataXML,
 	}
 
@@ -519,6 +553,8 @@ func (s *Service) getSAMLServiceProviderByEntityID(ctx context.Context, entityID
 // createSAMLServiceProvider creates a new SP in the database
 func (s *Service) createSAMLServiceProvider(ctx context.Context, req *CreateSAMLServiceProviderRequest) (*SAMLServiceProvider, error) {
 	id := uuid.New().String()
+	enabled := resolveSPEnabled(req.Enabled)
+
 	attrMappingsJSON, _ := json.Marshal(req.AttributeMappings)
 	now := time.Now()
 
@@ -530,7 +566,7 @@ func (s *Service) createSAMLServiceProvider(ctx context.Context, req *CreateSAML
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`, id, req.Name, req.Description, req.EntityID, req.ACSURL, req.SLOURL,
 		req.MetadataURL, req.Certificate, req.NameIDFormat, attrMappingsJSON,
-		req.WantAssertionsSigned, req.EncryptionEnabled, req.Enabled, now, now)
+		req.WantAssertionsSigned, req.EncryptionEnabled, enabled, now, now)
 
 	if err != nil {
 		return nil, err
@@ -549,7 +585,7 @@ func (s *Service) createSAMLServiceProvider(ctx context.Context, req *CreateSAML
 		AttributeMappings:    req.AttributeMappings,
 		WantAssertionsSigned: req.WantAssertionsSigned,
 		EncryptionEnabled:    req.EncryptionEnabled,
-		Enabled:              req.Enabled,
+		Enabled:              enabled,
 		CreatedAt:            now,
 		UpdatedAt:            now,
 	}, nil

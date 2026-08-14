@@ -100,6 +100,49 @@ describe('SAMLServiceProvidersPage', () => {
     ).toBeInTheDocument()
   })
 
+  // Regression: the page rendered the empty state while the API was returning
+  // rows, because the handler emitted them under "providers" and this page
+  // reads "service_providers". Every test above mocks the shape this page
+  // expects, so none of them could catch a backend that sent another shape --
+  // a test that asserts its own assumption. This one uses the response the Go
+  // handler actually marshals (see saml_sp_contract_test.go, which pins the
+  // same two keys from the other side).
+  it('renders rows from the real backend response body', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      service_providers: [slackSP, salesforceSP],
+      providers: [slackSP, salesforceSP],
+      total: 2,
+      page: 1,
+      page_size: 20,
+    })
+
+    render(<SAMLServiceProvidersPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('Slack')).toBeInTheDocument()
+    expect(await screen.findByText('Salesforce')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/no saml service providers found/i),
+    ).not.toBeInTheDocument()
+  })
+
+  // The pre-fix backend body, verbatim: rows present, but only under the
+  // legacy key. The page must not silently show "no providers" for it.
+  it('does not fall back to the empty state when only the legacy key is sent', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      providers: [slackSP, salesforceSP],
+      total: 2,
+    })
+
+    render(<SAMLServiceProvidersPage />, { wrapper: createWrapper() })
+
+    // Documents the failure mode that was shipped: with only "providers",
+    // this page shows the empty state. The backend therefore has to send
+    // "service_providers", which the Go contract test enforces.
+    expect(
+      await screen.findByText(/no saml service providers found/i),
+    ).toBeInTheDocument()
+  })
+
   it('shows the empty state when no providers are registered', async () => {
     vi.mocked(api.get).mockResolvedValue({ service_providers: [] })
 

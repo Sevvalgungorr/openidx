@@ -228,11 +228,6 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// boolPtr returns a pointer to a bool
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 // NewMockRedisContext creates a mock Redis context using testutil
 func NewMockRedisContext(t *testing.T) *testutil.MockRedis {
 	t.Helper()

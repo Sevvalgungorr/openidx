@@ -644,9 +644,25 @@ func TestDistributedRateLimit_DistributedConcurrency(t *testing.T) {
 
 		wg.Wait()
 
-		// Should have some blocked requests (limit is 10)
+		// The limiter fails OPEN on a Redis error (availability over
+		// enforcement on non-auth paths), so a flaky miniredis connection
+		// lets extra requests through and this used to fail as
+		// "11 is not less than or equal to 10" -- which reads like a broken
+		// limiter, not a dropped backend. Observed in CI while the log
+		// showed "connection refused". Count the fail-opens and hold the
+		// limiter to what it could actually enforce.
+		failOpen := int(getMetricValue(rlFailOpenTotal, "ip"))
+		if failOpen > 0 {
+			t.Logf("redis dropped %d request(s); limiter failed open by design", failOpen)
+		}
 		assert.Greater(t, blockedCount, 0, "Some requests should be blocked")
-		assert.LessOrEqual(t, successCount, 10, "At most 10 requests should succeed")
+		assert.LessOrEqual(t, successCount, 10+failOpen,
+			"At most 10 requests should succeed, plus any the limiter could not enforce because Redis was unreachable (fail-open)")
+		// Without the backend excuse the bound is exactly 10: a limiter that
+		// over-admits while Redis is healthy is still a real defect.
+		if failOpen == 0 {
+			assert.LessOrEqual(t, successCount, 10, "At most 10 requests should succeed with a healthy backend")
+		}
 	})
 }
 
