@@ -391,7 +391,7 @@ doğru katmanı mı suçluyor, yoksa yanlış ekibi mi arattırıyor.
 
 ```bash
 bash scripts/ci-overlay-score.sh                       # skor  -> SCORE=15/15
-bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=6/6
+bash deployments/ci/faulttest/run-fault-matrix.sh      # kapı  -> FAULT_MATRIX=11/11
 bash deployments/ci/faulttest/run-fault-matrix.sh --stat 8   # bilgi -> FLAP_STAT=n/8
 ```
 
@@ -478,6 +478,24 @@ Bu yüzden iki soru ayrıldı:
 Boru hattında bunun için hiçbir şey değişmedi; yeniden deneme sayısı 40 kaldı.
 Sadece test yazı-tura olmaktan çıktı.
 
+### Yeşil bir kapı, ölçtüğü **dallar** kadar değerlidir
+
+Matris uzun süre `6/6` bastı. Doğruydu, ama yükleme adımının yalnızca **iki**
+dalını ölçüyordu: 500 ve mutlu yol. Diğer dallar (**401/403**, **422**,
+`findings_count=0`, **rapor yok**) repoda yazılıydı ve **hiçbir koşumda
+çalışmıyordu**. Ölçülmeyen bir dal bozulduğunda hiçbir şey kırmızı olmaz.
+
+En sinsisi `findings_count=0`: API **201** döner, adım **yeşil** kalır, hiçbir
+bulgu yayımlanmaz. Bu kusur bu projede bir kez yaşandı; testi ancak şimdi var.
+
+İki vaka origin davranışı değil **çağıran taraf koşuludur** (`zero_find_strict`
+opt-in kapı, `no_report` eksik dosya); sağlıklı origin + tek ortam değişkeniyle
+aynı tabloda ölçülür, yorum satırında kalmaz.
+
+Skorbord hedefi bu yüzden sabit sayı değil **orandır**. `6/6` beklemek, matrise
+yeni arıza vakası ekleyen kişiyi skor kaybıyla cezalandırıp **kapsamı
+dondururdu**. `0/0` (boş matris) geçerli sayılmaz.
+
 ### Testlerin kendisi sınandı (mutasyon)
 
 Bir test, kırılmış kodu **kırmızıya çevirebildiği** ölçüde testtir:
@@ -486,14 +504,18 @@ Bir test, kırılmış kodu **kırmızıya çevirebildiği** ölçüde testtir:
 |---|---|
 | katman mesajını sil | 4/4 → 3/4 |
 | yeniden denemeyi kaldır | `flapping` kırmızı |
-| 500 mesajını genelleştir | 6/6 → 5/6 |
-| `tries` 40 → 12 | 6/6 → **5/6** (ölçüldü) |
+| 500 mesajını genelleştir | 11/11 → 10/11 |
+| `tries` 40 → 12 | 11/11 → **10/11** (ölçüldü) |
+| 401 dalı `exit 1` → `exit 0` | `bad_key` **HATA** (ölçüldü) |
+| sıfır-bulgu kapısı `if false` | `zero_find_strict` **HATA** (ölçüldü) |
+| 'rapor yok' `exit 0` → `exit 1` | `no_report` **HATA** (ölçüldü) |
+| 422 dalını sil | `bad_type` mesajı **HATA** (ölçüldü) |
 | kayıp `#`'i geri koy | `bash -n` **geçiyor**, prose kontrolü **yakalıyor** |
 
 ### 12.1 `bash -n`'in yakalayamadığı sınıf
 
 Bir yorum satırının başındaki `#` düzenleme sırasında düştü. Sonuç
-**sözdizimsel olarak geçerliydi**: `bash -n` geçti, matris `6/6` bastı, tek iz
+**sözdizimsel olarak geçerliydi**: `bash -n` geçti, matris tam puan bastı, tek iz
 stderr'deki `THIS: command not found` satırıydı. **İki merge edilmiş PR boyunca
 fark edilmedi**; temiz bir klonda çalıştırırken tesadüfen görüldü. Tehlikeli
 şekil budur: başarı raporlarken sessizce çöp çalıştıran bir betik. Aynı kayma
