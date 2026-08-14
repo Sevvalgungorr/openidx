@@ -95,6 +95,43 @@ jobs:
             echo "::error::fault matrix failed: ${res:-no result}"; exit 1
           fi
 
+  # Every fix in this area was reverted at least once by a well-meaning edit
+  # elsewhere, and the scoreboard that proves they still hold was a script on
+  # one developer's machine. That is the SAME defect as the prose checker and
+  # the fault matrix above: a gate nobody runs cannot fail. So it runs here.
+  #
+  # It re-runs the fault matrix, which the job above also runs. That overlap is
+  # deliberate: the matrix job proves the ratio, this one proves the ratio is
+  # still being MEASURED alongside the other ten guarantees. Dropping either
+  # would let a regression through in the gap between them.
+  field-fix-scoreboard:
+    name: Field fixes still hold
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet pyyaml
+      - name: Run the scoreboard
+        # Any metric off target fails the build. The script prints WHICH one,
+        # so the failure names the regression instead of a bare exit code --
+        # the same rule the pipeline steps themselves now follow.
+        run: |
+          out="$(bash scripts/field-fix-score.sh 2>&1)"
+          echo "$out"
+          res="$(echo "$out" | grep -o 'SCORE=[0-9]*/[0-9]*' | tail -1)"
+          got="${res#SCORE=}"; tot="${got#*/}"; got="${got%/*}"
+          # 0/0 is not evidence: an empty scoreboard must not pass.
+          if [ -z "$tot" ] || [ "$tot" -lt 1 ] || [ "$got" != "$tot" ]; then
+            echo "::error::field-fix scoreboard failed: ${res:-no result}"
+            echo "$out" | grep EKSIK || true
+            exit 1
+          fi
+
   # Conditional: Skip CI for documentation-only changes
   detect-changes:
     runs-on: ubuntu-latest
