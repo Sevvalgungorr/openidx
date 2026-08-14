@@ -39,7 +39,12 @@ g="$(grep -c 'ip="$(getent hosts' deployments/ci/azure-pipelines-ziti.yml || tru
 r="$(grep -c 'OVERLAY NAME DID NOT RESOLVE' deployments/ci/azure-pipelines-ziti.yml || true)"
 chk RESOLVE_GUARDS "$r/$g" "hepsi" "$([ "$g" -gt 0 ] && [ "$r" = "$g" ] && echo 1 || echo 0)"
 
-# 5. A scan of zero files must be fatal (it looks exactly like clean code).
+# 5. Tool installs must not die numerically. Under `set -euo pipefail` a
+#    failed download exits with curl's code and prints nothing at all.
+i="$(grep -c 'SYFT NOT INSTALLED' deployments/ci/azure-pipelines-ziti.yml || true)"
+chk INSTALL_GUARDS "$i" ">=2" "$([ "$i" -ge 2 ] && echo 1 || echo 0)"
+
+# 6. A scan of zero files must be fatal (it looks exactly like clean code).
 z="$(grep -c 'NOT SCANNED' deployments/ci/azure-pipelines-ziti.yml || true)"
 chk EMPTY_SCAN_FATAL "$z" ">=1" "$([ "$z" -ge 1 ] && echo 1 || echo 0)"
 

@@ -492,9 +492,24 @@ steps:
       # dependency for the thing that inventories our supply chain.
       syft_version="${SYFT_VERSION:-1.18.1}"
       if ! command -v syft >/dev/null 2>&1; then
-        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-          | sh -s -- -b "$(Agent.TempDirectory)/bin" "v${syft_version}" >/dev/null
+        # Measured: with `set -euo pipefail`, a failed download kills the step
+        # with NO message -- the reader sees only a numeric exit code and has
+        # to guess. This is the same silent death that hid the unresolved
+        # overlay name, two lines below, so it gets the same treatment.
+        if ! curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+             | sh -s -- -b "$(Agent.TempDirectory)/bin" "v${syft_version}" >/dev/null; then
+          echo "SYFT NOT INSTALLED: could not download the installer or run it."
+          echo "The build agent needs egress to raw.githubusercontent.com and"
+          echo "github.com, or pre-install syft v${syft_version} on the image."
+          echo "Nothing was inventoried, so NO SBOM was uploaded."
+          exit 1
+        fi
         export PATH="$(Agent.TempDirectory)/bin:$PATH"
+      fi
+      if ! command -v syft >/dev/null 2>&1; then
+        echo "SYFT NOT INSTALLED: the installer reported success but syft is"
+        echo "not on PATH. Expected it under $(Agent.TempDirectory)/bin."
+        exit 1
       fi
       syft --version
 
