@@ -352,8 +352,10 @@ steps:
       # monorepo (e.g. "src/MyService").
       SCAN_PATH: "."
       # Set to "true" if the importer rejects the full report (e.g. HTTP 500):
-      # it keeps only version/results/errors/paths.
-      SLIM_REPORT: "false"
+      # it keeps only version/results/errors/paths. Macro, not a literal: a
+      # baked-in "false" silently shadows the pipeline variable, so the
+      # documented switch would do nothing. Undefined stays falsy.
+      SLIM_REPORT: "$(SLIM_REPORT)"
 
   - script: |
       set -euo pipefail
@@ -493,7 +495,9 @@ steps:
       SCAN_FILE: "$(Build.SourcesDirectory)/semgrep.json"
       # Set to "true" once you expect findings, so a report that silently
       # parses to nothing fails the build instead of passing quietly.
-      FAIL_ON_ZERO_FINDINGS: "false"
+      # Macro, not a literal, for the same reason as UPLOAD_SBOM: a baked-in
+      # "false" cannot be overridden by the pipeline variable it documents.
+      FAIL_ON_ZERO_FINDINGS: "$(FAIL_ON_ZERO_FINDINGS)"
       # Fallback only: the enum is normally discovered from /api/imports/parsers.
       SCAN_TYPE: "semgrep"
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
@@ -620,9 +624,17 @@ steps:
     displayName: "OpenSecOps: upload SBOM over the overlay"
     env:
       SBOM_FILE: "$(Build.SourcesDirectory)/sbom.cyclonedx.json"
-      # Off by default: turning it on without a working key would make every
+      # Off by default, but ACTUALLY SWITCHABLE. This used to read
+      # `UPLOAD_SBOM: "false"` -- a literal baked into the YAML -- while both
+      # the step's own message and the docs said "set UPLOAD_SBOM=true to
+      # enable". Setting the pipeline variable did nothing, because the
+      # literal shadowed it: the feature could not be turned on at all.
+      # Measured: with the literal, UPLOAD_SBOM=true still printed
+      # "SBOM upload disabled" and exited 0, so it looked deliberate.
+      # As a macro, an undefined variable stays falsy, so the default is
+      # still off -- turning it on without a working key must not make every
       # build red for a feature nobody asked for yet.
-      UPLOAD_SBOM: "false"
+      UPLOAD_SBOM: "$(UPLOAD_SBOM)"
       SCAN_PATH: "."
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
       OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group

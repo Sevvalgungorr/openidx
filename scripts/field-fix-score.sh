@@ -54,6 +54,24 @@ chk INSTALL_GUARDS "$i" ">=3" "$([ "$i" -ge 3 ] && echo 1 || echo 0)"
 v="$(grep -c 'pip install --quiet --user' deployments/ci/azure-pipelines-ziti.yml || true)"
 chk PEP668_UNSAFE_PIP "$v" 0 "$([ "$v" = 0 ] && echo 1 || echo 0)"
 
+#    A documented switch that a pipeline variable cannot actually set is a
+#    feature that silently does not exist. UPLOAD_SBOM was pinned to a
+#    literal "false" in the step's env while its own message said "set
+#    UPLOAD_SBOM=true to enable"; the literal shadows the variable, so the
+#    upload could never be turned on and looked deliberate every run.
+#    Rule: if the step body reads a flag as ${FLAG:-false}, i.e. treats it as
+#    switchable, then env must pass it as a macro, not bake in a constant.
+#    Measured generically so the next flag cannot repeat it.
+u="$(python3 - <<'PYEOF'
+import re
+s=open('deployments/ci/azure-pipelines-ziti.yml').read()
+lit=set(re.findall(r'^\s{6}([A-Z_]+):\s*"(?:true|false)"\s*$',s,re.M))
+flags=set(re.findall(r'\$\{([A-Z_]+):-(?:false|true)\}',s))
+print(len([k for k in lit if k in flags]))
+PYEOF
+)"
+chk SHADOWED_FLAGS "$u" 0 "$([ "$u" = 0 ] && echo 1 || echo 0)"
+
 # 6. A scan of zero files must be fatal (it looks exactly like clean code).
 z="$(grep -c 'NOT SCANNED' deployments/ci/azure-pipelines-ziti.yml || true)"
 chk EMPTY_SCAN_FATAL "$z" ">=1" "$([ "$z" -ge 1 ] && echo 1 || echo 0)"
