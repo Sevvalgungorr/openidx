@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Smartphone, Monitor, Tablet, Shield, ShieldCheck, ShieldX, Trash2, Edit, Plus, MoreHorizontal, Network, Copy, Download, Wifi, WifiOff } from 'lucide-react'
+import { Smartphone, Monitor, Tablet, Shield, ShieldCheck, ShieldX, Trash2, Edit, Plus, MoreHorizontal, Network, Download, Wifi, WifiOff } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
@@ -216,18 +217,7 @@ export function MyDevicesPage() {
     queryFn: () => api.get<MyZitiIdentity>('/api/v1/access/ziti/sync/my-identity'),
   })
 
-  const [showJwt, setShowJwt] = useState(false)
-
-  const downloadJwt = () => {
-    if (!zitiIdentity?.enrollment_jwt) return
-    const blob = new Blob([zitiIdentity.enrollment_jwt], { type: 'application/jwt' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${zitiIdentity.name || 'identity'}.jwt`
-    a.click()
-    window.URL.revokeObjectURL(url)
-  }
+  const navigate = useNavigate()
 
   // Summary stats
   const trustedCount = devices.filter(d => d.trusted).length
@@ -277,47 +267,14 @@ export function MyDevicesPage() {
               {/* Guided setup, only for the minority of cases that need it. The
                   raw token stays collapsed under "Advanced" so it is available
                   for support without being the first thing a user sees. */}
-              {!zitiIdentity.enrolled && zitiIdentity.enrollment_jwt && (
-                <div className="mt-4 p-3 bg-white rounded-lg border space-y-3">
-                  <div>
-                    <p className="text-sm font-medium">Set up this device</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Step 1 — install the OpenIDX network client for your operating system.
-                      Step 2 — open it and paste the setup key below. You only do this once.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => window.open('https://openziti.io/downloads', '_blank')}
-                    >
-                      <Download className="h-3.5 w-3.5 mr-1.5" /> Get the client
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => {
-                      navigator.clipboard.writeText(zitiIdentity.enrollment_jwt!)
-                      toast({ title: 'Setup key copied', description: 'Paste it into the network client.' })
-                    }}>
-                      <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy setup key
-                    </Button>
-                  </div>
-                  <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer select-none">Advanced</summary>
-                    <div className="mt-2 flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setShowJwt(!showJwt)}>
-                        {showJwt ? 'Hide key' : 'Show key'}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={downloadJwt}>
-                        <Download className="h-3.5 w-3.5 mr-1.5" /> Download key file
-                      </Button>
-                    </div>
-                    {showJwt && (
-                      <textarea
-                        readOnly
-                        value={zitiIdentity.enrollment_jwt}
-                        className="mt-2 w-full h-24 rounded-md border bg-muted p-2 text-xs font-mono"
-                      />
-                    )}
-                  </details>
+              {!zitiIdentity.enrolled && (
+                <div className="mt-4">
+                  <Button size="sm" onClick={() => navigate('/add-device')}>
+                    <Download className="h-3.5 w-3.5 mr-1.5" /> Set up network access
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    A short guided setup — install the OpenIDX app and scan a code. You only do this once.
+                  </p>
                 </div>
               )}
             </CardContent>

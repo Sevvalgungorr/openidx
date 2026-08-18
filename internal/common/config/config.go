@@ -182,6 +182,29 @@ type Config struct {
 	//   "enforce" — actually add/remove `device-trusted` per posture.
 	PostureDeviceTrustGate string `mapstructure:"posture_device_trust_gate"`
 
+	// DeviceAutotrustMode governs risk-based device auto-trust for the unified
+	// enrollment flow. When a device enrolls via an enrollment session created
+	// from an MFA-verified console session (server-verified, never agent-
+	// supplied), the backend may auto-mark its known_devices row trusted instead
+	// of waiting for admin approval. Same tri-state as PostureDeviceTrustGate:
+	//   "off"     (default) — never auto-trust; today's admin-approval behavior.
+	//   "observe" — log what WOULD be auto-trusted but leave the device pending.
+	//   "enforce" — actually set known_devices.trusted on qualifying enrolls.
+	// The Ziti Tier-2 device-trusted attribute stays posture-gated regardless.
+	DeviceAutotrustMode string `mapstructure:"device_autotrust_mode"`
+	// DeviceAutotrustKnownOrgs optionally restricts auto-trust to a comma-
+	// separated allow-list of org IDs. Empty means "any org" (the operator opted
+	// in globally by setting enforce).
+	DeviceAutotrustKnownOrgs string `mapstructure:"device_autotrust_known_orgs"`
+	// DeviceAutotrustRequirePosture, when true, withholds enroll-time auto-trust
+	// (an enroll carries no posture report yet), leaving the device pending until
+	// a later compliant report or admin approval — so trust always implies a
+	// compliant device.
+	DeviceAutotrustRequirePosture bool `mapstructure:"device_autotrust_require_posture"`
+	// EnrollSessionTTLMinutes is how long an enrollment session's short code / QR
+	// / deep-link remains valid. Default 15.
+	EnrollSessionTTLMinutes int `mapstructure:"enroll_session_ttl_minutes"`
+
 	// PAMSessionRiskGate drives the privileged-session risk scorer (PAM C2).
 	// A leader-gated worker scores every active Guacamole/PAM session on
 	// off-hours, duration, and the user's live risk score, and can auto-suspend
@@ -692,6 +715,10 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("dark_mode_tier1", false)
 	v.SetDefault("dark_mode_tier2", false)
 	v.SetDefault("posture_device_trust_gate", "off")
+	v.SetDefault("device_autotrust_mode", "off")
+	v.SetDefault("device_autotrust_known_orgs", "")
+	v.SetDefault("device_autotrust_require_posture", false)
+	v.SetDefault("enroll_session_ttl_minutes", 15)
 	v.SetDefault("pam_session_risk_gate", "off")
 	v.SetDefault("pam_session_risk_threshold", 80)
 	v.SetDefault("dev_admin_bypass", false)
@@ -920,6 +947,10 @@ func bindEnvVars(v *viper.Viper) {
 		"dark_mode_tier1":                     "DARK_MODE_TIER1",
 		"dark_mode_tier2":                     "DARK_MODE_TIER2",
 		"posture_device_trust_gate":           "POSTURE_DEVICE_TRUST_GATE",
+		"device_autotrust_mode":               "DEVICE_AUTOTRUST_MODE",
+		"device_autotrust_known_orgs":         "DEVICE_AUTOTRUST_KNOWN_ORGS",
+		"device_autotrust_require_posture":    "DEVICE_AUTOTRUST_REQUIRE_POSTURE",
+		"enroll_session_ttl_minutes":          "ENROLL_SESSION_TTL_MINUTES",
 		"pam_session_risk_gate":               "PAM_SESSION_RISK_GATE",
 		"pam_session_risk_threshold":          "PAM_SESSION_RISK_THRESHOLD",
 		"dev_admin_bypass":                    "DEV_ADMIN_BYPASS",

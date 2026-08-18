@@ -159,7 +159,7 @@ func TestAgentEnroll_LinksKnownDevice(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/agent/enroll/oauth", nil).WithContext(ctx)
 
-	h.linkAgentToKnownDevice(c, "agent-oauth", "device-1", devUser, enrollRequest{Hostname: "dana-laptop", Platform: "linux"})
+	h.linkAgentToKnownDevice(c.Request.Context(), "", "agent-oauth", "device-1", devUser, devOrg, enrollRequest{Hostname: "dana-laptop", Platform: "linux"}, false)
 
 	// A known_devices row was created with the namespaced fingerprint and the
 	// agent row now points at it.
@@ -182,7 +182,7 @@ func TestAgentEnroll_LinksKnownDevice(t *testing.T) {
 	}
 
 	// Re-enrolling the same device_id is idempotent (ON CONFLICT heals, no dup).
-	h.linkAgentToKnownDevice(c, "agent-oauth", "device-1", devUser, enrollRequest{Hostname: "dana-laptop", Platform: "linux"})
+	h.linkAgentToKnownDevice(c.Request.Context(), "", "agent-oauth", "device-1", devUser, devOrg, enrollRequest{Hostname: "dana-laptop", Platform: "linux"}, false)
 	var n int
 	if err := db.Pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM known_devices WHERE user_id=$1 AND fingerprint='agent:device-1'`, devUser).Scan(&n); err != nil || n != 1 {

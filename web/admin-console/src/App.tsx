@@ -96,6 +96,7 @@ import {
   UserProfile,
   MyAccess,
   MyDevices,
+  AddDevice,
   MyNetwork,
   TrustedBrowsers,
   DeviceAuthorization,
@@ -230,6 +231,7 @@ function App() {
         <Route path="my-access" element={<MyAccess />} />
         <Route path="my-privileged-access" element={<MyPrivilegedAccess />} />
         <Route path="my-devices" element={<MyDevices />} />
+        <Route path="add-device" element={<AddDevice />} />
         <Route path="my-network" element={<MyNetwork />} />
         <Route path="my-security" element={<MySecurity />} />
         <Route path="trusted-browsers" element={<TrustedBrowsers />} />

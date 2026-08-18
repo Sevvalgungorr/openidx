@@ -125,6 +125,7 @@ export const UserProfile = lazy(() => import('./user-profile').then((m) => ({ de
 export const MyAccess = lazy(() => import('./my-access').then((m) => ({ default: m.MyAccessPage })))
 export const MyPrivilegedAccess = lazy(() => import('./my-privileged-access').then((m) => ({ default: m.MyPrivilegedAccessPage })))
 export const MyDevices = lazy(() => import('./my-devices').then((m) => ({ default: m.MyDevicesPage })))
+export const AddDevice = lazy(() => import('./add-device').then((m) => ({ default: m.AddDevicePage })))
 export const MyNetwork = lazy(() => import('./my-network').then((m) => ({ default: m.MyNetworkPage })))
 export const MySecurity = lazy(() => import('./my-security').then((m) => ({ default: m.MySecurityPage })))
 export const AIIdentityIntelligence = lazy(() => import('./ai-identity-intelligence').then((m) => ({ default: m.AIIdentityIntelligencePage })))

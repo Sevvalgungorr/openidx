@@ -543,6 +543,17 @@ func AuthWithAPIKey(jwksURL string, apiKeyValidator APIKeyValidator) gin.Handler
 			}
 			c.Set("roles", roleStrings)
 		}
+		// Extract amr (authentication methods references) so downstream can tell
+		// whether the session actually completed MFA. Tokens don't emit it yet
+		// (so this is absent → treated as no-MFA); wiring it here keeps
+		// DEVICE_AUTOTRUST correct-by-construction once amr is issued on MFA login.
+		if amr, ok := claims["amr"].([]interface{}); ok {
+			amrStrings := make([]string, len(amr))
+			for i, m := range amr {
+				amrStrings[i] = fmt.Sprint(m)
+			}
+			c.Set("amr", amrStrings)
+		}
 
 		// Extract org_id from claims, default to default org
 		if orgID, ok := claims["org_id"].(string); ok && orgID != "" {
@@ -622,6 +633,17 @@ func SoftAuth(jwksURL string) gin.HandlerFunc {
 				roleStrings[i] = fmt.Sprint(role)
 			}
 			c.Set("roles", roleStrings)
+		}
+		// Extract amr (authentication methods references) so downstream can tell
+		// whether the session actually completed MFA. Tokens don't emit it yet
+		// (so this is absent → treated as no-MFA); wiring it here keeps
+		// DEVICE_AUTOTRUST correct-by-construction once amr is issued on MFA login.
+		if amr, ok := claims["amr"].([]interface{}); ok {
+			amrStrings := make([]string, len(amr))
+			for i, m := range amr {
+				amrStrings[i] = fmt.Sprint(m)
+			}
+			c.Set("amr", amrStrings)
 		}
 		if orgID, ok := claims["org_id"].(string); ok && orgID != "" {
 			c.Set("org_id", orgID)

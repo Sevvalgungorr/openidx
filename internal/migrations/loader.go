@@ -929,5 +929,12 @@ func allMigrations() []*Migration {
 			UpSQL:       seedPlaygroundClientUp,
 			DownSQL:     seedPlaygroundClientDown,
 		},
+		{
+			Version:     132,
+			Name:        "enrollment_sessions",
+			Description: "Add enrollment_sessions, the unified self-service onboarding primitive: a short code + QR + deep-link created from an MFA-verified console session that maps onto the existing single-use agent_enrollment_tokens flow (correlated by token_hash). Carries the creating user + org + a server-verified mfa_verified flag that drives risk-based device auto-trust. Global agent-infrastructure table (no RLS) like agent_enrollment_tokens, since the public /agent/enroll path looks it up by high-entropy token_hash without a tenant JWT.",
+			UpSQL:       enrollmentSessionsUp,
+			DownSQL:     enrollmentSessionsDown,
+		},
 	}
 }

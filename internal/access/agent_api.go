@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/openidx/openidx/internal/common/config"
 	"github.com/openidx/openidx/internal/common/database"
 	"github.com/openidx/openidx/internal/common/orgctx"
 )
@@ -37,6 +38,14 @@ func NewAgentAPIHandler(logger *zap.Logger, db *database.PostgresDB, zm *ZitiMan
 		db:     db,
 		zm:     zm,
 	}
+}
+
+// cfg returns the access-service config (carried by the Ziti manager) or nil.
+func (h *AgentAPIHandler) cfg() *config.Config {
+	if h.zm != nil {
+		return h.zm.cfg
+	}
+	return nil
 }
 
 // SetPlayIntegrityVerifier installs the Play Integrity verifier used by
@@ -117,6 +126,9 @@ func (h *AgentAPIHandler) RegisterAgentPublicRoutes(r *gin.RouterGroup) {
 // APK-info admin helpers. Mount behind middleware.Auth.
 func (h *AgentAPIHandler) RegisterAgentAdminRoutes(r *gin.RouterGroup) {
 	r.POST("/agent/enroll/oauth", h.HandleEnrollOAuth)
+	r.POST("/agent/enroll/session", h.HandleCreateEnrollSession)
+	r.GET("/agent/enroll/session/:id/status", h.HandleEnrollSessionStatus)
+	r.DELETE("/agent/enroll/session/:id", h.HandleCancelEnrollSession)
 	r.POST("/agent/tokens", h.HandleGenerateToken)
 	r.GET("/agent/tokens", h.HandleListTokens)
 	r.DELETE("/agent/tokens/:token_id", h.HandleRevokeToken)
@@ -130,7 +142,11 @@ func (h *AgentAPIHandler) RegisterAgentAdminRoutes(r *gin.RouterGroup) {
 
 // enrollRequest is the optional JSON body accepted by HandleEnroll.
 type enrollRequest struct {
-	Token          string `json:"token"`
+	Token string `json:"token"`
+	// Code is the enrollment-session code (unified onboarding). When the agent
+	// enrolls from a deep-link / short code it may carry the code here instead of
+	// the Authorization header; HandleEnroll treats it as the bearer token.
+	Code           string `json:"code"`
 	Hostname       string `json:"hostname"`
 	OS             string `json:"os"`
 	Arch           string `json:"arch"`
@@ -438,19 +454,23 @@ func agentZitiOverlayEnabled() bool {
 // optionally creates a Ziti identity, and returns enrollment credentials.
 // When the DB is unavailable, it falls back to accepting any non-empty token (dev mode).
 func (h *AgentAPIHandler) HandleEnroll(c *gin.Context) {
+	// Parse optional device info + enrollment-session code from the body first.
+	var enrollReq enrollRequest
+	c.ShouldBindJSON(&enrollReq)
+
+	// The bearer token may arrive in the Authorization header (classic/MDM) or as
+	// the `code` field (unified deep-link / short-code onboarding).
 	token := c.GetHeader("Authorization")
+	if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
+		token = token[7:]
+	}
+	if token == "" {
+		token = strings.TrimSpace(enrollReq.Code)
+	}
 	if token == "" {
 		c.JSON(401, gin.H{"error": "enrollment token required"})
 		return
 	}
-	// Strip "Bearer " prefix
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
-	}
-
-	// Parse optional device info from request body.
-	var enrollReq enrollRequest
-	c.ShouldBindJSON(&enrollReq)
 
 	// Validate enrollment token against the database when configured. The token
 	// itself is consumed (marked used) before credentials are minted so a
@@ -498,7 +518,18 @@ func (h *AgentAPIHandler) HandleEnroll(c *gin.Context) {
 			}
 		}
 
-		creds := h.issueAgentCredentials(ctx, enrollReq, "token", "")
+		// Correlate to a unified enrollment session (short code / QR / deep-link).
+		// A session ties this token to the user who created it from an MFA-verified
+		// console session, enabling risk-based device auto-trust.
+		sess := h.lookupEnrollmentSession(ctx, incomingHash)
+		method := "token"
+		enrolledBy := ""
+		if sess != nil {
+			method = "session"
+			enrolledBy = sess.CreatedByUID
+		}
+
+		creds := h.issueAgentCredentials(ctx, enrollReq, method, enrolledBy)
 
 		// Track the most recent enrolling agent (single-use tokens only; a
 		// reusable token enrolls many, so this field is left for the last one).
@@ -508,9 +539,22 @@ func (h *AgentAPIHandler) HandleEnroll(c *gin.Context) {
 				creds.AgentID, tokenID)
 		}
 
-		writeEnrollResponse(c, creds, "token")
-		h.logAuditEvent("agent.enrolled", creds.AgentID, "success", "method=token")
-		h.logAuditEventToDB(ctx, "agent.enrolled", creds.AgentID, "success", "method=token")
+		if sess != nil {
+			// Enroll-time auto-trust. No posture report exists yet, so postureOK is
+			// false — when posture is required this defers trust to a later report
+			// or admin approval. Trust derives from the server-verified session's
+			// MFA state, never from agent-supplied request data.
+			trusted, mode := decideAutoTrust(h.cfg(), h.logger, sess.MFAVerified, false, sess.OrgID)
+			h.linkAgentToKnownDevice(ctx, c.ClientIP(), creds.AgentID, creds.DeviceID, sess.CreatedByUID, sess.OrgID, enrollReq, trusted)
+			h.markEnrollmentSessionEnrolled(ctx, sess.ID, creds.AgentID, creds.DeviceID, trusted)
+			h.logger.Info("enrollment session redeemed",
+				zap.String("agent_id", creds.AgentID), zap.Bool("auto_trusted", trusted),
+				zap.String("autotrust_mode", mode))
+		}
+
+		writeEnrollResponse(c, creds, method)
+		h.logAuditEvent("agent.enrolled", creds.AgentID, "success", "method="+method)
+		h.logAuditEventToDB(ctx, "agent.enrolled", creds.AgentID, "success", "method="+method)
 		return
 	}
 
@@ -571,7 +615,8 @@ func (h *AgentAPIHandler) HandleEnrollOAuth(c *gin.Context) {
 	// is the join point that lets device trust (IAM) and device compliance
 	// (Ziti posture) be reconciled per physical device. Best-effort: a failure
 	// here never blocks enrollment.
-	h.linkAgentToKnownDevice(c, creds.AgentID, creds.DeviceID, userID, enrollReq)
+	org, _ := orgctx.From(c.Request.Context())
+	h.linkAgentToKnownDevice(c.Request.Context(), c.ClientIP(), creds.AgentID, creds.DeviceID, userID, org.ID, enrollReq, false)
 
 	writeEnrollResponse(c, creds, "oauth")
 
@@ -582,20 +627,21 @@ func (h *AgentAPIHandler) HandleEnrollOAuth(c *gin.Context) {
 // linkAgentToKnownDevice upserts a known_devices row for a user-bound agent
 // enrollment and links the enrolled_agents row to it (migration v80's
 // known_device_id). The fingerprint is namespaced as "agent:<device_id>" so it
-// never collides with a browser fingerprint, and the row starts untrusted —
-// trust is granted separately by an admin or MDM. No-op (logged) when the
-// tenant can't be resolved or the DB is absent.
-func (h *AgentAPIHandler) linkAgentToKnownDevice(c *gin.Context, agentID, deviceID, userID string, req enrollRequest) {
-	if h.db == nil || h.db.Pool == nil {
+// never collides with a browser fingerprint. `trusted` is the risk-based
+// auto-trust decision (see decideAutoTrust); on re-enroll trust only ever
+// upgrades, never downgrades. Callers pass the org + client IP explicitly so
+// this works from both the OAuth path and the public enrollment-session path.
+// No-op (logged) when orgID is empty or the DB is absent.
+func (h *AgentAPIHandler) linkAgentToKnownDevice(ctx context.Context, clientIP, agentID, deviceID, userID, orgID string, req enrollRequest, trusted bool) {
+	if h.db == nil || h.db.Pool == nil || orgID == "" {
 		return
 	}
-	ctx := c.Request.Context()
-	org, err := orgctx.From(ctx)
-	if err != nil {
-		h.logger.Debug("agent device link: no tenant context; skipping known_devices mirror",
-			zap.String("agent_id", agentID))
-		return
-	}
+	// known_devices is org-scoped under FORCE RLS. This runs from the public
+	// enrollment-session path (no tenant JWT → empty org GUC) as well as the
+	// OAuth path, so write under a bypass context with the explicit orgID — safe:
+	// the row is keyed by (user_id, fingerprint) and stamped with the caller's
+	// own org.
+	wctx := orgctx.WithBypassRLS(ctx)
 
 	fingerprint := "agent:" + deviceID
 	name := req.Hostname
@@ -609,14 +655,15 @@ func (h *AgentAPIHandler) linkAgentToKnownDevice(c *gin.Context, agentID, device
 	userAgent := strings.TrimSpace(strings.Join([]string{req.OS, req.Arch, req.Platform}, " "))
 
 	var knownDeviceID string
-	err = h.db.Pool.QueryRow(ctx, `
+	err := h.db.Pool.QueryRow(wctx, `
 		INSERT INTO known_devices (id, user_id, fingerprint, name, ip_address, user_agent, trusted, device_type, created_at, org_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, false, 'agent', NOW(), $6)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $7, 'agent', NOW(), $6)
 		ON CONFLICT (user_id, fingerprint) DO UPDATE
 		SET name = EXCLUDED.name, ip_address = EXCLUDED.ip_address,
-		    user_agent = EXCLUDED.user_agent, last_seen_at = NOW(), org_id = EXCLUDED.org_id
+		    user_agent = EXCLUDED.user_agent, last_seen_at = NOW(), org_id = EXCLUDED.org_id,
+		    trusted = known_devices.trusted OR EXCLUDED.trusted
 		RETURNING id`,
-		userID, fingerprint, name, c.ClientIP(), userAgent, org.ID,
+		userID, fingerprint, name, clientIP, userAgent, orgID, trusted,
 	).Scan(&knownDeviceID)
 	if err != nil {
 		h.logger.Warn("agent device link: known_devices upsert failed",
@@ -624,7 +671,7 @@ func (h *AgentAPIHandler) linkAgentToKnownDevice(c *gin.Context, agentID, device
 		return
 	}
 
-	if _, err := h.db.Pool.Exec(ctx,
+	if _, err := h.db.Pool.Exec(wctx,
 		`UPDATE enrolled_agents SET known_device_id = $1 WHERE agent_id = $2`,
 		knownDeviceID, agentID); err != nil {
 		h.logger.Warn("agent device link: enrolled_agents update failed",
