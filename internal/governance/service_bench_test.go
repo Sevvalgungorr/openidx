@@ -319,7 +319,7 @@ func BenchmarkSubmitReviewDecision(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		itemID := itemIDs[i%len(itemIDs)]
-		_ = svc.SubmitReviewDecision(ctx, itemID, ReviewDecisionApproved, "Benchmark decision", reviewerID)
+		_ = svc.SubmitReviewDecision(ctx, reviewID, itemID, ReviewDecisionApproved, "Benchmark decision", reviewerID)
 	}
 }
 

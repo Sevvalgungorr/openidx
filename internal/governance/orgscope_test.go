@@ -35,7 +35,7 @@ func TestGovernance_Service_requireOrgContext(t *testing.T) {
 		requireNoOrg(t, err)
 	})
 	t.Run("SubmitReviewDecision", func(t *testing.T) {
-		requireNoOrg(t, s.SubmitReviewDecision(ctx, "i-1", ReviewDecisionApproved, "", "by"))
+		requireNoOrg(t, s.SubmitReviewDecision(ctx, "r-1", "i-1", ReviewDecisionApproved, "", "by"))
 	})
 	t.Run("UpdateAccessReview", func(t *testing.T) {
 		requireNoOrg(t, s.UpdateAccessReview(ctx, "r-1", &AccessReview{}))

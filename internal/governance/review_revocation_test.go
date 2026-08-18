@@ -122,7 +122,7 @@ func TestSubmitReviewDecision_ActuallyRevokes(t *testing.T) {
 		item := "cccccccc-0000-0000-0000-000000000001"
 		seedItem(item, "role", roleID)
 
-		if err := s.SubmitReviewDecision(ctx, item, ReviewDecisionRevoked, "no longer needed", decidedBy); err != nil {
+		if err := s.SubmitReviewDecision(ctx, reviewID, item, ReviewDecisionRevoked, "no longer needed", decidedBy); err != nil {
 			t.Fatalf("SubmitReviewDecision: %v", err)
 		}
 		if got := countUserRole(); got != 0 {
@@ -147,7 +147,7 @@ func TestSubmitReviewDecision_ActuallyRevokes(t *testing.T) {
 		item := "cccccccc-0000-0000-0000-000000000002"
 		seedItem(item, "role", roleID)
 
-		if err := s.SubmitReviewDecision(ctx, item, ReviewDecisionApproved, "looks good", decidedBy); err != nil {
+		if err := s.SubmitReviewDecision(ctx, reviewID, item, ReviewDecisionApproved, "looks good", decidedBy); err != nil {
 			t.Fatalf("SubmitReviewDecision: %v", err)
 		}
 		if got := countUserRole(); got != 1 {
@@ -159,7 +159,7 @@ func TestSubmitReviewDecision_ActuallyRevokes(t *testing.T) {
 		item := "cccccccc-0000-0000-0000-000000000003"
 		seedItem(item, "privileged_role", roleID)
 
-		if err := s.SubmitReviewDecision(ctx, item, ReviewDecisionRevoked, "sod", decidedBy); err != nil {
+		if err := s.SubmitReviewDecision(ctx, reviewID, item, ReviewDecisionRevoked, "sod", decidedBy); err != nil {
 			t.Fatalf("SubmitReviewDecision: %v", err)
 		}
 		if got := countUserRole(); got != 0 {

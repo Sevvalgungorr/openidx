@@ -539,8 +539,11 @@ func (s *Service) ListAccessReviews(ctx context.Context, offset, limit int, stat
 	return reviews, total, nil
 }
 
-// SubmitReviewDecision submits a decision for a review item
-func (s *Service) SubmitReviewDecision(ctx context.Context, itemID string, decision ReviewDecision, comments string, decidedBy string) error {
+// SubmitReviewDecision submits a decision for a review item. reviewID scopes the
+// update to the review the caller was authorized against, so a reviewer with
+// rights on one review cannot decide an item belonging to a different review
+// (matching the batch path, which already scopes by review_id).
+func (s *Service) SubmitReviewDecision(ctx context.Context, reviewID, itemID string, decision ReviewDecision, comments string, decidedBy string) error {
 	s.logger.Info("Submitting review decision",
 		zap.String("item_id", itemID),
 		zap.String("decision", string(decision)))
@@ -565,8 +568,8 @@ func (s *Service) SubmitReviewDecision(ctx context.Context, itemID string, decis
 	tag, err := tx.Exec(ctx, `
 		UPDATE review_items
 		SET decision = $2, comments = $3, decided_by = $4, decided_at = $5
-		WHERE id = $1 AND org_id = $6
-	`, itemID, decision, comments, decidedBy, now, org.ID)
+		WHERE id = $1 AND review_id = $7 AND org_id = $6
+	`, itemID, decision, comments, decidedBy, now, org.ID, reviewID)
 	if err != nil {
 		return err
 	}
@@ -1901,7 +1904,7 @@ func (s *Service) handleSubmitDecision(c *gin.Context) {
 	if !s.authorizeReviewDecision(c, c.Param("id")) {
 		return
 	}
-	if err := s.SubmitReviewDecision(c.Request.Context(), c.Param("itemId"), req.Decision, req.Comments, userIDStr); err != nil {
+	if err := s.SubmitReviewDecision(c.Request.Context(), c.Param("id"), c.Param("itemId"), req.Decision, req.Comments, userIDStr); err != nil {
 		s.logger.Error("failed to submit review decision", zap.String("item_id", c.Param("itemId")), zap.Error(err))
 		c.JSON(500, gin.H{"error": "internal server error"})
 		return

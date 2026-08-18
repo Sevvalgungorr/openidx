@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -531,27 +532,40 @@ func (s *Service) CreateScheduledReport(ctx context.Context, report *ScheduledRe
 	return nil
 }
 
-// UpdateScheduledReport updates an existing scheduled report
-func (s *Service) UpdateScheduledReport(ctx context.Context, reportID string, name, schedule, format string, enabled bool) error {
-	_, err := s.db.Pool.Exec(ctx, `
+// ErrScheduledReportNotFound is returned when a scheduled report does not exist
+// in the caller's org (used to turn a cross-tenant id into a 404).
+var ErrScheduledReportNotFound = errors.New("scheduled report not found")
+
+// UpdateScheduledReport updates an existing scheduled report. It is scoped to
+// orgID so a caller cannot update another tenant's report — scheduled_reports
+// has no RLS policy, so this app-layer scope is the only tenant boundary.
+func (s *Service) UpdateScheduledReport(ctx context.Context, reportID, orgID string, name, schedule, format string, enabled bool) error {
+	tag, err := s.db.Pool.Exec(ctx, `
 		UPDATE scheduled_reports
 		SET name = $1, schedule = $2, format = $3, enabled = $4, updated_at = $5
-		WHERE id = $6
-	`, name, schedule, format, enabled, time.Now(), reportID)
+		WHERE id = $6 AND org_id = $7
+	`, name, schedule, format, enabled, time.Now(), reportID, orgID)
 	if err != nil {
 		return fmt.Errorf("failed to update scheduled report: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrScheduledReportNotFound
 	}
 
 	return nil
 }
 
-// DeleteScheduledReport deletes a scheduled report
-func (s *Service) DeleteScheduledReport(ctx context.Context, reportID string) error {
-	_, err := s.db.Pool.Exec(ctx, `
-		DELETE FROM scheduled_reports WHERE id = $1
-	`, reportID)
+// DeleteScheduledReport deletes a scheduled report, scoped to orgID (see
+// UpdateScheduledReport for why the org scope is load-bearing here).
+func (s *Service) DeleteScheduledReport(ctx context.Context, reportID, orgID string) error {
+	tag, err := s.db.Pool.Exec(ctx, `
+		DELETE FROM scheduled_reports WHERE id = $1 AND org_id = $2
+	`, reportID, orgID)
 	if err != nil {
 		return fmt.Errorf("failed to delete scheduled report: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrScheduledReportNotFound
 	}
 
 	return nil
@@ -715,7 +729,17 @@ func (s *Service) handleUpdateScheduledReport(c *gin.Context) {
 		return
 	}
 
-	if err := s.UpdateScheduledReport(c.Request.Context(), reportID, req.Name, req.Schedule, req.Format, req.Enabled); err != nil {
+	orgID, _ := c.Get("org_id")
+	orgIDStr, _ := orgID.(string)
+	if orgIDStr == "" {
+		orgIDStr = "00000000-0000-0000-0000-000000000010"
+	}
+
+	if err := s.UpdateScheduledReport(c.Request.Context(), reportID, orgIDStr, req.Name, req.Schedule, req.Format, req.Enabled); err != nil {
+		if errors.Is(err, ErrScheduledReportNotFound) {
+			apperrors.HandleError(c, apperrors.NotFound("scheduled report"))
+			return
+		}
 		apperrors.HandleErrorWithLogger(c, apperrors.Internal("update scheduled report", err), s.logger)
 		return
 	}
@@ -726,7 +750,17 @@ func (s *Service) handleUpdateScheduledReport(c *gin.Context) {
 func (s *Service) handleDeleteScheduledReport(c *gin.Context) {
 	reportID := c.Param("id")
 
-	if err := s.DeleteScheduledReport(c.Request.Context(), reportID); err != nil {
+	orgID, _ := c.Get("org_id")
+	orgIDStr, _ := orgID.(string)
+	if orgIDStr == "" {
+		orgIDStr = "00000000-0000-0000-0000-000000000010"
+	}
+
+	if err := s.DeleteScheduledReport(c.Request.Context(), reportID, orgIDStr); err != nil {
+		if errors.Is(err, ErrScheduledReportNotFound) {
+			apperrors.HandleError(c, apperrors.NotFound("scheduled report"))
+			return
+		}
 		apperrors.HandleErrorWithLogger(c, apperrors.Internal("delete scheduled report", err), s.logger)
 		return
 	}
