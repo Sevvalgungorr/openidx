@@ -265,7 +265,7 @@ func (s *Service) Publish(ctx context.Context, eventType string, payload interfa
 		return fmt.Errorf("failed to marshal webhook payload: %w", err)
 	}
 
-	query := `SELECT id, url, secret FROM webhook_subscriptions
+	query := `SELECT id, url, secret, org_id FROM webhook_subscriptions
 		WHERE status = 'active' AND $1 = ANY(events)`
 
 	rows, err := s.db.Pool.Query(ctx, query, eventType)
@@ -276,17 +276,20 @@ func (s *Service) Publish(ctx context.Context, eventType string, payload interfa
 
 	var deliveryIDs []string
 	for rows.Next() {
-		var subID, subURL, subSecret string
-		if err := rows.Scan(&subID, &subURL, &subSecret); err != nil {
+		var subID, subURL, subSecret, subOrgID string
+		if err := rows.Scan(&subID, &subURL, &subSecret, &subOrgID); err != nil {
 			return fmt.Errorf("failed to scan subscription: %w", err)
 		}
 
 		deliveryID := uuid.New().String()
-		insertQuery := `INSERT INTO webhook_deliveries (id, subscription_id, event_type, payload, attempt, status, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		// Tag the delivery with its subscription's org. Omitting org_id fell back
+		// to the default-org column DEFAULT, which fails the RLS WITH CHECK for
+		// any non-default tenant, so the delivery could never be created.
+		insertQuery := `INSERT INTO webhook_deliveries (id, subscription_id, event_type, payload, attempt, status, created_at, org_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 		_, err := s.db.Pool.Exec(ctx, insertQuery,
-			deliveryID, subID, eventType, string(payloadJSON), 0, "pending", time.Now().UTC(),
+			deliveryID, subID, eventType, string(payloadJSON), 0, "pending", time.Now().UTC(), subOrgID,
 		)
 		if err != nil {
 			s.logger.Error("failed to create webhook delivery",
@@ -323,6 +326,12 @@ func (s *Service) Publish(ctx context.Context, eventType string, payload interfa
 
 // ProcessDeliveries continuously processes pending webhook deliveries from the Redis queue
 func (s *Service) ProcessDeliveries(ctx context.Context) {
+	// Background worker: it processes deliveries for every tenant, keyed by the
+	// delivery's own id, so it must bypass RLS. webhook_deliveries has FORCE ROW
+	// LEVEL SECURITY; without bypass the checkout sets an empty app.org_id and
+	// every row is invisible, so deliverWebhook's SELECT finds nothing and no
+	// webhook is ever delivered. Matches the vault/credentials/audit sweepers.
+	ctx = orgctx.WithBypassRLS(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -567,6 +576,9 @@ func (s *Service) RetryDelivery(ctx context.Context, deliveryID string) error {
 
 // ProcessRetries periodically checks for pending deliveries that are due for retry
 func (s *Service) ProcessRetries(ctx context.Context) {
+	// Background worker: scans/updates deliveries across all tenants by id, so it
+	// must bypass RLS (webhook_deliveries is FORCE RLS — see ProcessDeliveries).
+	ctx = orgctx.WithBypassRLS(ctx)
 	// Leader-gated: the retry sweep re-enqueues due deliveries by scanning the
 	// DB, so across replicas it must run once per interval cluster-wide to avoid
 	// duplicate re-enqueues. (Delivery itself uses a BRPop queue and is already
@@ -639,14 +651,19 @@ func (s *Service) PingSubscription(ctx context.Context, subscriptionID string) (
 		return nil, fmt.Errorf("failed to marshal ping payload: %w", err)
 	}
 
-	// Create a delivery record for the ping
+	// Create a delivery record for the ping. Tag it with the caller's org so the
+	// RLS WITH CHECK passes for non-default tenants (see Publish).
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ping requires an org context: %w", err)
+	}
 	deliveryID := uuid.New().String()
 	now := time.Now().UTC()
 
-	insertQuery := `INSERT INTO webhook_deliveries (id, subscription_id, event_type, payload, attempt, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	insertQuery := `INSERT INTO webhook_deliveries (id, subscription_id, event_type, payload, attempt, status, created_at, org_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	_, err = s.db.Pool.Exec(ctx, insertQuery,
-		deliveryID, subscriptionID, "ping", string(payloadJSON), 0, "pending", now,
+		deliveryID, subscriptionID, "ping", string(payloadJSON), 0, "pending", now, org.ID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ping delivery record: %w", err)
