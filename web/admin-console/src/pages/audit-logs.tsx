@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface AuditEvent {
   id: string
@@ -85,7 +86,7 @@ export function AuditLogsPage() {
   const [startDate, setStartDate] = useState(defaultStartDate)
   const [endDate, setEndDate] = useState(defaultEndDate)
 
-  const { data: events, isLoading } = useQuery({
+  const { data: events, isLoading, isError, error } = useQuery({
     queryKey: ['audit-events', page, search, eventTypeFilter, outcomeFilter, startDate, endDate],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -464,6 +465,8 @@ export function AuditLogsPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading audit logs...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="audit logs" />
           ) : !filteredEvents || filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <FileText className="h-12 w-12 text-muted-foreground/40 mb-3" />

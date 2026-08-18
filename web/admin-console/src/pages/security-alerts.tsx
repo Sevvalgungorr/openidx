@@ -16,6 +16,7 @@ import {
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface SecurityAlert {
   id: string
@@ -68,7 +69,7 @@ export function SecurityAlertsPage() {
   const [blockOpen, setBlockOpen] = useState(false)
   const [newIP, setNewIP] = useState({ ip_address: '', threat_type: 'manual', reason: '', permanent: false })
 
-  const { data: alertsData, isLoading: alertsLoading } = useQuery({
+  const { data: alertsData, isLoading: alertsLoading, isError: alertsError, error: alertsErrorObj } = useQuery({
     queryKey: ['security-alerts', statusFilter, severityFilter],
     queryFn: () => {
       const params = new URLSearchParams()
@@ -179,6 +180,8 @@ export function SecurityAlertsPage() {
                   <LoadingSpinner size="lg" />
                   <p className="mt-4 text-sm text-muted-foreground">Loading alerts...</p>
                 </div>
+              ) : alertsError ? (
+                <QueryError error={alertsErrorObj} resource="security alerts" />
               ) : alerts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <ShieldAlert className="h-12 w-12 text-muted-foreground/40 mb-3" />

@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 // The user-facing contract. It deliberately describes a journey (from -> to on a
 // port) and one action; nothing about how the connection is carried underneath.
@@ -67,7 +68,7 @@ export function MyNetworkPage() {
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['my-network-resources'],
     queryFn: () => api.get<MyResourcesResponse>('/api/v1/access/my/resources'),
   })
@@ -178,6 +179,8 @@ export function MyNetworkPage() {
 
       {isLoading ? (
         <p className="text-center py-12 text-muted-foreground">Loading your resources...</p>
+      ) : isError ? (
+        <QueryError error={error} resource="your network access" />
       ) : shown.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

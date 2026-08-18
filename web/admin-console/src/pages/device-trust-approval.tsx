@@ -25,6 +25,7 @@ import { Checkbox } from '../components/ui/checkbox'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface TrustRequest {
   id: string
@@ -64,7 +65,7 @@ export function DeviceTrustApprovalPage() {
   const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve')
 
   // Fetch requests
-  const { data: requestsData, isLoading } = useQuery({
+  const { data: requestsData, isLoading, isError, error } = useQuery({
     queryKey: ['device-trust-requests', statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -295,6 +296,8 @@ export function DeviceTrustApprovalPage() {
             <div className="flex justify-center py-8">
               <LoadingSpinner size="lg" />
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="trust requests" />
           ) : requests.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Smartphone className="h-12 w-12 mx-auto mb-3 opacity-40" />

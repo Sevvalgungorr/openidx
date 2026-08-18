@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
+import { QueryError } from '../components/query-error'
 
 interface LoginAnomaly {
   id: string
@@ -70,7 +71,7 @@ export default function LoginAnomalies() {
     queryFn: () => api.get<RiskOverview>('/api/v1/risk/overview'),
   })
 
-  const { data: anomaliesData, isLoading: anomaliesLoading } = useQuery({
+  const { data: anomaliesData, isLoading: anomaliesLoading, isError: anomaliesError, error: anomaliesErrorObj } = useQuery({
     queryKey: ['risk-anomalies', days, minScore],
     queryFn: () => {
       const params = new URLSearchParams()
@@ -195,6 +196,8 @@ export default function LoginAnomalies() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading anomalies...</p>
             </div>
+          ) : anomaliesError ? (
+            <QueryError error={anomaliesErrorObj} resource="login anomalies" />
           ) : anomalies.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Activity className="h-12 w-12 text-muted-foreground/40 mb-3" />

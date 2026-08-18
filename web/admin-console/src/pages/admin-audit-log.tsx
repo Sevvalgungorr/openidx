@@ -26,6 +26,7 @@ import {
 } from '../components/ui/table'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,7 +198,7 @@ export function AdminAuditLogPage() {
     return params.toString()
   }, [actorFilter, actionFilter, targetTypeFilter, startDate, endDate, offset])
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin-audit-log', queryParams],
     queryFn: () =>
       api.get<AuditResponse>(`/api/v1/audit-log?${queryParams}`),
@@ -380,6 +381,8 @@ export function AdminAuditLogPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <p className="text-center py-8 text-muted-foreground">Loading audit log...</p>
+          ) : isError ? (
+            <div className="p-4"><QueryError error={error} resource="audit log" /></div>
           ) : entries.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">
               No audit entries found matching your filters.

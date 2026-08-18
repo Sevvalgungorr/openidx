@@ -15,6 +15,7 @@ import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { LinkedAccountsCard } from '../components/linked-accounts-card'
+import { QueryError } from '../components/query-error'
 
 interface InsightDevice {
   name: string
@@ -58,7 +59,7 @@ const frictionLabel: Record<string, string> = {
 }
 
 export function MySecurityPage() {
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['my-security-insights'],
     queryFn: async () => api.get<SecurityInsights>('/api/v1/identity/portal/security-insights'),
   })
@@ -69,6 +70,10 @@ export function MySecurityPage() {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="your security overview" />
   }
 
   const style = levelStyles[data?.level || 'low'] || levelStyles.low

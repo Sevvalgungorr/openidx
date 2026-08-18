@@ -19,6 +19,7 @@ import {
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api, baseURL } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 import { RemoteSupportViewer } from '../components/remote-support/remote-support-viewer'
 import { RelayRenderer } from '../components/remote-support/relay-renderer'
 
@@ -77,7 +78,7 @@ export function RemoteSupportPage() {
     recordingEnabled: boolean
   } | null>(null)
 
-  const { data: sessions = [], isLoading } = useQuery({
+  const { data: sessions = [], isLoading, isError, error } = useQuery({
     queryKey: ['remote-support-sessions'],
     queryFn: () => api.get<RemoteSession[]>('/api/v1/access/remote-support/sessions'),
     refetchInterval: 5000,
@@ -156,6 +157,8 @@ export function RemoteSupportPage() {
         <CardContent>
           {isLoading ? (
             <div className="py-12 flex justify-center"><LoadingSpinner /></div>
+          ) : isError ? (
+            <QueryError error={error} resource="remote support sessions" />
           ) : (
             <Table>
               <TableHeader>

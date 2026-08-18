@@ -24,6 +24,7 @@ import {
   api, PamEntry, PamEntryType, PamFolder, PamEntryInput, PamConnectResult, PamImportResult,
 } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 import { TerminalSession } from '../components/remote/terminal-session'
 import { connectionPathSteps } from '../lib/connection-path'
 import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
@@ -118,7 +119,7 @@ export function PamConnectionsPage() {
   })
   const folders: PamFolder[] = foldersData?.folders || []
 
-  const { data: entriesData, isLoading } = useQuery({
+  const { data: entriesData, isLoading, isError, error } = useQuery({
     queryKey: ['pam-entries', selectedFolder, search, favoritesOnly],
     queryFn: () => api.pam.listEntries({
       folder_id: selectedFolder || undefined,
@@ -396,6 +397,8 @@ export function PamConnectionsPage() {
 
           {isLoading ? (
             <div className="flex justify-center py-12"><LoadingSpinner /></div>
+          ) : isError ? (
+            <QueryError error={error} resource="connections" />
           ) : entries.length === 0 ? (
             <Card><CardContent className="py-12 text-center text-muted-foreground">
               No connections yet. Create one, or import your Devolutions RDM export.

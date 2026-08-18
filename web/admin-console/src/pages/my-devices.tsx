@@ -34,6 +34,7 @@ import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface MyZitiIdentity {
   linked: boolean
@@ -91,7 +92,7 @@ export function MyDevicesPage() {
   const [newDeviceName, setNewDeviceName] = useState('')
 
   // Fetch devices
-  const { data: devicesData, isLoading } = useQuery({
+  const { data: devicesData, isLoading, isError, error } = useQuery({
     queryKey: ['my-devices'],
     queryFn: async () => {
       const data = await api.get<{ devices: Device[] }>('/api/v1/identity/portal/devices')
@@ -423,6 +424,8 @@ export function MyDevicesPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading devices...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="your devices" />
           ) : devices.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Monitor className="h-12 w-12 text-muted-foreground/40 mb-3" />

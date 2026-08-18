@@ -14,6 +14,7 @@ import {
 } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
+import { QueryError } from '../components/query-error'
 
 interface AuditEvent {
   id: string
@@ -72,7 +73,7 @@ export function UnifiedAuditPage() {
   const [eventType, setEventType] = useState<string>('')
   const pageSize = 50
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['unified-audit', page, source, eventType],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -172,6 +173,8 @@ export function UnifiedAuditPage() {
             <div className="flex items-center justify-center py-12">
               <LoadingSpinner />
             </div>
+          ) : isError ? (
+            <div className="p-4"><QueryError error={error} resource="audit events" /></div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">

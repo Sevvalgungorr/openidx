@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useNavigate } from 'react-router-dom'
 
@@ -133,7 +134,7 @@ function MetricCard({
 export function ComplianceDashboardPage() {
   const navigate = useNavigate()
 
-  const { data: posture, isLoading } = useQuery({
+  const { data: posture, isLoading, isError, error } = useQuery({
     queryKey: ['compliance-posture'],
     queryFn: () => api.get<CompliancePosture>('/api/v1/compliance-posture'),
     refetchInterval: 60000,
@@ -146,6 +147,13 @@ export function ComplianceDashboardPage() {
         <p className="mt-4 text-sm text-muted-foreground">Loading compliance posture...</p>
       </div>
     )
+  }
+
+  // Surface load/permission errors instead of falling back to an all-zeros
+  // posture, which would render a fully-populated dashboard showing 0% for a
+  // 403 and read as "perfectly compliant".
+  if (isError) {
+    return <QueryError error={error} resource="compliance posture" />
   }
 
   const p = posture || {
