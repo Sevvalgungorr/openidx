@@ -375,6 +375,16 @@ func (s *Service) handleGetPushChallenge(c *gin.Context) {
 		return
 	}
 
+	// A push challenge is a per-user artifact; a caller may only read their own.
+	// This route is self-service (authenticated), so block a positive cross-user
+	// mismatch — otherwise anyone with a challenge UUID could read its metadata
+	// (app, IP, location, timestamps). Kept conditional on a present user_id so
+	// it can't break a caller that legitimately reaches this without one.
+	if caller := c.GetString("user_id"); caller != "" && caller != challenge.UserID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "challenge not found"})
+		return
+	}
+
 	// Don't expose the challenge code in GET responses (security)
 	challenge.ChallengeCode = ""
 

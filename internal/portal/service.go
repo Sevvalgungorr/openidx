@@ -511,7 +511,10 @@ func callerIsAdmin(c *gin.Context) bool {
 
 // handleGetMyApplications handles GET /portal/applications
 func (s *Service) handleGetMyApplications(c *gin.Context) {
-	userIDStr := getUserID(c)
+	userIDStr, ok := requireUserID(c)
+	if !ok {
+		return
+	}
 
 	apps, err := s.GetMyApplications(c.Request.Context(), userIDStr)
 	if err != nil {
@@ -525,7 +528,10 @@ func (s *Service) handleGetMyApplications(c *gin.Context) {
 
 // handleGetAvailableGroups handles GET /portal/groups/available
 func (s *Service) handleGetAvailableGroups(c *gin.Context) {
-	userIDStr := getUserID(c)
+	userIDStr, ok := requireUserID(c)
+	if !ok {
+		return
+	}
 
 	groups, err := s.GetAvailableGroups(c.Request.Context(), userIDStr)
 	if err != nil {
@@ -564,7 +570,10 @@ func (s *Service) handleRequestGroupJoin(c *gin.Context) {
 
 // handleGetMyGroupRequests handles GET /portal/groups/requests
 func (s *Service) handleGetMyGroupRequests(c *gin.Context) {
-	userIDStr := getUserID(c)
+	userIDStr, ok := requireUserID(c)
+	if !ok {
+		return
+	}
 
 	requests, err := s.GetMyGroupRequests(c.Request.Context(), userIDStr)
 	if err != nil {
@@ -578,7 +587,10 @@ func (s *Service) handleGetMyGroupRequests(c *gin.Context) {
 
 // handleGetAccessOverview handles GET /portal/access-overview
 func (s *Service) handleGetAccessOverview(c *gin.Context) {
-	userIDStr := getUserID(c)
+	userIDStr, ok := requireUserID(c)
+	if !ok {
+		return
+	}
 
 	overview, err := s.GetAccessOverview(c.Request.Context(), userIDStr)
 	if err != nil {
@@ -781,7 +793,10 @@ func (s *Service) RequestDeviceTrust(ctx context.Context, userID, deviceID, just
 // --- Device HTTP Handlers ---
 
 func (s *Service) handleGetMyDevices(c *gin.Context) {
-	userID := getUserID(c)
+	userID, ok := requireUserID(c)
+	if !ok {
+		return
+	}
 
 	devices, err := s.GetMyDevices(c.Request.Context(), userID)
 	if err != nil {
