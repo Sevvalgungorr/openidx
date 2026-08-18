@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	apperrors "github.com/openidx/openidx/internal/common/errors"
+	"github.com/openidx/openidx/internal/common/orgctx"
 )
 
 // CreateOrUpdateUserRequest represents the request body for creating/updating a user
@@ -147,7 +148,7 @@ func (s *Service) HandleCreateUser(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitUserLifecycleEvent("user.created", user.ID, actorID)
+	s.emitUserLifecycleEvent(c.Request.Context(), "user.created", user.ID, actorID)
 
 	c.JSON(http.StatusCreated, user)
 }
@@ -246,7 +247,7 @@ func (s *Service) HandleUpdateUser(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitUserLifecycleEvent("user.updated", user.ID, actorID)
+	s.emitUserLifecycleEvent(c.Request.Context(), "user.updated", user.ID, actorID)
 
 	c.JSON(http.StatusOK, user)
 }
@@ -284,7 +285,7 @@ func (s *Service) HandleDeleteUser(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitUserLifecycleEvent("user.deleted", userID, actorID)
+	s.emitUserLifecycleEvent(c.Request.Context(), "user.deleted", userID, actorID)
 
 	c.Status(http.StatusNoContent)
 }
@@ -446,7 +447,7 @@ func (s *Service) HandleCreateGroup(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitGroupLifecycleEvent("group.created", group.ID, actorID)
+	s.emitGroupLifecycleEvent(c.Request.Context(), "group.created", group.ID, actorID)
 
 	c.JSON(http.StatusCreated, group)
 }
@@ -536,7 +537,7 @@ func (s *Service) HandleUpdateGroup(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitGroupLifecycleEvent("group.updated", group.ID, actorID)
+	s.emitGroupLifecycleEvent(c.Request.Context(), "group.updated", group.ID, actorID)
 
 	c.JSON(http.StatusOK, group)
 }
@@ -574,7 +575,7 @@ func (s *Service) HandleDeleteGroup(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitGroupLifecycleEvent("group.deleted", groupID, actorID)
+	s.emitGroupLifecycleEvent(c.Request.Context(), "group.deleted", groupID, actorID)
 
 	c.Status(http.StatusNoContent)
 }
@@ -743,7 +744,7 @@ func (s *Service) HandleAddGroupMember(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitGroupLifecycleEvent("group.member_added", groupID, actorID)
+	s.emitGroupLifecycleEvent(c.Request.Context(), "group.member_added", groupID, actorID)
 
 	c.Status(http.StatusCreated)
 }
@@ -788,7 +789,7 @@ func (s *Service) HandleRemoveGroupMember(c *gin.Context) {
 	}
 
 	// Emit lifecycle event
-	s.emitGroupLifecycleEvent("group.member_removed", groupID, actorID)
+	s.emitGroupLifecycleEvent(c.Request.Context(), "group.member_removed", groupID, actorID)
 
 	c.Status(http.StatusNoContent)
 }
@@ -833,20 +834,34 @@ func validateCreateUserRequest(req *CreateOrUpdateUserRequest) *apperrors.AppErr
 	return nil
 }
 
-// emitUserLifecycleEvent emits a user lifecycle event
-func (s *Service) emitUserLifecycleEvent(eventType, userID, actorID string) {
+// publishCtx returns a context detached from the request lifecycle (so a client
+// disconnect can't cancel the webhook write) that still carries the request's
+// org. Webhook subscriptions are RLS-scoped, so without the org the publish
+// would see zero subscriptions and silently emit nothing for the tenant.
+func publishCtx(ctx context.Context) context.Context {
+	out := context.Background()
+	if org, err := orgctx.From(ctx); err == nil {
+		out = orgctx.With(out, org)
+	}
+	return out
+}
+
+// emitUserLifecycleEvent emits a user lifecycle event. ctx must be the request
+// context so the publish is scoped to the acting tenant (see publishCtx).
+func (s *Service) emitUserLifecycleEvent(ctx context.Context, eventType, userID, actorID string) {
 	if s.webhookService != nil {
-		s.webhookService.Publish(context.Background(), eventType, map[string]interface{}{
+		s.webhookService.Publish(publishCtx(ctx), eventType, map[string]interface{}{
 			"user_id":  userID,
 			"actor_id": actorID,
 		})
 	}
 }
 
-// emitGroupLifecycleEvent emits a group lifecycle event
-func (s *Service) emitGroupLifecycleEvent(eventType, groupID, actorID string) {
+// emitGroupLifecycleEvent emits a group lifecycle event. ctx must be the request
+// context so the publish is scoped to the acting tenant (see publishCtx).
+func (s *Service) emitGroupLifecycleEvent(ctx context.Context, eventType, groupID, actorID string) {
 	if s.webhookService != nil {
-		s.webhookService.Publish(context.Background(), eventType, map[string]interface{}{
+		s.webhookService.Publish(publishCtx(ctx), eventType, map[string]interface{}{
 			"group_id": groupID,
 			"actor_id": actorID,
 		})
