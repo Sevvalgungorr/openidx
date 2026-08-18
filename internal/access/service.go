@@ -381,6 +381,9 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 	{
 		api.GET("/routes", svc.handleListRoutes)
 		api.POST("/routes", svc.handleCreateRoute)
+		// Bulk / subnet resource onboarding (admin-only): create many routes at
+		// once (explicit list and/or a CIDR expansion) and converge the overlay.
+		api.POST("/routes/bulk", svc.requireAdminRole(), svc.handleBulkRoutes)
 		api.GET("/routes/:id", svc.handleGetRoute)
 		api.PUT("/routes/:id", svc.handleUpdateRoute)
 		api.DELETE("/routes/:id", svc.handleDeleteRoute)
@@ -424,6 +427,9 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		// Phase 2: Fabric & Router management
 		api.GET("/ziti/fabric/overview", svc.handleGetFabricOverview)
 		api.GET("/ziti/fabric/routers", svc.handleListEdgeRouters)
+		// One-command router/gateway onboarding: mint an edge-router enrollment
+		// JWT + a copy-paste command; the router joins via the #all bootstrap.
+		api.POST("/ziti/fabric/routers/enroll-token", adminOnly, svc.handleRouterEnrollToken)
 		api.GET("/ziti/fabric/routers/:id", svc.handleGetEdgeRouter)
 		api.GET("/ziti/fabric/health", svc.handleGetHealth)
 		api.POST("/ziti/fabric/reconnect", adminOnly, svc.handleReconnect)

@@ -1176,6 +1176,56 @@ func (zm *ZitiManager) CreateIdentity(ctx context.Context, name, identityType st
 	return resp.Data.ID, enrollmentJWT, nil
 }
 
+// CreateEdgeRouter registers a new edge router on the controller and returns
+// its id + one-time enrollment JWT. The bootstrap edge-router policies are
+// role-based on #all (see deployments/docker/docker-compose.ziti-ha.yml), so a
+// newly-enrolled router joins the mesh and serves every provisioned service
+// with zero policy changes — that is what makes one-command router onboarding
+// safe. isTunnelerEnabled lets the router host services directly (host.v1).
+func (zm *ZitiManager) CreateEdgeRouter(ctx context.Context, name string, attrs []string) (id string, enrollmentJWT string, err error) {
+	if attrs == nil {
+		attrs = []string{}
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":              name,
+		"roleAttributes":    attrs,
+		"isTunnelerEnabled": true,
+	})
+	respData, statusCode, err := zm.mgmtRequest("POST", "/edge/management/v1/edge-routers", body)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create edge router: %w", err)
+	}
+	if statusCode != http.StatusCreated && statusCode != http.StatusOK {
+		return "", "", fmt.Errorf("unexpected status %d creating edge router: %s", statusCode, string(respData))
+	}
+	var resp struct {
+		Data struct {
+			ID            string `json:"id"`
+			EnrollmentJWT string `json:"enrollmentJwt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respData, &resp); err != nil {
+		return "", "", fmt.Errorf("failed to parse edge router response: %w", err)
+	}
+	enrollmentJWT = resp.Data.EnrollmentJWT
+	// Older controllers omit the JWT from the create response; fetch the router.
+	if enrollmentJWT == "" && resp.Data.ID != "" {
+		if d, sc, e := zm.mgmtRequest("GET", "/edge/management/v1/edge-routers/"+resp.Data.ID, nil); e == nil && sc == http.StatusOK {
+			var g struct {
+				Data struct {
+					EnrollmentJWT string `json:"enrollmentJwt"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(d, &g) == nil {
+				enrollmentJWT = g.Data.EnrollmentJWT
+			}
+		}
+	}
+	zm.logger.Info("Created Ziti edge router",
+		zap.String("name", name), zap.String("id", resp.Data.ID), zap.Bool("has_jwt", enrollmentJWT != ""))
+	return resp.Data.ID, enrollmentJWT, nil
+}
+
 // DeleteIdentity deletes a Ziti identity via the management API
 func (zm *ZitiManager) DeleteIdentity(ctx context.Context, zitiID string) error {
 	_, statusCode, err := zm.mgmtRequest("DELETE",
