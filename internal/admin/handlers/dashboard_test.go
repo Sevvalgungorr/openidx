@@ -377,7 +377,7 @@ func TestRegisterAllRoutes(t *testing.T) {
 	group := router.Group("/api/v1")
 
 	assert.NotPanics(t, func() {
-		RegisterAllRoutes(group, nil, logger)
+		RegisterAllRoutes(group, nil, logger, nil)
 	})
 }
 

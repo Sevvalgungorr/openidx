@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
+import { useToast } from '../hooks/use-toast'
 
 interface UserApp {
   id: string
@@ -19,6 +20,7 @@ interface UserApp {
 
 export function AppLauncherPage() {
   const [search, setSearch] = useState('')
+  const { toast } = useToast()
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-applications'],
@@ -29,8 +31,18 @@ export function AppLauncherPage() {
   )
 
   const launchApp = (app: UserApp) => {
-    if (app.base_url) {
-      window.open(app.base_url, '_blank')
+    // Only open a real absolute http(s) URL. A blank/whitespace/relative
+    // base_url previously produced window.open('') → an about:blank tab with an
+    // empty address bar (QA 12.2, SecureTask had no launch URL configured).
+    const url = app.base_url?.trim()
+    if (url && /^https?:\/\//i.test(url)) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } else {
+      toast({
+        title: 'Cannot launch application',
+        description: `${app.name} has no valid launch URL configured. Contact your administrator.`,
+        variant: 'destructive',
+      })
     }
   }
 

@@ -38,6 +38,7 @@ interface PlaygroundSession {
   state: string
   authorize_url: string
   client_id: string
+  redirect_uri: string
 }
 
 interface TokenResponse {
@@ -155,7 +156,12 @@ export function OAuthPlaygroundPage() {
   const createSessionMutation = useMutation({
     mutationFn: () =>
       api.post<PlaygroundSession>(
-        '/api/v1/developer/playground/sessions'
+        '/api/v1/developer/playground/sessions',
+        // Send the redirect_uri derived from this console's origin so the
+        // authorize step and the token exchange (which both reuse the stored
+        // value) stay consistent, and so it matches a URI registered on
+        // playground-client.
+        { redirect_uri: `${baseURL}/oauth/callback` }
       ),
     onSuccess: (data) => {
       setSession(data)
@@ -251,7 +257,7 @@ export function OAuthPlaygroundPage() {
 
   // Construct the authorize URL for display
   const authorizeUrl = session
-    ? `${baseURL}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(session.client_id)}&state=${encodeURIComponent(session.state)}&code_challenge=${encodeURIComponent(session.code_challenge)}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(baseURL + '/oauth/callback')}`
+    ? `${baseURL}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(session.client_id)}&state=${encodeURIComponent(session.state)}&code_challenge=${encodeURIComponent(session.code_challenge)}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(session.redirect_uri)}`
     : ''
 
   // ---------------------------------------------------------------------------

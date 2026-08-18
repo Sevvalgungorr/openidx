@@ -141,6 +141,10 @@ func (s *Service) AuthenticateUser(ctx context.Context, directoryID, username, p
 		if err := json.Unmarshal(configBytes, &cfg); err != nil {
 			return fmt.Errorf("invalid LDAP config: %w", err)
 		}
+		// The JSON config blob may omit directory_type; the authoritative type
+		// lives in the directory_integrations.type column. Propagate it so
+		// isActiveDirectory() picks the AD-specific code paths.
+		cfg.DirectoryType = dirType
 		connector := NewLDAPConnector(cfg, s.logger)
 		return connector.AuthenticateUser(username, password)
 	case "azure_ad":
@@ -163,6 +167,11 @@ func (s *Service) ChangePassword(ctx context.Context, directoryID, username, old
 		if err := json.Unmarshal(configBytes, &cfg); err != nil {
 			return fmt.Errorf("invalid LDAP config: %w", err)
 		}
+		// See AuthenticateUser: the DB `type` column is authoritative for
+		// AD detection. Active Directory rejects the RFC 3062 Password Modify
+		// extended op ("Unknown extended request OID"); setting DirectoryType
+		// routes AD through the unicodePwd modify path instead.
+		cfg.DirectoryType = dirType
 		connector := NewLDAPConnector(cfg, s.logger)
 		return connector.ChangePassword(username, oldPassword, newPassword)
 	case "azure_ad":
@@ -185,6 +194,9 @@ func (s *Service) ResetPassword(ctx context.Context, directoryID, username, newP
 		if err := json.Unmarshal(configBytes, &cfg); err != nil {
 			return fmt.Errorf("invalid LDAP config: %w", err)
 		}
+		// Authoritative AD detection (see ChangePassword): use unicodePwd modify
+		// for AD instead of the unsupported RFC 3062 extended operation.
+		cfg.DirectoryType = dirType
 		connector := NewLDAPConnector(cfg, s.logger)
 		return connector.ResetPassword(username, newPassword)
 	case "azure_ad":

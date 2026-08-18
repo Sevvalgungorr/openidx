@@ -235,7 +235,12 @@ func (s *Service) handleCreatePlaygroundSession(c *gin.Context) {
 		req.ClientID = "playground-client"
 	}
 	if req.RedirectURI == "" {
-		req.RedirectURI = "http://localhost:3000/developer/oauth/callback"
+		// Fallback only; the console always posts its own baseURL-derived
+		// redirect_uri (see oauth-playground.tsx). This must match a URI
+		// registered on playground-client (migration v131) or /oauth/authorize
+		// rejects it. The authorize URL and the token-exchange both reuse the
+		// stored value, so the two stay consistent.
+		req.RedirectURI = "http://localhost:3000/oauth/callback"
 	}
 	if req.Scopes == "" {
 		req.Scopes = "openid profile email"

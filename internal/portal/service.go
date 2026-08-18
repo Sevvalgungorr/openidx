@@ -498,6 +498,17 @@ func requireUserID(c *gin.Context) (string, bool) {
 	return uid, true
 }
 
+// callerIsAdmin reports whether the authenticated caller holds an admin role.
+// Roles are populated by the auth middleware into the "roles" context slice.
+func callerIsAdmin(c *gin.Context) bool {
+	for _, role := range c.GetStringSlice("roles") {
+		if role == "admin" || role == "superadmin" || role == "super_admin" {
+			return true
+		}
+	}
+	return false
+}
+
 // handleGetMyApplications handles GET /portal/applications
 func (s *Service) handleGetMyApplications(c *gin.Context) {
 	userIDStr := getUserID(c)
@@ -589,6 +600,14 @@ func (s *Service) handleReviewGroupRequest(c *gin.Context) {
 
 	reviewerID, ok := requireUserID(c)
 	if !ok {
+		return
+	}
+
+	// Approving a group join request grants group membership, so only admins
+	// may review. Without this check any authenticated user could approve their
+	// own request and self-add to arbitrary (including privileged) groups.
+	if !callerIsAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required to review group requests"})
 		return
 	}
 

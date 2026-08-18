@@ -324,8 +324,9 @@ func main() {
 		organization.RegisterRoutes(v1, orgService)
 		notifications.RegisterRoutes(v1, notifService)
 
-		// Register admin console handlers (dashboard, settings)
-		adminhandlers.RegisterAllRoutes(v1, db.Pool, log)
+		// Register admin console handlers (dashboard, settings). Settings
+		// mutations are gated behind admin; reads/validate stay open.
+		adminhandlers.RegisterAllRoutes(v1, db.Pool, log, admin.RequireAdmin())
 
 		// Vault (PAM credential store) — fail-closed: service must not start
 		// without a usable KEK. Falls back to EncryptionKey as id 0.

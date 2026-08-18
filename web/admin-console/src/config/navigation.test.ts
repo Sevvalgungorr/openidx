@@ -93,8 +93,9 @@ describe('filterNavigation role visibility', () => {
     expect(hrefs).toContain('/vault-secrets')
     expect(hrefs).toContain('/ziti-network')
     expect(hrefs).toContain('/branding')
-    // Backend: admin does NOT have tenants:manage
-    expect(hrefs).not.toContain('/tenant-management')
+    // Backend: tenant-management endpoints are gated by RequireAdmin
+    // (admin/super_admin), so admins legitimately get this entry.
+    expect(hrefs).toContain('/tenant-management')
   })
 
   it('reserves tenant management for super_admin', () => {

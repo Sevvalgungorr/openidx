@@ -14,7 +14,6 @@ import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { Checkbox } from '../components/ui/checkbox'
 import { Shield, User, Key, Smartphone, Mail, Monitor, Phone, Globe, Trash2, Check, Plus, Copy, KeyRound, AppWindow, AlertTriangle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { useAuth } from '../lib/auth'
 
 interface MFAMethod {
   method: string
@@ -108,7 +107,6 @@ export function UserProfilePage() {
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const { user } = useAuth()
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['user-profile'],
@@ -199,11 +197,14 @@ export function UserProfilePage() {
     },
   })
 
-  const { data: sessions, isLoading: sessionsLoading } = useQuery({
-    queryKey: ['sessions', user?.id],
-    queryFn: () => api.get<Session[]>(`/api/v1/identity/users/${user?.id}/sessions`),
-    enabled: !!user?.id,
+  // Use the self-service endpoint (id derived from the JWT). The admin
+  // endpoint /users/:id/sessions returns 403 for non-admins, which the old
+  // code silently rendered as "No active sessions".
+  const { data: sessionsResp, isLoading: sessionsLoading } = useQuery({
+    queryKey: ['my-sessions'],
+    queryFn: () => api.get<{ sessions: Session[] }>('/api/v1/identity/users/me/sessions'),
   })
+  const sessions = sessionsResp?.sessions
 
   // Fetch MFA methods
   const { data: mfaMethods } = useQuery({

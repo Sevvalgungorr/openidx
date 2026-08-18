@@ -17,20 +17,32 @@ func DashboardRoutes(router *gin.RouterGroup, handler *DashboardHandler) {
 	}
 }
 
-// SettingsRoutes registers settings-related routes
-func SettingsRoutes(router *gin.RouterGroup, handler *SettingsHandler) {
+// SettingsRoutes registers settings-related routes. Mutating routes (update,
+// reset) are guarded by adminMW so that only admins can change org-wide
+// security/password policy; read and password-validation routes stay open to
+// any authenticated caller. If adminMW is nil the guard is skipped.
+func SettingsRoutes(router *gin.RouterGroup, handler *SettingsHandler, adminMW gin.HandlerFunc) {
 	settings := router.Group("/settings")
 	{
 		settings.GET("", handler.GetSettings)
-		settings.PUT("", handler.UpdateSettings)
-		settings.POST("/reset", handler.ResetSettings)
 		settings.GET("/json", handler.GetSettingsJSON)
 		settings.POST("/validate-password", handler.ValidatePassword)
 	}
+
+	// Mutations require admin.
+	mutate := router.Group("/settings")
+	if adminMW != nil {
+		mutate.Use(adminMW)
+	}
+	{
+		mutate.PUT("", handler.UpdateSettings)
+		mutate.POST("/reset", handler.ResetSettings)
+	}
 }
 
-// RegisterAllRoutes registers all admin console routes
-func RegisterAllRoutes(router *gin.RouterGroup, db *pgxpool.Pool, logger *zap.Logger) {
+// RegisterAllRoutes registers all admin console routes. adminMW guards the
+// mutating settings endpoints; pass admin.RequireAdmin() from the caller.
+func RegisterAllRoutes(router *gin.RouterGroup, db *pgxpool.Pool, logger *zap.Logger, adminMW gin.HandlerFunc) {
 	dashboardHandler := NewDashboardHandler(logger, db)
 	settingsHandler := NewSettingsHandler(logger, db)
 
@@ -38,5 +50,5 @@ func RegisterAllRoutes(router *gin.RouterGroup, db *pgxpool.Pool, logger *zap.Lo
 	DashboardRoutes(router, dashboardHandler)
 
 	// Settings routes
-	SettingsRoutes(router, settingsHandler)
+	SettingsRoutes(router, settingsHandler, adminMW)
 }

@@ -922,5 +922,12 @@ func allMigrations() []*Migration {
 			UpSQL:       upstreamPoolsUp,
 			DownSQL:     upstreamPoolsDown,
 		},
+		{
+			Version:     131,
+			Name:        "seed_playground_client",
+			Description: "Register the 'playground-client' OAuth public client that the OAuth Playground (/oauth-playground) defaults to. It was never seeded, so Step 2 Authorize failed with invalid_client and Steps 3-4 were untestable (QA 11.2). Public PKCE client, no secret; redirect_uris cover the SPA dev origin, admin-api dev origin, and the production site. Idempotent via ON CONFLICT (id) DO NOTHING.",
+			UpSQL:       seedPlaygroundClientUp,
+			DownSQL:     seedPlaygroundClientDown,
+		},
 	}
 }

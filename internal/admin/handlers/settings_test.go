@@ -642,7 +642,7 @@ func TestSettingsRoutesRegistration(t *testing.T) {
 	handler := newTestSettingsHandler()
 	router := gin.New()
 	group := router.Group("/api/v1")
-	SettingsRoutes(group, handler)
+	SettingsRoutes(group, handler, nil)
 
 	routes := router.Routes()
 

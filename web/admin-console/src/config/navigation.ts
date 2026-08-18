@@ -305,7 +305,7 @@ export const navigation: NavDomainGroup[] = [
         items: [
           { name: 'System Health', href: '/system-health', icon: HeartPulse, minRole: 'operator', keywords: ['status', 'services', 'uptime'] },
           { name: 'Organizations', href: '/organizations', icon: Building2, minRole: 'admin', keywords: ['orgs', 'multi-tenant'] },
-          { name: 'Tenant Mgmt', href: '/tenant-management', icon: Building2, minRole: 'super_admin', keywords: ['tenants', 'platform admin'] },
+          { name: 'Tenant Mgmt', href: '/tenant-management', icon: Building2, minRole: 'admin', keywords: ['tenants', 'platform admin'] },
           { name: 'Branding', href: '/branding', icon: Palette, minRole: 'admin', keywords: ['logo', 'theme', 'colors', 'white label'] },
           { name: 'Email Templates', href: '/email-templates', icon: Mail, minRole: 'admin', keywords: ['mail', 'templates'] },
           { name: 'Notification Mgmt', href: '/notification-admin', icon: Send, minRole: 'admin', keywords: ['broadcast', 'announcements'] },
