@@ -1,0 +1,25 @@
+# nfpm config for the OpenIDX agent Linux packages (.deb / .rpm).
+# Build:  VERSION=<v> ARCH=amd64 nfpm pkg -f packaging/nfpm.yaml -p deb -t dist/pkg/
+name: openidx-agent
+arch: ${ARCH}
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: OpenIDX <support@openidx.io>
+description: |
+  OpenIDX Zero Trust endpoint agent. Enrolls the device into the OpenIDX
+  ZTNA overlay and reports device posture.
+vendor: OpenIDX
+homepage: https://openidx.tdv.org
+license: Apache-2.0
+contents:
+  - src: ./dist/openidx-agent-linux-${ARCH}
+    dst: /usr/local/bin/openidx-agent
+    file_info:
+      mode: 0755
+  - src: ./packaging/openidx.desktop
+    dst: /usr/share/applications/openidx.desktop
+    file_info:
+      mode: 0644
+scripts:
+  postinstall: ./packaging/postinstall.sh

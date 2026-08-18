@@ -204,6 +204,9 @@ type Config struct {
 	// EnrollSessionTTLMinutes is how long an enrollment session's short code / QR
 	// / deep-link remains valid. Default 15.
 	EnrollSessionTTLMinutes int `mapstructure:"enroll_session_ttl_minutes"`
+	// AgentDownloadsDir is the directory of per-OS agent installers (msi/pkg/deb/
+	// rpm) served at /downloads/<file> and advertised by /downloads/agent-manifest.json.
+	AgentDownloadsDir string `mapstructure:"agent_downloads_dir"`
 
 	// PAMSessionRiskGate drives the privileged-session risk scorer (PAM C2).
 	// A leader-gated worker scores every active Guacamole/PAM session on
@@ -719,6 +722,7 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("device_autotrust_known_orgs", "")
 	v.SetDefault("device_autotrust_require_posture", false)
 	v.SetDefault("enroll_session_ttl_minutes", 15)
+	v.SetDefault("agent_downloads_dir", "deployments/downloads")
 	v.SetDefault("pam_session_risk_gate", "off")
 	v.SetDefault("pam_session_risk_threshold", 80)
 	v.SetDefault("dev_admin_bypass", false)
@@ -951,6 +955,7 @@ func bindEnvVars(v *viper.Viper) {
 		"device_autotrust_known_orgs":         "DEVICE_AUTOTRUST_KNOWN_ORGS",
 		"device_autotrust_require_posture":    "DEVICE_AUTOTRUST_REQUIRE_POSTURE",
 		"enroll_session_ttl_minutes":          "ENROLL_SESSION_TTL_MINUTES",
+		"agent_downloads_dir":                 "AGENT_DOWNLOADS_DIR",
 		"pam_session_risk_gate":               "PAM_SESSION_RISK_GATE",
 		"pam_session_risk_threshold":          "PAM_SESSION_RISK_THRESHOLD",
 		"dev_admin_bypass":                    "DEV_ADMIN_BYPASS",

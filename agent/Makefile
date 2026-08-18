@@ -16,7 +16,7 @@ LDFLAGS    := -s -w \
 
 OUT_DIR    := dist
 
-.PHONY: build test clean build-all build-screenshare
+.PHONY: build test clean build-all build-screenshare package-linux
 
 ## build: compile the agent for the current platform
 build:
@@ -50,6 +50,19 @@ build-all: clean
 
 	@echo "Build artifacts in $(OUT_DIR)/:"
 	@ls -lh $(OUT_DIR)/
+
+## package-linux: build .deb and .rpm for linux amd64+arm64 (requires nfpm)
+## See https://nfpm.goreleaser.com. macOS .pkg and Windows .msi are built in CI
+## on their native runners (pkgbuild / WiX); see packaging/DEEPLINK.md.
+package-linux: build-all
+	@command -v nfpm >/dev/null || { echo "nfpm not installed: https://nfpm.goreleaser.com"; exit 1; }
+	@mkdir -p $(OUT_DIR)/pkg
+	@for arch in amd64 arm64; do \
+		for pkg in deb rpm; do \
+			VERSION=$(VERSION) ARCH=$$arch nfpm pkg -f packaging/nfpm.yaml -p $$pkg -t $(OUT_DIR)/pkg/ ; \
+		done ; \
+	done
+	@ls -lh $(OUT_DIR)/pkg/
 
 ## help: print this help
 help:

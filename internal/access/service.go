@@ -140,15 +140,14 @@ type Service struct {
 	groupCache sync.Map
 }
 
-// handleAgentAPKDownload serves the hosted Android agent APK without auth so
-// Android Enterprise provisioning can fetch it during factory-reset setup.
-// Delegates to AgentAPIHandler so the path constant lives in one place.
-func (s *Service) handleAgentAPKDownload(c *gin.Context) {
+// handleAgentDownload serves the per-OS agent installers + manifest + APK
+// without auth. Delegates to AgentAPIHandler where the download logic lives.
+func (s *Service) handleAgentDownload(c *gin.Context) {
 	if s.agentHandler == nil {
 		c.JSON(503, gin.H{"error": "agent handler not initialized"})
 		return
 	}
-	s.agentHandler.HandleAPKDownload(c)
+	s.agentHandler.HandleAgentDownload(c)
 }
 
 // SetGuacamoleClient sets the "direct" PAM broker (guacd dials targets directly).
@@ -1008,9 +1007,10 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		middleware.RateLimit(20, time.Minute), // tight per-IP budget for the public gate
 		svc.handleEnroll)
 
-	// Public APK download for Android Enterprise provisioning. The device
-	// fetches this during factory-reset setup, before any auth context exists.
-	router.GET("/downloads/openidx-agent.apk", svc.handleAgentAPKDownload)
+	// Public agent downloads: per-OS installers, the wizard manifest, and the
+	// Android APK (fetched during factory-reset provisioning before any auth
+	// context exists). One param route avoids a gin static-vs-wildcard conflict.
+	router.GET("/downloads/:file", svc.handleAgentDownload)
 
 	// Temp access public endpoint (no auth - uses token)
 	router.GET("/temp-access/:token", svc.handleUseTempAccess)

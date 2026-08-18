@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OpenIDX Agent
+Comment=OpenIDX Zero Trust endpoint agent
+Exec=/usr/local/bin/openidx-agent %u
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/openidx;

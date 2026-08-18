@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -61,10 +63,35 @@ var (
 )
 
 func main() {
+	// Deep-link entry: the OS invokes `openidx-agent openidx://enroll?code=..&server=..`
+	// (from a scanned QR / clicked link). Rewrite it into the enroll command.
+	if len(os.Args) > 1 && strings.HasPrefix(os.Args[1], "openidx://") {
+		if args, ok := deepLinkToArgs(os.Args[1]); ok {
+			os.Args = append([]string{os.Args[0]}, args...)
+		}
+	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// deepLinkToArgs converts an openidx://enroll?code=..&server=.. deep-link into
+// enroll command args. Returns false if it isn't a valid enroll link.
+func deepLinkToArgs(raw string) ([]string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host != "enroll" {
+		return nil, false
+	}
+	code := u.Query().Get("code")
+	if code == "" {
+		return nil, false
+	}
+	args := []string{"enroll", "--code", code}
+	if s := u.Query().Get("server"); s != "" {
+		args = append(args, "--server", s)
+	}
+	return args, true
 }
 
 var rootCmd = &cobra.Command{
@@ -100,6 +127,13 @@ The agent will contact the specified server, validate the token, and store the
 resulting credentials in the config directory for subsequent runs.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, _ := cmd.Flags().GetString("token")
+		code, _ := cmd.Flags().GetString("code")
+		if token == "" {
+			token = code // the enrollment-session code is the bearer token
+		}
+		if token == "" {
+			return fmt.Errorf("either --token or --code is required")
+		}
 		server, _ := cmd.Flags().GetString("server")
 		manifestURL, _ := cmd.Flags().GetString("manifest-url")
 
@@ -323,10 +357,11 @@ func init() {
 		"enable verbose (debug) logging")
 
 	// enroll-specific flags.
-	enrollCmd.Flags().String("token", "", "one-time enrollment token (required)")
+	enrollCmd.Flags().String("token", "", "one-time enrollment token")
+	enrollCmd.Flags().String("code", "", "enrollment session code from the Add-a-device wizard / deep-link")
 	enrollCmd.Flags().String("server", "https://openidx.example.com", "OpenIDX server URL")
 	enrollCmd.Flags().String("manifest-url", "", "update manifest URL to persist for self-update (optional)")
-	_ = enrollCmd.MarkFlagRequired("token")
+	// Either --token or --code is required; validated in RunE.
 
 	serviceCmd.AddCommand(serviceRunCmd)
 	serviceCmd.AddCommand(serviceInstallCmd)
