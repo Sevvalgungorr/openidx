@@ -936,5 +936,12 @@ func allMigrations() []*Migration {
 			UpSQL:       enrollmentSessionsUp,
 			DownSQL:     enrollmentSessionsDown,
 		},
+		{
+			Version:     133,
+			Name:        "sessions_auth_methods",
+			Description: "Add sessions.auth_methods TEXT[] to record the authentication methods used at login (pwd, plus mfa when a second factor was verified), so OAuth tokens minted from the session can emit an `amr` claim. This activates the device auto-trust from v132/DEVICE_AUTOTRUST, which keys on a server-verified MFA signal.",
+			UpSQL:       sessionsAuthMethodsUp,
+			DownSQL:     sessionsAuthMethodsDown,
+		},
 	}
 }

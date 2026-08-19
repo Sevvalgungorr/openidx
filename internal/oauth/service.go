@@ -892,6 +892,42 @@ func (s *Service) issuerForOrg(org orgctx.Org) string {
 	return s.issuer
 }
 
+// recordSessionAuthMethods stamps the authentication methods used to establish
+// a login session (e.g. ["pwd"] or ["pwd","mfa"]) so tokens minted from it can
+// emit an amr claim. Best-effort — a failure never blocks login.
+func (s *Service) recordSessionAuthMethods(ctx context.Context, sessionID string, methods []string) {
+	if sessionID == "" || len(methods) == 0 || s.db == nil {
+		return
+	}
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return
+	}
+	if _, err := s.db.Pool.Exec(ctx,
+		`UPDATE sessions SET auth_methods = $2 WHERE id = $1 AND org_id = $3`,
+		sessionID, methods, org.ID); err != nil {
+		s.logger.Warn("record session auth methods failed",
+			zap.String("session_id", sessionID), zap.Error(err))
+	}
+}
+
+// sessionAuthMethods returns the recorded auth methods for a login session, or
+// nil. Used to populate the amr token claim.
+func (s *Service) sessionAuthMethods(ctx context.Context, sessionID []string) []string {
+	if len(sessionID) == 0 || sessionID[0] == "" || s.db == nil {
+		return nil
+	}
+	org, err := orgctx.From(ctx)
+	if err != nil {
+		return nil
+	}
+	var methods []string
+	_ = s.db.Pool.QueryRow(ctx,
+		`SELECT auth_methods FROM sessions WHERE id = $1 AND org_id = $2`,
+		sessionID[0], org.ID).Scan(&methods)
+	return methods
+}
+
 // GenerateJWT generates a signed JWT access token
 func (s *Service) GenerateJWT(ctx context.Context, userID, clientID, scope string, expiresIn int, sessionID ...string) (string, error) {
 	now := time.Now()
@@ -995,6 +1031,13 @@ func (s *Service) GenerateJWT(ctx context.Context, userID, clientID, scope strin
 	// Add session ID claim if provided
 	if len(sessionID) > 0 && sessionID[0] != "" {
 		claims["sid"] = sessionID[0]
+	}
+
+	// Emit amr (authentication methods references) from the login session's
+	// recorded methods — server-verified, never client-supplied. This is the
+	// signal DEVICE_AUTOTRUST keys on to tell whether the session used MFA.
+	if amr := s.sessionAuthMethods(ctx, sessionID); len(amr) > 0 {
+		claims["amr"] = amr
 	}
 
 	kid, signKey := s.signingKey()
@@ -1103,6 +1146,13 @@ func (s *Service) GenerateIDToken(ctx context.Context, userID, clientID, nonce s
 	// Add session ID claim if provided
 	if len(sessionID) > 0 && sessionID[0] != "" {
 		claims["sid"] = sessionID[0]
+	}
+
+	// Emit amr (authentication methods references) from the login session's
+	// recorded methods — server-verified, never client-supplied. This is the
+	// signal DEVICE_AUTOTRUST keys on to tell whether the session used MFA.
+	if amr := s.sessionAuthMethods(ctx, sessionID); len(amr) > 0 {
+		claims["amr"] = amr
 	}
 
 	kid, signKey := s.signingKey()
@@ -2251,6 +2301,7 @@ func (s *Service) handleLogin(c *gin.Context) {
 	}
 	if session != nil {
 		oauthParams["session_id"] = session.ID
+		s.recordSessionAuthMethods(c.Request.Context(), session.ID, []string{"pwd"})
 	}
 
 	s.redis.Client.Del(c.Request.Context(), "login_session:"+req.LoginSession)
@@ -2488,6 +2539,9 @@ func (s *Service) handleMFAVerify(c *gin.Context) {
 	}
 	if session != nil {
 		oauthParams["session_id"] = session.ID
+		// A second factor was verified in this flow → record pwd + mfa so the
+		// token's amr activates device auto-trust.
+		s.recordSessionAuthMethods(c.Request.Context(), session.ID, []string{"pwd", "mfa"})
 	}
 
 	// Issue authorization code with optional trusted browser info
@@ -3951,6 +4005,9 @@ func (s *Service) handleForceLogin(c *gin.Context) {
 	}
 	if session != nil {
 		oauthParams["session_id"] = session.ID
+		// Conservative: record pwd only (under-reporting amr never over-grants
+		// trust). The pre-force-login MFA state isn't reliably available here.
+		s.recordSessionAuthMethods(c.Request.Context(), session.ID, []string{"pwd"})
 	}
 
 	s.redis.Client.Del(c.Request.Context(), sessionKey)
