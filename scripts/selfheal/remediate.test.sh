@@ -28,6 +28,15 @@ rm -f "$SELFHEAL_STATE_DIR/DISABLE"
 echo up > "$SELFHEAL_STATE_DIR/healthret"
 echo "$FIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh > /tmp/o3
 grep -q 'restart:oidx-oauth' "$SELFHEAL_STATE_DIR/acts" && ok "tier0 restarted unit" || bad "no restart in tier0"
+# actions.jsonl gets a "recovered" history line for the panel.
+grep -q '"result":"recovered"' "$SELFHEAL_STATE_DIR/actions.jsonl" && ok "recorded recovered action" || bad "no actions.jsonl recovered line"
+
+# kill-switch path records a "halted" action.
+: > "$SELFHEAL_STATE_DIR/actions.jsonl"
+touch "$SELFHEAL_STATE_DIR/DISABLE"
+echo "$FIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh >/dev/null
+grep -q '"result":"halted"' "$SELFHEAL_STATE_DIR/actions.jsonl" && ok "recorded halted action" || bad "no halted action line"
+rm -f "$SELFHEAL_STATE_DIR/DISABLE"
 
 # anti-flap: exceed K=3 -> further attempts escalate (no more restarts).
 : > "$SELFHEAL_STATE_DIR/acts"

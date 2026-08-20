@@ -30,6 +30,20 @@ _flap_count() { local fp="$1" now cutoff; now=$(date +%s); cutoff=$((now-3600))
   awk -F'\t' -v fp="$fp" -v c="$cutoff" '$1==fp && $2>=c' "$FLAP" | wc -l; }
 _flap_mark()  { printf '%s\t%s\n' "$1" "$(date +%s)" >> "$FLAP"; }
 
+# _record <fp> <action> <result>: append one remediation-outcome line to
+# actions.jsonl so the admin-console panel has a history. result is one of
+# recovered|still-bad|halted|escalated|dry-run|observe.
+ACTIONS="$SELFHEAL_STATE_DIR/actions.jsonl"
+_record() {
+  SF_FP="$1" SF_ACT="$2" SF_RES="$3" python3 - >> "$ACTIONS" <<'PY'
+import os, json, datetime
+print(json.dumps({
+  "ts": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ"),
+  "fingerprint": os.environ["SF_FP"], "action": os.environ["SF_ACT"], "result": os.environ["SF_RES"],
+}, separators=(",", ":")))
+PY
+}
+
 while IFS= read -r line; do
   [ -z "$line" ] && continue
   fp=$(echo "$line"    | python3 -c 'import sys,json;print(json.load(sys.stdin).get("fingerprint",""))' 2>/dev/null)
@@ -39,20 +53,20 @@ while IFS= read -r line; do
   [ -z "$fp" ] && continue
 
   # Only Tier-0 ops actions are auto-eligible.
-  case "$act" in restart_unit|restart_nginx) ;; *) echo "escalate: $fp (action='$act')"; continue;; esac
+  case "$act" in restart_unit|restart_nginx) ;; *) echo "escalate: $fp (action='$act')"; _record "$fp" "$act" escalated; continue;; esac
 
-  if sh_killed; then echo "halted (kill-switch): $fp"; continue; fi
-  if [ "$mode" != tier0 ] && [ "$mode" != tier1 ]; then echo "observe: would $act for $fp"; continue; fi
+  if sh_killed; then echo "halted (kill-switch): $fp"; _record "$fp" "$act" halted; continue; fi
+  if [ "$mode" != tier0 ] && [ "$mode" != tier1 ]; then echo "observe: would $act for $fp"; _record "$fp" "$act" observe; continue; fi
   # --dry-run short-circuits BEFORE anti-flap so it always reports pure intent.
-  if [ "$DRY" = 1 ]; then echo "dry-run: would $act for $fp ($svc)"; continue; fi
-  if [ "$(_flap_count "$fp")" -ge "$K" ]; then echo "escalate (anti-flap >=$K): $fp"; continue; fi
+  if [ "$DRY" = 1 ]; then echo "dry-run: would $act for $fp ($svc)"; _record "$fp" "$act" dry-run; continue; fi
+  if [ "$(_flap_count "$fp")" -ge "$K" ]; then echo "escalate (anti-flap >=$K): $fp"; _record "$fp" "$act" escalated; continue; fi
 
   _flap_mark "$fp"
   case "$act" in
     restart_unit)   $ACT_RESTART "$svc"; sleep 2
-                    if [ "$($ACT_HEALTH "$port")" = up ]; then echo "recovered: $fp via restart_unit"
-                    else echo "still-bad after restart_unit: $fp (escalate)"; fi ;;
+                    if [ "$($ACT_HEALTH "$port")" = up ]; then echo "recovered: $fp via restart_unit"; _record "$fp" "$act" recovered
+                    else echo "still-bad after restart_unit: $fp (escalate)"; _record "$fp" "$act" still-bad; fi ;;
     restart_nginx)  $ACT_RESTART "container-oidx-nginx"; sleep 2
-                    echo "acted restart_nginx for $fp (verify edge next sweep)" ;;
+                    echo "acted restart_nginx for $fp (verify edge next sweep)"; _record "$fp" "$act" recovered ;;
   esac
 done
