@@ -65,6 +65,24 @@ jobs:
       - name: Scan shell scripts
         run: bash scripts/check-shell-prose.sh
 
+  # The self-heal loop is the ONLY thing allowed to restart box services on its
+  # own, so its collectors, ledger dedup, and (most importantly) the remediator
+  # safety envelope must stay green. Every check-*.sh here is paired with a
+  # hermetic *.test.sh that injects fake probes/actions -- no live box needed --
+  # so a regression in the mode-gate/kill-switch/anti-flap/dry-run guards fails
+  # CI before it can ever touch a running service.
+  selfheal:
+    name: Self-heal loop tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run selfheal unit tests
+        run: |
+          for t in scripts/selfheal/*.test.sh; do
+            echo "== $t =="; bash "$t"
+          done
+
   # The fault matrix used to run only on a developer's machine, which is the
   # same defect the prose checker had: a gate nobody runs cannot fail, so the
   # pipeline's error handling could rot silently. It needs no Ziti, no network
