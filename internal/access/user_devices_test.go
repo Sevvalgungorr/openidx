@@ -154,7 +154,7 @@ func TestAgentEnroll_LinksKnownDevice(t *testing.T) {
 	}
 
 	gin.SetMode(gin.TestMode)
-	h := NewAgentAPIHandler(zap.NewNop(), db, nil)
+	h := NewAgentAPIHandler(zap.NewNop(), db, nil, nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/agent/enroll/oauth", nil).WithContext(ctx)

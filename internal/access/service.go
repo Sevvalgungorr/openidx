@@ -830,7 +830,7 @@ func RegisterRoutes(router *gin.Engine, svc *Service, authMiddleware ...gin.Hand
 		// Agent admin surface (enrollment-token CRUD, agent list / approve /
 		// revoke, OAuth-based mobile enrollment, Android QR helpers). Inherits
 		// the auth middleware applied to `api`.
-		agentHandler := NewAgentAPIHandler(svc.logger, svc.db, svc.ziti())
+		agentHandler := NewAgentAPIHandler(svc.logger, svc.db, svc.ziti(), svc.config)
 		agentHandler.RegisterAgentAdminRoutes(api)
 		agentHandler.StartGracePeriodEnforcer(context.Background(), 5*time.Minute)
 		svc.agentHandler = agentHandler

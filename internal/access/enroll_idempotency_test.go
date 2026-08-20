@@ -52,7 +52,7 @@ func TestEnrollIdempotentByFingerprint(t *testing.T) {
 		}
 	}
 
-	h := NewAgentAPIHandler(zap.NewNop(), db, nil)
+	h := NewAgentAPIHandler(zap.NewNop(), db, nil, nil)
 	req := enrollRequest{
 		Hostname:          "DANA-PC",
 		OS:                "windows",
@@ -98,7 +98,7 @@ func TestEnrollDistinctFingerprintsDistinctAgents(t *testing.T) {
 			t.Fatalf("schema: %v", err)
 		}
 	}
-	h := NewAgentAPIHandler(zap.NewNop(), db, nil)
+	h := NewAgentAPIHandler(zap.NewNop(), db, nil, nil)
 
 	a := h.issueAgentCredentials(ctx, enrollRequest{Hostname: "A", DeviceFingerprint: "win:aaa"}, "token", "")
 	b := h.issueAgentCredentials(ctx, enrollRequest{Hostname: "B", DeviceFingerprint: "win:bbb"}, "token", "")

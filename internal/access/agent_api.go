@@ -28,20 +28,32 @@ type AgentAPIHandler struct {
 	logger        *zap.Logger
 	db            *database.PostgresDB
 	zm            *ZitiManager
+	conf          *config.Config
 	playIntegrity *PlayIntegrityVerifier
 }
 
-// NewAgentAPIHandler constructs an AgentAPIHandler with the given logger, database, and ZitiManager.
-func NewAgentAPIHandler(logger *zap.Logger, db *database.PostgresDB, zm *ZitiManager) *AgentAPIHandler {
+// NewAgentAPIHandler constructs an AgentAPIHandler. conf is the access-service
+// config (may be nil in tests); it is the authoritative source for handler
+// config (auto-trust, downloads dir, session TTL) since the Ziti manager is
+// wired at runtime and may be nil at construction time.
+func NewAgentAPIHandler(logger *zap.Logger, db *database.PostgresDB, zm *ZitiManager, conf *config.Config) *AgentAPIHandler {
 	return &AgentAPIHandler{
 		logger: logger,
 		db:     db,
 		zm:     zm,
+		conf:   conf,
 	}
 }
 
-// cfg returns the access-service config (carried by the Ziti manager) or nil.
+// cfg returns the access-service config. Prefers the directly-injected config
+// (always present) over the Ziti manager's copy, because the manager is wired
+// asynchronously at runtime and svc.ziti() is typically nil when the handler is
+// constructed — which previously made all config-gated features (auto-trust)
+// silently read their zero value.
 func (h *AgentAPIHandler) cfg() *config.Config {
+	if h.conf != nil {
+		return h.conf
+	}
 	if h.zm != nil {
 		return h.zm.cfg
 	}

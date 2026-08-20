@@ -17,7 +17,7 @@ import (
 // newTestAgentHandler returns an AgentAPIHandler suitable for unit tests.
 func newTestAgentHandler() *AgentAPIHandler {
 	logger := zap.NewNop()
-	return NewAgentAPIHandler(logger, nil, nil)
+	return NewAgentAPIHandler(logger, nil, nil, nil)
 }
 
 // TestAgentEnroll_ValidToken verifies that a POST to /agent/enroll with an
