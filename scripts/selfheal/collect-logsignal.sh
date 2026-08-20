@@ -27,5 +27,8 @@ for svc in $SVCS; do
         [ -z "$fp" ] && continue
         sev=warn; echo "$msg" | grep -qiE 'panic|fatal' && sev=crit
         sh_finding bug "$sev" "$fp" "$svc" "$msg" "{\"count\":$count}" ""
-      done
+      done || true
+  # A healthy log has no error lines, so `grep` exits 1; with pipefail that would
+  # sink the whole pipeline (and the collector) to non-zero and make sweep flag
+  # it as failed. "No errors" is the good case, not a collector fault.
 done
