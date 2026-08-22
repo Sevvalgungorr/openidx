@@ -1,0 +1,86 @@
+# Reference: OpenZiti controller `web:` section — management-plane split.
+# =====================================================================
+# This is the AUTHORITATIVE shape of the controller's `web:` listeners after
+# the 2026-08-17 management/client split. The live controller runs with
+# ZITI_BOOTSTRAP_CONFIG=true, so a container *recreate* would regenerate the
+# default single-listener config.yml and silently undo this split. Apply this
+# shape with deployments/apisix-edge/ziti-controller/apply-web-split.sh, or on a
+# fresh bootstrap patch config.yml before first start.
+#
+# WHY THE SPLIT
+# -------------
+# The stock config serves every API (edge-client, edge-management, edge-oidc,
+# fabric, zac) from ONE listener on 0.0.0.0:1280. When the public edge is
+# port-forwarded straight to :1280 (bypassing APISIX + its ip-restriction, as
+# observed 2026-08-17), the whole management plane is exposed to the internet.
+# APISIX ip-restriction only guards the :443 path; a direct :1280 forward skips
+# it entirely.
+#
+# The fix is defence in depth at the controller itself: two listeners.
+#   - client-public   0.0.0.0:1280   edge-client + edge-oidc     (public — SDK/BrowZer enrol + session + OIDC)
+#   - management-local 127.0.0.1:1281 edge-management + fabric + zac (loopback only — reachable off-box solely via APISIX :443 + ip-restriction)
+#
+# The controller's own ctrl listener (router control channel, tls:0.0.0.0:1280,
+# an ALPN-muxed binary protocol — NOT HTTP) is unaffected and stays on :1280;
+# APISIX cannot proxy it and the local router dials it over loopback anyway.
+#
+# MEASURED (2026-08-17, this host):
+#   DIRECT :1280 /edge/management/v1/version -> 404   (was 200 before split)
+#   DIRECT :1280 /edge/client/v1/version     -> 200   (unchanged)
+#   DIRECT :1280 /oidc/.well-known/...        -> 200   (unchanged)
+#   DIRECT :1281 /edge/management/v1/version -> 200
+#   Mutation (revert to single listener): DIRECT :1280 mgmt -> 200 (hole reopens)
+#
+# NOTE: identity / options blocks below are placeholders — on the live config
+# they carry the controller's real PKI paths and HTTP timeouts. apply-web-split.sh
+# copies the EXISTING identity+options verbatim into both listeners; it never
+# invents cert paths. Keep both listeners on the same identity as the original.
+
+web:
+  - name: client-public
+    bindPoints:
+      - interface: 0.0.0.0:1280
+        address: ctrl.tdv.org:1280
+    identity:
+      # <-- verbatim copy of the controller's existing web identity block -->
+      ca:          "pki/root/certs/root.cert"
+      key:         "pki/intermediate/keys/server.key"
+      server_cert: "pki/intermediate/certs/server.chain.pem"
+      cert:        "pki/intermediate/certs/client.chain.pem"
+    options:
+      idleTimeout: 5000ms
+      readTimeout: 5000ms
+      writeTimeout: 100000ms
+      minTLSVersion: TLS1.2
+      maxTLSVersion: TLS1.3
+    apis:
+      - binding: edge-client
+        options: { }
+      - binding: edge-oidc
+        options: { }
+
+  - name: management-local
+    bindPoints:
+      - interface: 127.0.0.1:1281
+        address: ctrl.tdv.org:1281
+    identity:
+      # <-- same identity block as client-public -->
+      ca:          "pki/root/certs/root.cert"
+      key:         "pki/intermediate/keys/server.key"
+      server_cert: "pki/intermediate/certs/server.chain.pem"
+      cert:        "pki/intermediate/certs/client.chain.pem"
+    options:
+      idleTimeout: 5000ms
+      readTimeout: 5000ms
+      writeTimeout: 100000ms
+      minTLSVersion: TLS1.2
+      maxTLSVersion: TLS1.3
+    apis:
+      - binding: edge-management
+        options: { }
+      - binding: fabric
+        options: { }
+      - binding: zac
+        options:
+          location: /ziti-console
+          indexFile: index.html

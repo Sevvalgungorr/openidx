@@ -55,6 +55,8 @@ echo "OK tier1 (Tier-0 bootstrap only)"
 z=$(DRY_RUN=1 bash seed-edge-routes.sh 2>&1)
 has "$z" ctrl-host              || fail "ziti: client/enrolment route MUST stay reachable"
 has "$z" ctrl-mgmt-restricted   || fail "ziti: management API MUST have a restricted route"
+has "$z" ctrl-zac-restricted    || fail "ziti: ZAC admin console MUST have a restricted route"
+has "$z" ctrl-fabric-restricted || fail "ziti: fabric API MUST have a restricted route"
 # DRY_RUN prints route names only, so the body is asserted against the script
 # source itself. Without these two checks the route could exist and still be
 # useless: no allow-list means it restricts nothing, and a priority at or below
@@ -63,6 +65,22 @@ grep -q 'ctrl-mgmt-restricted.*ip-restriction' seed-edge-routes.sh \
   || fail "ziti: management route MUST carry an IP allow-list"
 grep -q 'ctrl-mgmt-restricted.*"uri":"/edge/management/v1/\*","priority":70' seed-edge-routes.sh \
   || fail "ziti: management route MUST outrank ctrl-host (priority 20), else it never matches"
+# The management/console/fabric plane must point at the loopback-only listener
+# (:1281), NOT the public :1280. If a direct port-forward bypasses APISIX, the
+# controller's client-public listener on :1280 does not serve these APIs at all;
+# routing them back to :1280 here would reopen that exact hole (measured
+# 2026-08-17: DIRECT :1280 mgmt -> 404 after the split, 200 before). These pin
+# both the allow-list AND the loopback upstream for every management-plane route.
+for r in ctrl-mgmt-restricted ctrl-zac-restricted ctrl-fabric-restricted; do
+  grep -q "$r.*ip-restriction" seed-edge-routes.sh \
+    || fail "ziti: $r MUST carry an IP allow-list"
+  grep -q "$r.*127.0.0.1:1281" seed-edge-routes.sh \
+    || fail "ziti: $r MUST target the loopback-only :1281 listener, not public :1280"
+  grep -q "$r.*127.0.0.1:1280" seed-edge-routes.sh \
+    && fail "ziti: $r MUST NOT target public :1280 (management plane leaks past APISIX bypass)"
+  grep -q "$r.*\"priority\":70" seed-edge-routes.sh \
+    || fail "ziti: $r MUST outrank ctrl-host (priority 20), else it never matches"
+done
 
 # Source-NAT trap: if the allow-list covers the source IP of a NAT router doing
 # masquerade, every external request looks internal and the restriction silently
