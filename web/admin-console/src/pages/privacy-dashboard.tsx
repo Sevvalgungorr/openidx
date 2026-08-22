@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useNavigate } from 'react-router-dom'
 
@@ -123,13 +124,7 @@ export function PrivacyDashboardPage() {
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24">
-        <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-        <p className="text-lg font-medium text-gray-900">Failed to load privacy dashboard</p>
-        <p className="text-sm text-muted-foreground mt-1">Please try again later</p>
-      </div>
-    )
+    return <QueryError error={error} resource="the privacy dashboard" />
   }
 
   const d = dashboard || {

@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { api } from '../lib/api'
+import { QueryError } from '../components/query-error'
+import { ConfirmAction } from '../components/confirm-action'
 import { useToast } from '../hooks/use-toast'
 
 interface ReportExport {
@@ -51,14 +53,14 @@ export function ReportsPage() {
   const [genForm, setGenForm] = useState({ report_type: 'user_access', framework: '', format: 'csv' })
   const [schedForm, setSchedForm] = useState({ name: '', report_type: 'user_access', framework: '', schedule: '0 0 * * 1', format: 'csv', enabled: true })
 
-  const { data: exportsData, isLoading: exportsLoading } = useQuery({
+  const { data: exportsData, isLoading: exportsLoading, isError: exportsError, error: exportsErrorObj } = useQuery({
     queryKey: ['report-exports'],
     queryFn: () => api.get<{ exports: ReportExport[]; total: number }>('/api/v1/audit/reports/exports'),
     refetchInterval: 5000,
   })
   const exports = exportsData?.exports || []
 
-  const { data: scheduledData, isLoading: scheduledLoading } = useQuery({
+  const { data: scheduledData, isLoading: scheduledLoading, isError: scheduledError, error: scheduledErrorObj } = useQuery({
     queryKey: ['scheduled-reports'],
     queryFn: () => api.get<{ reports: ScheduledReport[] }>('/api/v1/audit/reports/scheduled'),
   })
@@ -188,6 +190,7 @@ export function ReportsPage() {
           <CardHeader><CardTitle>Generated Reports</CardTitle></CardHeader>
           <CardContent>
             {exportsLoading ? <p className="text-center py-8 text-muted-foreground">Loading...</p> :
+             exportsError ? <QueryError error={exportsErrorObj} resource="report exports" /> :
              exports.length === 0 ? <p className="text-center py-8 text-muted-foreground">No reports generated yet</p> : (
               <Table>
                 <TableHeader><TableRow>
@@ -226,6 +229,7 @@ export function ReportsPage() {
           <CardHeader><CardTitle>Scheduled Reports</CardTitle></CardHeader>
           <CardContent>
             {scheduledLoading ? <p className="text-center py-8 text-muted-foreground">Loading...</p> :
+             scheduledError ? <QueryError error={scheduledErrorObj} resource="scheduled reports" /> :
              scheduled.length === 0 ? <p className="text-center py-8 text-muted-foreground">No scheduled reports</p> : (
               <Table>
                 <TableHeader><TableRow>
@@ -244,7 +248,17 @@ export function ReportsPage() {
                       <TableCell>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => openSchedule(s)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="sm" onClick={() => deleteScheduleMutation.mutate(s.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                          <ConfirmAction
+                            title="Delete this scheduled report?"
+                            description={`This removes the scheduled report ${s.name}. It will no longer run on its schedule.`}
+                            destructive
+                            confirmLabel="Delete"
+                            onConfirm={() => deleteScheduleMutation.mutateAsync(s.id)}
+                          >
+                            {(open) => (
+                              <Button variant="ghost" size="sm" onClick={open}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                            )}
+                          </ConfirmAction>
                         </div>
                       </TableCell>
                     </TableRow>

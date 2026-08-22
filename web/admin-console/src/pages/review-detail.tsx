@@ -24,6 +24,7 @@ import {
 import { Textarea } from '../components/ui/textarea'
 import { Label } from '../components/ui/label'
 import { api } from '../lib/api'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 
 interface AccessReview {
@@ -87,7 +88,7 @@ export function ReviewDetailPage() {
   const [comments, setComments] = useState('')
   const [filter, setFilter] = useState<string>('')
 
-  const { data: review, isLoading: reviewLoading } = useQuery({
+  const { data: review, isLoading: reviewLoading, isError: reviewError, error: reviewErrorObj } = useQuery({
     queryKey: ['review', id],
     queryFn: () => api.get<AccessReview>(`/api/v1/governance/reviews/${id}`),
   })
@@ -229,6 +230,10 @@ export function ReviewDetailPage() {
 
   if (reviewLoading) {
     return <div className="p-8 text-center">Loading...</div>
+  }
+
+  if (reviewError) {
+    return <QueryError error={reviewErrorObj} resource="this access review" />
   }
 
   if (!review) {

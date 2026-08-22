@@ -35,6 +35,7 @@ import {
 } from '../components/ui/alert-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -173,11 +174,7 @@ function PendingRequestsTab() {
             <LoadingSpinner />
           </div>
         ) : isError ? (
-          <p className="py-8 text-center text-destructive">
-            {(error as { response?: { status?: number } })?.response?.status === 403
-              ? 'Admin access required'
-              : 'Failed to load session requests.'}
-          </p>
+          <QueryError error={error} resource="session requests" />
         ) : (
           <Table>
             <TableHeader>
@@ -328,11 +325,7 @@ function ActiveSessionsTab() {
               Guacamole is not configured.
             </p>
           ) : isError ? (
-            <p className="py-8 text-center text-destructive">
-              {(error as { response?: { status?: number } })?.response?.status === 403
-                ? 'Admin access required'
-                : 'Failed to load active sessions.'}
-            </p>
+            <QueryError error={error} resource="active sessions" />
           ) : (
             <Table>
               <TableHeader>
@@ -526,11 +519,7 @@ function SessionHistoryTab() {
             <LoadingSpinner />
           </div>
         ) : isError ? (
-          <p className="py-8 text-center text-destructive">
-            {(error as { response?: { status?: number } })?.response?.status === 403
-              ? 'Admin access required'
-              : 'Failed to load session history.'}
-          </p>
+          <QueryError error={error} resource="session history" />
         ) : (
           <Table>
             <TableHeader>

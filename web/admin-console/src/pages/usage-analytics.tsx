@@ -9,6 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 interface UsageData {
@@ -73,7 +74,12 @@ function methodBadge(method: string) {
 }
 
 export function UsageAnalyticsPage() {
-  const { data: usageData, isLoading: usageLoading } = useQuery<{ usage: UsageData }>({
+  const {
+    data: usageData,
+    isLoading: usageLoading,
+    isError: usageError,
+    error: usageErrorObj,
+  } = useQuery<{ usage: UsageData }>({
     queryKey: ['usage-analytics'],
     queryFn: () => api.get<{ usage: UsageData }>('/api/v1/analytics/usage'),
   })
@@ -101,6 +107,12 @@ export function UsageAnalyticsPage() {
         <LoadingSpinner size="lg" />
       </div>
     )
+  }
+
+  // The primary usage query drives the whole dashboard; a 401/403 here must not
+  // fall through to an all-zeros "no usage" view.
+  if (usageError) {
+    return <QueryError error={usageErrorObj} resource="usage analytics" />
   }
 
   const maxRegistration = Math.max(

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -22,7 +23,7 @@ export function AppLauncherPage() {
   const [search, setSearch] = useState('')
   const { toast } = useToast()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['my-applications'],
     queryFn: () => api.get<{ applications: UserApp[] }>('/api/v1/identity/portal/applications'),
   })
@@ -60,6 +61,8 @@ export function AppLauncherPage() {
 
       {isLoading ? (
         <p className="text-center py-12 text-muted-foreground">Loading applications...</p>
+      ) : isError ? (
+        <QueryError error={error} resource="applications" />
       ) : apps.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Input } from '../components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import {
@@ -312,7 +313,7 @@ export function RotationPoliciesPage() {
   const [form, setForm] = useState<PolicyFormState>(blankForm())
 
   // Queries
-  const { data: policiesData, isLoading, error } = useQuery({
+  const { data: policiesData, isLoading, isError, error } = useQuery({
     queryKey: ['rotation-policies'],
     queryFn: () => api.vault.listPolicies(),
   })
@@ -417,12 +418,8 @@ export function RotationPoliciesPage() {
             <div className="flex justify-center py-12">
               <LoadingSpinner size="lg" />
             </div>
-          ) : error ? (
-            <div className="py-8 text-center text-sm text-red-600">
-              {(error as { response?: { status?: number } })?.response?.status === 403
-                ? 'Vault admin access required'
-                : 'Failed to load rotation policies'}
-            </div>
+          ) : isError ? (
+            <QueryError error={error} resource="rotation policies" />
           ) : (
             <Table>
               <TableHeader>

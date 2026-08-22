@@ -16,6 +16,7 @@ import { Badge } from '../components/ui/badge'
 import { Input } from '../components/ui/input'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { UserLink } from '../components/user-link'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -78,7 +79,7 @@ export function AIIdentityIntelligencePage() {
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState('')
 
-  const { data: overview, isLoading, refetch } = useQuery({
+  const { data: overview, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ai-identity-intelligence'],
     queryFn: async () => api.get<Overview>('/api/v1/ai/intelligence/overview'),
   })
@@ -107,6 +108,10 @@ export function AIIdentityIntelligencePage() {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="identity intelligence" />
   }
 
   return (

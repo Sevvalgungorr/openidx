@@ -4,6 +4,7 @@ import { Save, Building, Shield, Key, Palette, X, Plus, Smartphone, Send } from 
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -139,7 +140,7 @@ export function SettingsPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'general' | 'security' | 'authentication' | 'sms' | 'branding'>('general')
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading, isError, error } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api.get<Settings>('/api/v1/settings'),
   })
@@ -260,6 +261,15 @@ export function SettingsPage() {
         branding: { ...formData.branding, [field]: value }
       })
     }
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+        <QueryError error={error} resource="settings" />
+      </div>
+    )
   }
 
   if (isLoading || !formData) {

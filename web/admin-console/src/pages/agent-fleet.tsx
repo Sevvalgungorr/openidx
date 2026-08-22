@@ -24,6 +24,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -97,7 +98,7 @@ export function AgentFleetPage() {
     enabled: !!postureAgent,
   })
 
-  const { data: agents = [], isLoading } = useQuery({
+  const { data: agents = [], isLoading, isError, error } = useQuery({
     queryKey: ['agent-fleet'],
     queryFn: () => api.get<AgentRecord[]>('/api/v1/access/agents'),
   })
@@ -218,6 +219,8 @@ export function AgentFleetPage() {
         <CardContent>
           {isLoading ? (
             <div className="py-12 flex justify-center"><LoadingSpinner /></div>
+          ) : isError ? (
+            <QueryError error={error} resource="agents" />
           ) : (
             <Table>
               <TableHeader>

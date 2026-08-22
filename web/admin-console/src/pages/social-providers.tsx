@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Switch } from '../components/ui/switch'
@@ -100,7 +101,7 @@ export function SocialProvidersPage() {
   const [deleteTarget, setDeleteTarget] = useState<SocialProvider | null>(null)
   const [form, setForm] = useState<SocialProviderFormData>(emptyForm)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['social-providers'],
     queryFn: () =>
       api.get<{ data: SocialProvider[] }>('/api/v1/social-providers'),
@@ -215,6 +216,10 @@ export function SocialProvidersPage() {
         <p className="mt-4 text-sm text-muted-foreground">Loading social providers...</p>
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="social providers" />
   }
 
   return (

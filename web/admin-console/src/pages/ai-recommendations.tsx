@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Lightbulb, Sparkles, Check, X, Zap, BarChart3, Shield, Scale, Settings, Bot } from 'lucide-react'
 
 interface Recommendation {
@@ -55,7 +56,7 @@ export function AIRecommendationsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('pending')
 
-  const { data: recsData, isLoading } = useQuery({
+  const { data: recsData, isLoading, isError, error } = useQuery({
     queryKey: ['ai-recommendations', categoryFilter, statusFilter],
     queryFn: () => {
       const params = new URLSearchParams()
@@ -104,6 +105,10 @@ export function AIRecommendationsPage() {
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="AI recommendations" />
   }
 
   const recs = recsData?.data || []

@@ -15,6 +15,7 @@ import {
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 
 interface Organization {
   id: string
@@ -55,7 +56,7 @@ export function OrganizationsPage() {
   // The backend returns a bare JSON array with an X-Total-Count header (the
   // convention across list endpoints), not a wrapped { organizations, total }
   // object — reading a wrapper key left the org list permanently empty.
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => api.get<Organization[]>('/api/v1/organizations'),
   })
@@ -159,6 +160,8 @@ export function OrganizationsPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading organizations...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="organizations" />
           ) : orgs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Building2 className="h-12 w-12 text-muted-foreground/40 mb-3" />

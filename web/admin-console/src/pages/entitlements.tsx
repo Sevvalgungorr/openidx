@@ -32,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -98,7 +99,7 @@ export function EntitlementsPage() {
     queryFn: () => api.get<EntitlementStats>('/api/v1/entitlements/stats'),
   })
 
-  const { data: entitlements, isLoading } = useQuery({
+  const { data: entitlements, isLoading, isError, error } = useQuery({
     queryKey: ['entitlements', search, typeFilter, riskFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -265,6 +266,8 @@ export function EntitlementsPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading entitlements...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="entitlements" />
           ) : !entitlements || entitlements.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Package className="h-12 w-12 text-muted-foreground/40 mb-3" />

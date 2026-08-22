@@ -37,6 +37,8 @@ import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
+import { QueryError } from '../components/query-error'
 
 interface Campaign {
   id: string
@@ -125,7 +127,7 @@ export function CertificationCampaignsPage() {
     duration_days: 30,
   })
 
-  const { data: campaigns, isLoading } = useQuery({
+  const { data: campaigns, isLoading, isError, error } = useQuery({
     queryKey: ['campaigns', search, statusFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -270,7 +272,9 @@ export function CertificationCampaignsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <QueryError error={error} resource="certification campaigns" />
+          ) : isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading campaigns...</p>
@@ -339,13 +343,34 @@ export function CertificationCampaignsPage() {
                                 <Eye className="h-4 w-4 mr-2" /> View Runs
                               </DropdownMenuItem>
                               {campaign.status === 'active' && (
-                                <DropdownMenuItem onClick={() => runMutation.mutate(campaign.id)}>
-                                  <Play className="h-4 w-4 mr-2" /> Run Now
-                                </DropdownMenuItem>
+                                <ConfirmAction
+                                  title="Start a campaign run now?"
+                                  description={`This starts a certification run for "${campaign.name}".${campaign.auto_revoke ? ' Auto-revoke is enabled: unreviewed access items will be automatically revoked from users when the grace period ends.' : ' Reviewers will be asked to certify access.'} This affects real access decisions.`}
+                                  destructive
+                                  requireReason
+                                  confirmLabel="Run Now"
+                                  onConfirm={() => runMutation.mutateAsync(campaign.id)}
+                                >
+                                  {(open) => (
+                                    <DropdownMenuItem onSelect={(e) => { e.preventDefault(); open() }}>
+                                      <Play className="h-4 w-4 mr-2" /> Run Now
+                                    </DropdownMenuItem>
+                                  )}
+                                </ConfirmAction>
                               )}
-                              <DropdownMenuItem onClick={() => deleteMutation.mutate(campaign.id)} className="text-red-600">
-                                <Trash2 className="h-4 w-4 mr-2" /> Delete
-                              </DropdownMenuItem>
+                              <ConfirmAction
+                                title="Delete this campaign?"
+                                description={`This permanently deletes the "${campaign.name}" certification campaign and its schedule. Run history is retained, but the campaign will no longer run. This cannot be undone.`}
+                                destructive
+                                confirmLabel="Delete"
+                                onConfirm={() => deleteMutation.mutateAsync(campaign.id)}
+                              >
+                                {(open) => (
+                                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); open() }} className="text-red-600">
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                )}
+                              </ConfirmAction>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>

@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -62,7 +63,7 @@ export function MyAccessPage() {
   const [selectedGroup, setSelectedGroup] = useState<AvailableGroup | null>(null)
   const [justification, setJustification] = useState('')
 
-  const { data: overview } = useQuery({
+  const { data: overview, isError: overviewIsError, error: overviewError } = useQuery({
     queryKey: ['access-overview'],
     queryFn: () => api.get<AccessOverview>('/api/v1/identity/portal/access-overview'),
   })
@@ -112,6 +113,18 @@ export function MyAccessPage() {
       case 'denied': return 'destructive'
       default: return 'secondary'
     }
+  }
+
+  if (overviewIsError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">My Access</h1>
+          <p className="text-muted-foreground">Everything you can reach — identity, privileged access, and zero-trust network — in one place</p>
+        </div>
+        <QueryError error={overviewError} resource="your access overview" />
+      </div>
+    )
   }
 
   return (

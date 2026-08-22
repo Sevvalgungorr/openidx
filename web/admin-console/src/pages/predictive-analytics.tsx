@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { TrendingUp, TrendingDown, Minus, Users, Activity, Shield, Server, UserX, BarChart3 } from 'lucide-react'
 
 interface DailyMetric {
@@ -102,13 +103,17 @@ function ForecastChart({ historical, predicted }: { historical: DailyMetric[]; p
 }
 
 export function PredictiveAnalyticsPage() {
-  const { data: predictions, isLoading } = useQuery<PredictionSummary>({
+  const { data: predictions, isLoading, isError, error } = useQuery<PredictionSummary>({
     queryKey: ['predictions-summary'],
     queryFn: () => api.get<PredictionSummary>('/api/v1/analytics/predictions'),
   })
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="predictive analytics" />
   }
 
   if (!predictions) {

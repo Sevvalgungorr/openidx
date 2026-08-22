@@ -13,6 +13,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -63,7 +64,7 @@ export function ServiceAccountsPage() {
 
   const [revokeKeyTarget, setRevokeKeyTarget] = useState<APIKey | null>(null)
 
-  const { data: accountsData, isLoading } = useQuery({
+  const { data: accountsData, isLoading, isError, error } = useQuery({
     queryKey: ['service-accounts', page, search],
     queryFn: () =>
       api.get<{ service_accounts: ServiceAccount[]; total: number }>(
@@ -171,6 +172,8 @@ export function ServiceAccountsPage() {
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-sm text-muted-foreground">Loading service accounts...</p>
         </div>
+      ) : isError ? (
+        <QueryError error={error} resource="service accounts" />
       ) : accounts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <Bot className="h-12 w-12 text-muted-foreground/40 mb-3" />

@@ -22,6 +22,7 @@ import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
 import { RemoteSupportViewer } from '../components/remote-support/remote-support-viewer'
 import { RelayRenderer } from '../components/remote-support/relay-renderer'
+import { ConfirmAction } from '../components/confirm-action'
 
 /**
  * Remote support admin page (Phase 4). Lists sessions, lets an admin start
@@ -216,37 +217,48 @@ export function RemoteSupportPage() {
                         )}
                         {s.recording_url && (
                           s.is_on_legal_hold ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Release legal hold (recording becomes subject to retention again)"
-                              onClick={() => {
-                                const reason = window.prompt(
-                                  'Reason for releasing this legal hold (logged in audit):',
-                                  '',
-                                )
-                                if (reason === null) return
-                                releaseHoldMutation.mutate({ id: s.id, reason })
-                              }}
+                            <ConfirmAction
+                              title="Release legal hold on this recording?"
+                              description="Releasing the legal hold makes this remote-support recording subject to the normal retention sweeper again — it may be automatically deleted. Provide the reason (e.g. litigation matter closed); it is written to the audit log."
+                              destructive
+                              requireReason
+                              confirmLabel="Release Hold"
+                              onConfirm={(reason) =>
+                                releaseHoldMutation.mutateAsync({ id: s.id, reason: reason! })
+                              }
                             >
-                              <Unlock className="h-3 w-3 text-amber-600" />
-                            </Button>
+                              {(open) => (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  title="Release legal hold (recording becomes subject to retention again)"
+                                  onClick={open}
+                                >
+                                  <Unlock className="h-3 w-3 text-amber-600" />
+                                </Button>
+                              )}
+                            </ConfirmAction>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Place this recording on legal hold (exempt from retention sweep)"
-                              onClick={() => {
-                                const reason = window.prompt(
-                                  'Reason for the legal hold (e.g. "litigation case #1234"):',
-                                  '',
-                                )
-                                if (!reason) return
-                                placeHoldMutation.mutate({ id: s.id, reason })
-                              }}
+                            <ConfirmAction
+                              title="Place this recording on legal hold?"
+                              description="Placing a legal hold exempts this remote-support recording from the retention sweeper, so it will be preserved indefinitely until the hold is released. Provide the reason (e.g. litigation case #1234); it is written to the audit log."
+                              requireReason
+                              confirmLabel="Place Hold"
+                              onConfirm={(reason) =>
+                                placeHoldMutation.mutateAsync({ id: s.id, reason: reason! })
+                              }
                             >
-                              <Lock className="h-3 w-3" />
-                            </Button>
+                              {(open) => (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  title="Place this recording on legal hold (exempt from retention sweep)"
+                                  onClick={open}
+                                >
+                                  <Lock className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </ConfirmAction>
                           )
                         )}
                       </div>

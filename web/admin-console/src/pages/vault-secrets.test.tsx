@@ -259,6 +259,10 @@ describe('VaultSecretsPage', () => {
     const rotateBtn = await screen.findByTestId('rotate-now-btn')
     await user.click(rotateBtn)
 
+    // Rotation is now guarded by a confirmation dialog — confirm it.
+    const confirmBtn = await screen.findByRole('button', { name: /^rotate$/i })
+    await user.click(confirmBtn)
+
     await waitFor(() => {
       expect(vi.mocked(api.vault.rotateNow)).toHaveBeenCalledWith('sec-1')
     })

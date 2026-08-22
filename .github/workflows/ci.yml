@@ -65,6 +65,21 @@ jobs:
       - name: Scan shell scripts
         run: bash scripts/check-shell-prose.sh
 
+  ui-safety-guards:
+    name: UI safety guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Guard self-tests (must go red on a real regression)
+        run: |
+          bash scripts/check-query-error-coverage.test.sh
+          bash scripts/check-destructive-confirm.test.sh
+      - name: Enforce UI safety guards
+        run: |
+          bash scripts/check-query-error-coverage.sh --enforce
+          bash scripts/check-destructive-confirm.sh --enforce
+
   # The fault matrix used to run only on a developer's machine, which is the
   # same defect the prose checker had: a gate nobody runs cannot fail, so the
   # pipeline's error handling could rot silently. It needs no Ziti, no network

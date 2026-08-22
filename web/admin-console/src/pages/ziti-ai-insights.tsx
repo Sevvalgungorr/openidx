@@ -13,8 +13,10 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
 
 interface ControllerFeatures {
   version: string
@@ -105,7 +107,7 @@ export function ZitiAIInsightsPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
-  const { data: insights, isLoading } = useQuery({
+  const { data: insights, isLoading, isError, error } = useQuery({
     queryKey: ['ziti-ai-insights'],
     queryFn: async () => api.get<Insights>('/api/v1/access/ziti/ai/insights'),
   })
@@ -150,9 +152,9 @@ export function ZitiAIInsightsPage() {
   })
 
   const quarantine = useMutation({
-    mutationFn: async (identityId: string) =>
+    mutationFn: async ({ identityId, reason }: { identityId: string; reason: string }) =>
       api.post(`/api/v1/access/ziti/ai/identities/${identityId}/quarantine`, {
-        reason: 'Quarantined from AI Insights risk panel',
+        reason,
       }),
     onSuccess: () => {
       invalidateAll()
@@ -183,6 +185,10 @@ export function ZitiAIInsightsPage() {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="Ziti AI insights" />
   }
 
   return (
@@ -402,14 +408,27 @@ export function ZitiAIInsightsPage() {
                           Restore Access
                         </Button>
                       ) : (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => quarantine.mutate(risk.identity_id)}
-                          disabled={quarantine.isPending}
+                        <ConfirmAction
+                          title="Quarantine this identity?"
+                          description={`Quarantining "${risk.subject || risk.identity_name}" severs its Ziti role attributes and immediately terminates all active sessions, cutting this identity off the network. Access can be restored afterward, but any in-flight sessions are lost.`}
+                          destructive
+                          requireReason
+                          confirmLabel="Quarantine"
+                          onConfirm={(reason) =>
+                            quarantine.mutateAsync({ identityId: risk.identity_id, reason: reason! })
+                          }
                         >
-                          Quarantine
-                        </Button>
+                          {(open) => (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={open}
+                              disabled={quarantine.isPending}
+                            >
+                              Quarantine
+                            </Button>
+                          )}
+                        </ConfirmAction>
                       )}
                     </td>
                   </tr>

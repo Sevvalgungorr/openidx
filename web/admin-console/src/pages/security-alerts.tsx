@@ -17,6 +17,7 @@ import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
+import { ConfirmAction } from '../components/confirm-action'
 
 interface SecurityAlert {
   id: string
@@ -281,9 +282,19 @@ export function SecurityAlertsPage() {
                         <TableCell>{t.permanent ? <Badge>Permanent</Badge> : 'No'}</TableCell>
                         <TableCell>{t.blocked_until ? formatDate(t.blocked_until) : '-'}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => removeIPMutation.mutate(t.id)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          <ConfirmAction
+                            title="Unblock this IP address?"
+                            description={`This removes ${t.ip_address} from the IP blocklist. Traffic from this address will be allowed again. This cannot be undone (you would need to re-block it manually).`}
+                            destructive
+                            confirmLabel="Unblock"
+                            onConfirm={() => removeIPMutation.mutateAsync(t.id)}
+                          >
+                            {(open) => (
+                              <Button variant="ghost" size="sm" onClick={open}>
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            )}
+                          </ConfirmAction>
                         </TableCell>
                       </TableRow>
                     ))}

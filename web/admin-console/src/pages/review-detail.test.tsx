@@ -111,9 +111,12 @@ describe('ReviewDetailPage', () => {
   })
 
   it('renders the "Review not found" fallback when the review query is empty', async () => {
+    // Resolve a defined-but-null payload (a successful "no such review"),
+    // not undefined — react-query treats an undefined resolve as an error,
+    // which would hit the QueryError branch instead of the not-found fallback.
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.match(/\/reviews\/rv-1\/items/)) return Promise.resolve(items) as ReturnType<typeof api.get>
-      return Promise.resolve(undefined) as ReturnType<typeof api.get>
+      return Promise.resolve(null) as ReturnType<typeof api.get>
     })
 
     render(<ReviewDetailPage />, { wrapper: createWrapper() })

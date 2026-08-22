@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -140,7 +141,7 @@ export function UsersPage() {
   }, [userRoles, manageRolesModal])
 
   // Fetch users
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading, isError, error } = useQuery({
     queryKey: ['users', page, search],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -447,6 +448,8 @@ export function UsersPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading users...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="users" />
           ) : filteredUsers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 text-muted-foreground/40 mb-3" />

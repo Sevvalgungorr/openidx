@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 interface PAMOverview {
@@ -71,12 +72,7 @@ export function PAMDashboardPage() {
   }
 
   if (error) {
-    const status = (error as { response?: { status?: number } })?.response?.status
-    return (
-      <div className="py-12 text-center text-sm text-red-600">
-        {status === 403 ? 'Admin access required' : 'Failed to load PAM overview'}
-      </div>
-    )
+    return <QueryError error={error} resource="PAM overview" />
   }
 
   if (!data) return null

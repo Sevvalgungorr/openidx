@@ -117,11 +117,11 @@ describe('PAMDashboardPage', () => {
     )
   })
 
-  it('shows the admin-required message on 403', async () => {
+  it('shows a permission error on 403', async () => {
     vi.mocked(api.get).mockRejectedValue({ response: { status: 403 } })
 
     render(<PAMDashboardPage />, { wrapper: createWrapper() })
 
-    expect(await screen.findByText('Admin access required')).toBeInTheDocument()
+    expect(await screen.findByText(/don't have permission to view PAM overview/)).toBeInTheDocument()
   })
 })

@@ -22,6 +22,7 @@ import {
 } from '../components/ui/select'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -73,7 +74,7 @@ export function SAMLServiceProvidersPage() {
   const [deleteTarget, setDeleteTarget] = useState<SAMLServiceProvider | null>(null)
   const [form, setForm] = useState<SPFormState>(emptyForm)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['saml-service-providers', search],
     queryFn: () =>
       api.get<{ service_providers: SAMLServiceProvider[] }>(
@@ -229,6 +230,8 @@ export function SAMLServiceProvidersPage() {
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-sm text-muted-foreground">Loading service providers...</p>
         </div>
+      ) : isError ? (
+        <QueryError error={error} resource="SAML service providers" />
       ) : filteredProviders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <ShieldCheck className="h-12 w-12 text-muted-foreground/40 mb-3" />

@@ -13,6 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '../components/ui/alert-dialog'
+import { QueryError } from '../components/query-error'
 import { api, VaultSecretMeta } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -84,19 +85,19 @@ export function AccessRequestsPage() {
   const [selectedRetrieveId, setSelectedRetrieveId] = useState<string | null>(null)
   const [retrievedValue, setRetrievedValue] = useState<string | null>(null)
 
-  const { data: myRequestsData, isLoading: myLoading } = useQuery({
+  const { data: myRequestsData, isLoading: myLoading, isError: myError, error: myErrorObj } = useQuery({
     queryKey: ['my-requests'],
     queryFn: () => api.get<{ requests: AccessRequest[] }>('/api/v1/governance/requests?requester_id=me'),
   })
   const myRequests = myRequestsData?.requests || []
 
-  const { data: pendingData, isLoading: pendingLoading } = useQuery({
+  const { data: pendingData, isLoading: pendingLoading, isError: pendingError, error: pendingErrorObj } = useQuery({
     queryKey: ['my-approvals'],
     queryFn: () => api.get<{ pending_approvals: AccessRequest[] }>('/api/v1/governance/my-approvals'),
   })
   const pendingApprovals = pendingData?.pending_approvals || []
 
-  const { data: allData, isLoading: allLoading } = useQuery({
+  const { data: allData, isLoading: allLoading, isError: allError, error: allErrorObj } = useQuery({
     queryKey: ['all-requests', statusFilter],
     queryFn: () => {
       const params = statusFilter !== 'all' ? `?status=${statusFilter}` : ''
@@ -288,6 +289,7 @@ export function AccessRequestsPage() {
             <CardHeader><CardTitle>My Access Requests</CardTitle></CardHeader>
             <CardContent>
               {myLoading ? <p className="text-center py-8 text-muted-foreground">Loading...</p> :
+               myError ? <QueryError error={myErrorObj} resource="access requests" /> :
                myRequests.length === 0 ? <p className="text-center py-8 text-muted-foreground">No requests found</p> : (
                 <Table>
                   <TableHeader><TableRow>
@@ -366,6 +368,7 @@ export function AccessRequestsPage() {
             <CardHeader><CardTitle>Pending Approvals</CardTitle></CardHeader>
             <CardContent>
               {pendingLoading ? <p className="text-center py-8 text-muted-foreground">Loading...</p> :
+               pendingError ? <QueryError error={pendingErrorObj} resource="pending approvals" /> :
                pendingApprovals.length === 0 ? <p className="text-center py-8 text-muted-foreground">No pending approvals</p> : (
                 <Table>
                   <TableHeader><TableRow>
@@ -415,6 +418,7 @@ export function AccessRequestsPage() {
             </CardHeader>
             <CardContent>
               {allLoading ? <p className="text-center py-8 text-muted-foreground">Loading...</p> :
+               allError ? <QueryError error={allErrorObj} resource="access requests" /> :
                allRequests.length === 0 ? <p className="text-center py-8 text-muted-foreground">No requests found</p> : (
                 <Table>
                   <TableHeader><TableRow>

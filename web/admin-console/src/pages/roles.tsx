@@ -30,6 +30,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -70,7 +71,7 @@ export function RolesPage() {
   const PAGE_SIZE = 20
 
   // Fetch roles
-  const { data: roles, isLoading } = useQuery({
+  const { data: roles, isLoading, isError, error } = useQuery({
     queryKey: ['roles', page, search],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -278,6 +279,8 @@ export function RolesPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading roles...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="roles" />
           ) : filteredRoles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <ShieldCheck className="h-12 w-12 text-muted-foreground/40 mb-3" />

@@ -110,13 +110,13 @@ describe('PredictiveAnalyticsPage', () => {
     expect(screen.getByText('alice')).toBeInTheDocument()
   })
 
-  it('renders the empty placeholder when no prediction data', async () => {
-    vi.mocked(api.get).mockResolvedValue(undefined)
+  it('surfaces a read error when the fetch fails', async () => {
+    vi.mocked(api.get).mockRejectedValue({ response: { status: 403 } })
 
     render(<PredictiveAnalyticsPage />, { wrapper: createWrapper() })
 
     expect(
-      await screen.findByText(/no prediction data available/i),
+      await screen.findByText(/don't have permission to view predictive analytics/i),
     ).toBeInTheDocument()
   })
 })

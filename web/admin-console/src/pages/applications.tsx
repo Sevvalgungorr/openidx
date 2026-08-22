@@ -21,6 +21,7 @@ import {
 import { Label } from '../components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import {
   AlertDialog,
@@ -95,7 +96,7 @@ export function ApplicationsPage() {
     consentRequired: false,
   })
 
-  const { data: applications, isLoading } = useQuery({
+  const { data: applications, isLoading, isError, error } = useQuery({
     queryKey: ['applications', page, search],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -400,6 +401,8 @@ export function ApplicationsPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading applications...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="applications" />
           ) : !filteredApps || filteredApps.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <AppWindow className="h-12 w-12 text-muted-foreground/40 mb-3" />

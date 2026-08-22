@@ -18,6 +18,7 @@ import { Label } from '../components/ui/label'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface PasswordlessSettings {
   magic_link_enabled: boolean
@@ -45,19 +46,22 @@ export function PasswordlessSettingsPage() {
   const [testEmail, setTestEmail] = useState('')
 
   // Fetch settings
-  const { data: settingsData, isLoading: settingsLoading } = useQuery({
+  const { data: settingsData, isLoading: settingsLoading, isError: settingsError, error: settingsErrorObj } = useQuery({
     queryKey: ['passwordless-settings'],
     queryFn: async () => {
       return api.get<{ settings: PasswordlessSettings }>('/api/v1/identity/passwordless/settings')
     }
   })
 
+  // Fall back to an all-DISABLED posture (never a fake "enabled" one) so that
+  // if the settings ever fail to load we do not paint features as turned on.
+  // On a real load error we render <QueryError> below instead of any toggles.
   const settings: PasswordlessSettings = settingsData?.settings || {
-    magic_link_enabled: true,
+    magic_link_enabled: false,
     magic_link_expiry_minutes: 15,
-    qr_login_enabled: true,
+    qr_login_enabled: false,
     qr_session_expiry_minutes: 5,
-    biometric_only_enabled: true,
+    biometric_only_enabled: false,
     allowed_domains: [],
     require_device_trust: false,
     max_magic_links_per_hour: 5
@@ -127,6 +131,12 @@ export function PasswordlessSettingsPage() {
         <LoadingSpinner size="lg" />
       </div>
     )
+  }
+
+  // Do not render any toggle state until real settings load. Surfacing the error
+  // (vs. showing default-on toggles) avoids painting a fake security posture.
+  if (settingsError) {
+    return <QueryError error={settingsErrorObj} resource="passwordless settings" />
   }
 
   return (

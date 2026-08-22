@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bell, Mail } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { useState, useEffect } from 'react'
@@ -33,7 +34,7 @@ export function NotificationPreferencesPage() {
   const [prefs, setPrefs] = useState<Record<string, Record<string, boolean>>>({})
   const [dirty, setDirty] = useState(false)
 
-  const { data } = useQuery({
+  const { data, isError, error } = useQuery({
     queryKey: ['notification-preferences'],
     queryFn: () => api.get<{ preferences: NotificationPreference[] }>('/api/v1/identity/notifications/preferences'),
   })
@@ -107,6 +108,9 @@ export function NotificationPreferencesPage() {
           <CardTitle>Notification Channels</CardTitle>
         </CardHeader>
         <CardContent>
+          {isError ? (
+            <QueryError error={error} resource="notification preferences" />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -148,6 +152,7 @@ export function NotificationPreferencesPage() {
               </tbody>
             </table>
           </div>
+          )}
         </CardContent>
       </Card>
     </div>

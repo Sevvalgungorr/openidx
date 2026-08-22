@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Input } from '../components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import {
@@ -36,6 +37,8 @@ import {
 } from '../components/ui/table'
 import { KeyRound, Plus, Copy, Eye, Trash2, RefreshCw, Shield, X } from 'lucide-react'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
+import { useRevealedSecret, copyWithWarning } from '../lib/secret-reveal'
 
 const typeColors: Record<string, string> = {
   password: 'bg-blue-100 text-blue-800',
@@ -60,7 +63,9 @@ export function VaultSecretsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showReveal, setShowReveal] = useState(false)
   const [revealReason, setRevealReason] = useState('')
-  const [revealedValue, setRevealedValue] = useState<string | null>(null)
+  // Revealed plaintext lives in useRevealedSecret so it auto-clears after the TTL
+  // and on unmount — it is never held in plain component state indefinitely.
+  const { value: revealedValue, reveal: revealSecret, clear: clearRevealed } = useRevealedSecret()
   const [showNewVersion, setShowNewVersion] = useState(false)
   const [newVersionValue, setNewVersionValue] = useState('')
   const [showAddGrant, setShowAddGrant] = useState(false)
@@ -159,7 +164,7 @@ export function VaultSecretsPage() {
       return api.vault.reveal(selectedId, revealReason)
     },
     onSuccess: (data) => {
-      setRevealedValue(data.value)
+      revealSecret(data.value)
     },
   })
 
@@ -372,11 +377,7 @@ export function VaultSecretsPage() {
               <LoadingSpinner size="lg" />
             </div>
           ) : listError ? (
-            <div className="py-8 text-center text-sm text-red-600">
-              {(listError as { response?: { status?: number } })?.response?.status === 403
-                ? 'Vault admin access required'
-                : 'Failed to load vault secrets'}
-            </div>
+            <QueryError error={listError} resource="vault secrets" />
           ) : (
             <Table>
               <TableHeader>
@@ -435,16 +436,26 @@ export function VaultSecretsPage() {
                 {detail?.name || 'Loading...'}
               </span>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => rotateNowMutation.mutate()}
-                  disabled={rotateNowMutation.isPending}
-                  data-testid="rotate-now-btn"
+                <ConfirmAction
+                  title="Rotate this secret now?"
+                  description="The current value is replaced immediately. Any dependents must be updated to use the new value or they will start failing."
+                  destructive
+                  confirmLabel="Rotate"
+                  onConfirm={() => rotateNowMutation.mutate()}
                 >
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                  {rotateNowMutation.isPending ? 'Rotating...' : 'Rotate now'}
-                </Button>
+                  {(open) => (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={open}
+                      disabled={rotateNowMutation.isPending}
+                      data-testid="rotate-now-btn"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      {rotateNowMutation.isPending ? 'Rotating...' : 'Rotate now'}
+                    </Button>
+                  )}
+                </ConfirmAction>
                 <Button variant="outline" size="sm" onClick={() => setShowReveal(true)}>
                   <Eye className="h-3 w-3 mr-1" />
                   Reveal
@@ -667,7 +678,7 @@ export function VaultSecretsPage() {
         open={showReveal}
         onOpenChange={(open) => {
           if (!open) {
-            setRevealedValue(null)
+            clearRevealed()
             setRevealReason('')
           }
           setShowReveal(open)
@@ -704,7 +715,7 @@ export function VaultSecretsPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
                   <p className="text-xs text-amber-800 font-medium">
-                    Value shown once — not stored or logged after this dialog closes.
+                    Value shown once and auto-hidden shortly — not stored or logged after this dialog closes.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -718,9 +729,13 @@ export function VaultSecretsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => {
-                      navigator.clipboard.writeText(revealedValue)
-                      toast({ title: 'Copied' })
+                    onClick={async () => {
+                      const ok = await copyWithWarning(revealedValue)
+                      if (ok) {
+                        toast({ title: 'Copied', description: 'The clipboard may retain this value — clear it when done.' })
+                      } else {
+                        toast({ title: 'Copy failed', description: 'Clipboard unavailable — copy the value manually.', variant: 'destructive' })
+                      }
                     }}
                   >
                     <Copy className="h-4 w-4" />

@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 interface LoginAnalytics {
@@ -90,7 +91,7 @@ const periodLabels: Record<string, string> = {
 export function LoginAnalyticsPage() {
   const [period, setPeriod] = useState('7d')
 
-  const { data, isLoading } = useQuery<{ analytics: LoginAnalytics }>({
+  const { data, isLoading, isError, error } = useQuery<{ analytics: LoginAnalytics }>({
     queryKey: ['login-analytics', period],
     queryFn: async () => {
       return api.get<{ analytics: LoginAnalytics }>(`/api/v1/identity/analytics/logins?period=${period}`)
@@ -105,6 +106,10 @@ export function LoginAnalyticsPage() {
         <LoadingSpinner size="lg" />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="login analytics" />
   }
 
   if (!analytics) {

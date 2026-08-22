@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 
 interface Organization {
   id: string
@@ -54,7 +55,7 @@ export function BrandingPage() {
     if (!orgID && orgs.length > 0) setOrgID(orgs[0].id)
   }, [orgs, orgID])
 
-  const { data: branding, isLoading: brandingLoading } = useQuery({
+  const { data: branding, isLoading: brandingLoading, isError: brandingError, error: brandingErr } = useQuery({
     queryKey: ['branding', orgID],
     queryFn: () => api.get<Branding>(`/api/v1/tenants/${orgID}/branding`),
     enabled: orgID !== '',
@@ -99,7 +100,9 @@ export function BrandingPage() {
         )}
       </div>
 
-      {brandingLoading || waitingForOrg ? (
+      {brandingError ? (
+        <QueryError error={brandingErr} resource="branding settings" />
+      ) : brandingLoading || waitingForOrg ? (
         <LoadingSpinner />
       ) : (
         <form

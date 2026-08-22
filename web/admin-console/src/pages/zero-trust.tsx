@@ -23,6 +23,7 @@ import { Button } from '../components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 import { api } from '../lib/api'
 
@@ -228,6 +229,8 @@ export function ZeroTrustPage() {
         <TabsContent value="resources" className="space-y-4">
           {overviewQuery.isLoading ? (
             <LoadingSpinner />
+          ) : overviewQuery.isError ? (
+            <QueryError error={overviewQuery.error} resource="the access overview" />
           ) : routes.length === 0 ? (
             <EmptyState />
           ) : (
@@ -317,6 +320,8 @@ export function ZeroTrustPage() {
             <CardContent className="p-0">
               {sessionsQuery.isLoading ? (
                 <div className="p-4"><LoadingSpinner /></div>
+              ) : sessionsQuery.isError ? (
+                <QueryError error={sessionsQuery.error} resource="active sessions" />
               ) : (sessionsQuery.data?.sessions || []).length === 0 ? (
                 <p className="p-4 text-sm text-muted-foreground">No active sessions.</p>
               ) : (
@@ -343,6 +348,8 @@ export function ZeroTrustPage() {
             <CardContent className="p-0">
               {auditQuery.isLoading ? (
                 <div className="p-4"><LoadingSpinner /></div>
+              ) : auditQuery.isError ? (
+                <QueryError error={auditQuery.error} resource="recent access events" />
               ) : (auditQuery.data?.events || []).length === 0 ? (
                 <p className="p-4 text-sm text-muted-foreground">No recent events.</p>
               ) : (

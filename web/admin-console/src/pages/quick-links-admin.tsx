@@ -14,6 +14,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { api, QuickLink, QuickLinkInput } from '../lib/api'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 
 const CATEGORIES = ['Support', 'Collaboration', 'Monitoring', 'IT', 'Other']
@@ -34,7 +35,7 @@ export function QuickLinksAdminPage() {
   const [form, setForm] = useState<QuickLinkInput>(emptyForm)
   const [deleteLink, setDeleteLink] = useState<QuickLink | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['quick-links-admin'],
     queryFn: () => api.quickLinks.list(),
   })
@@ -95,6 +96,8 @@ export function QuickLinksAdminPage() {
         <CardContent>
           {isLoading ? (
             <p className="text-center py-8 text-muted-foreground">Loading…</p>
+          ) : isError ? (
+            <QueryError error={error} resource="quick links" />
           ) : links.length === 0 ? (
             <div className="text-center py-8">
               <Link2 className="h-10 w-10 mx-auto text-muted-foreground mb-3" />

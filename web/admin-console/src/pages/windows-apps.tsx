@@ -11,6 +11,7 @@ import { Textarea } from '../components/ui/textarea'
 import { Badge } from '../components/ui/badge'
 import { Checkbox } from '../components/ui/checkbox'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -23,6 +24,7 @@ import {
   api, WindowsApp, WindowsAppInput, WindowsAppPool, WindowsAppHostState,
   WindowsAppHostAgent, WindowsAppLaunchConflict, PamEntry,
 } from '../lib/api'
+import { ConfirmAction } from '../components/confirm-action'
 import { useToast } from '../hooks/use-toast'
 import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
 import { isAxiosError } from 'axios'
@@ -48,7 +50,7 @@ export function WindowsAppsPage() {
   const [importData, setImportData] = useState('')
   const [showPools, setShowPools] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['windows-apps'],
     queryFn: () => api.windowsApps.list(),
   })
@@ -223,6 +225,8 @@ export function WindowsAppsPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-12"><LoadingSpinner /></div>
+      ) : isError ? (
+        <QueryError error={error} resource="Windows apps" />
       ) : apps.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-3">
@@ -602,9 +606,19 @@ function PoolsDialog({ open, onOpenChange, pools, appHosts, onChanged }: {
                       <SelectItem value="round_robin">Round robin</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button size="sm" variant="ghost" onClick={() => removePool.mutate(pool.id)} title="Delete pool">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <ConfirmAction
+                    title="Delete this app pool?"
+                    description="This removes the pool and all of its host mappings. Apps assigned to this pool will no longer place launches on these hosts."
+                    destructive
+                    confirmLabel="Delete"
+                    onConfirm={() => removePool.mutate(pool.id)}
+                  >
+                    {(open) => (
+                      <Button size="sm" variant="ghost" onClick={open} title="Delete pool">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </ConfirmAction>
                 </div>
               </div>
 
@@ -617,9 +631,19 @@ function PoolsDialog({ open, onOpenChange, pools, appHosts, onChanged }: {
                       </span>
                       <span className="flex items-center gap-2 shrink-0">
                         <Badge variant="outline">{m.active_sessions}/{m.max_sessions}</Badge>
-                        <Button size="sm" variant="ghost" onClick={() => removeMember.mutate({ poolId: pool.id, memberId: m.id })} title="Remove host">
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
+                        <ConfirmAction
+                          title="Remove this host from the pool?"
+                          description="This host will no longer receive launches for apps assigned to this pool."
+                          destructive
+                          confirmLabel="Remove"
+                          onConfirm={() => removeMember.mutate({ poolId: pool.id, memberId: m.id })}
+                        >
+                          {(open) => (
+                            <Button size="sm" variant="ghost" onClick={open} title="Remove host">
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          )}
+                        </ConfirmAction>
                       </span>
                     </div>
                   ))}

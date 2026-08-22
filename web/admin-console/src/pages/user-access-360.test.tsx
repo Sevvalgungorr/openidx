@@ -170,12 +170,22 @@ describe('UserAccess360Page', () => {
     renderPage()
     expect(await screen.findByRole('heading', { name: 'alice' })).toBeInTheDocument()
 
-    // Only the Ziti-backed (linked) device offers a Revoke button.
+    // Only the Ziti-backed (linked) device offers a Revoke trigger; clicking it
+    // opens the confirm dialog, which requires a reason before it will fire.
     const revokeButtons = screen.getAllByRole('button', { name: /revoke/i })
     await user.click(revokeButtons[0])
+
+    const reasonField = await screen.findByLabelText(/reason \(required\)/i)
+    await user.type(reasonField, 'offboarding')
+
+    const confirmButton = screen
+      .getAllByRole('button', { name: /^revoke$/i })
+      .find(b => !b.hasAttribute('disabled'))
+    await user.click(confirmButton!)
+
     expect(api.post).toHaveBeenCalledWith(
       '/api/v1/access/users/u-1/devices/agent-1/revoke',
-      expect.objectContaining({ reason: expect.any(String) }),
+      expect.objectContaining({ reason: 'offboarding' }),
     )
   })
 

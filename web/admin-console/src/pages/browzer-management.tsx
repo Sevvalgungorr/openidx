@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface BrowZerTarget {
   vhost: string
@@ -56,7 +57,7 @@ export function BrowZerManagementPage() {
   const navigate = useNavigate()
   const [newDomain, setNewDomain] = useState('')
 
-  const { data: status, isLoading } = useQuery<BrowZerManagementStatus>({
+  const { data: status, isLoading, isError, error } = useQuery<BrowZerManagementStatus>({
     queryKey: ['browzer-management'],
     queryFn: () => api.get('/api/v1/access/ziti/browzer/management'),
     refetchInterval: 10000,
@@ -91,6 +92,8 @@ export function BrowZerManagementPage() {
       </div>
     )
   }
+
+  if (isError) return <QueryError error={error} resource="BrowZer management" />
 
   const certExpiringSoon = status && status.cert_days_left > 0 && status.cert_days_left <= 30
 

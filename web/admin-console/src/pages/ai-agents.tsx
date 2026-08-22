@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
+import { ConfirmAction } from '../components/confirm-action'
 import { Bot, Plus, RotateCw, Pause, Play, Trash2, Shield, Activity, Key, Clock } from 'lucide-react'
 
 interface AIAgent {
@@ -72,7 +74,7 @@ export function AIAgentsPage() {
   const [newAgent, setNewAgent] = useState({ name: '', description: '', agent_type: 'assistant', trust_level: 'low' })
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
 
-  const { data: agentsData, isLoading } = useQuery({
+  const { data: agentsData, isLoading, isError, error } = useQuery({
     queryKey: ['ai-agents'],
     queryFn: () => api.get<{ data: AIAgent[]; total: number }>('/api/v1/ai-agents'),
   })
@@ -134,6 +136,10 @@ export function AIAgentsPage() {
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="AI agents" />
   }
 
   const agents = agentsData?.data || []
@@ -331,9 +337,19 @@ export function AIAgentsPage() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-2 border-t">
-                  <Button size="sm" variant="outline" onClick={() => rotateMutation.mutate(selectedAgent)}>
-                    <RotateCw className="h-3 w-3 mr-1" />Rotate Key
-                  </Button>
+                  <ConfirmAction
+                    title="Rotate this agent's key?"
+                    description="A new credential is issued and the agent's current key stops working immediately. Update anything using the old key before rotating."
+                    destructive
+                    confirmLabel="Rotate"
+                    onConfirm={() => rotateMutation.mutate(selectedAgent)}
+                  >
+                    {(open) => (
+                      <Button size="sm" variant="outline" onClick={open}>
+                        <RotateCw className="h-3 w-3 mr-1" />Rotate Key
+                      </Button>
+                    )}
+                  </ConfirmAction>
                   {agentDetail.data.status === 'active' ? (
                     <Button size="sm" variant="outline" onClick={() => suspendMutation.mutate(selectedAgent)}>
                       <Pause className="h-3 w-3 mr-1" />Suspend
@@ -343,9 +359,19 @@ export function AIAgentsPage() {
                       <Play className="h-3 w-3 mr-1" />Activate
                     </Button>
                   )}
-                  <Button size="sm" variant="destructive" onClick={() => { if (confirm('Delete this agent?')) deleteMutation.mutate(selectedAgent) }}>
-                    <Trash2 className="h-3 w-3 mr-1" />Delete
-                  </Button>
+                  <ConfirmAction
+                    title="Delete this agent?"
+                    description="This permanently removes the AI agent and its issued credentials. This cannot be undone."
+                    destructive
+                    confirmLabel="Delete"
+                    onConfirm={() => selectedAgent ? deleteMutation.mutateAsync(selectedAgent) : undefined}
+                  >
+                    {(open) => (
+                      <Button size="sm" variant="destructive" onClick={open}>
+                        <Trash2 className="h-3 w-3 mr-1" />Delete
+                      </Button>
+                    )}
+                  </ConfirmAction>
                 </div>
               </CardContent>
             </Card>

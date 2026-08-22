@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '../hooks/use-toast'
 import { api, UserProfile, MFASetupResponse, MFAEnableResponse } from '../lib/api'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Checkbox } from '../components/ui/checkbox'
 import { Shield, User, Key, Smartphone, Mail, Monitor, Phone, Globe, Trash2, Check, Plus, Copy, KeyRound, AppWindow, AlertTriangle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -108,7 +109,7 @@ export function UserProfilePage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, isError, error } = useQuery({
     queryKey: ['user-profile'],
     queryFn: () => api.get<UserProfile>('/api/v1/identity/users/me'),
     select: (data) => {
@@ -429,6 +430,10 @@ export function UserProfilePage() {
         <LoadingSpinner size="lg" />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="your profile" />
   }
 
   if (!profile) {

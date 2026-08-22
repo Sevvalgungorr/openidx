@@ -37,6 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 // ─── API types (mirror internal/access/ziti_setup_handlers.go) ──────────────
@@ -460,6 +461,8 @@ export function ZitiSetupPage() {
   const {
     data,
     isLoading,
+    isError,
+    error,
     refetch,
     isFetching,
   } = useQuery({
@@ -504,6 +507,8 @@ export function ZitiSetupPage() {
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading network state…</p>}
+
+      {isError && <QueryError error={error} resource="the network setup status" />}
 
       {data && (
         <>

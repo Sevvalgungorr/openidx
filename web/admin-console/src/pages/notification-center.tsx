@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
+import { ConfirmAction } from '../components/confirm-action'
 import { useToast } from '../hooks/use-toast'
 
 interface Notification {
@@ -85,14 +87,14 @@ export function NotificationCenterPage() {
   const [localDigest, setLocalDigest] = useState<DigestSettings | null>(null)
 
   // Fetch notifications
-  const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
+  const { data: notificationsData, isLoading: notificationsLoading, isError: notificationsIsError, error: notificationsError } = useQuery({
     queryKey: ['notification-history'],
     queryFn: () => api.get<{ data: Notification[] }>('/api/v1/notifications/history'),
   })
   const notifications = notificationsData?.data || []
 
   // Fetch digest settings
-  const { data: digestData, isLoading: digestLoading } = useQuery({
+  const { data: digestData, isLoading: digestLoading, isError: digestIsError, error: digestError } = useQuery({
     queryKey: ['notification-digest'],
     queryFn: () => api.get<{ data: DigestRecord[] }>('/api/v1/notifications/digest'),
   })
@@ -238,6 +240,8 @@ export function NotificationCenterPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading notifications...</p>
             </div>
+          ) : notificationsIsError ? (
+            <QueryError error={notificationsError} resource="notifications" />
           ) : filteredNotifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Bell className="h-12 w-12 text-muted-foreground/40 mb-3" />
@@ -317,16 +321,26 @@ export function NotificationCenterPage() {
                           <Check className="h-4 w-4 text-green-600" />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        title="Delete"
-                        onClick={() => deleteMutation.mutate(notification.id)}
-                        disabled={deleteMutation.isPending}
+                      <ConfirmAction
+                        title="Delete this notification?"
+                        description="This permanently removes the notification. This cannot be undone."
+                        destructive
+                        confirmLabel="Delete"
+                        onConfirm={() => deleteMutation.mutateAsync(notification.id)}
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                        {(open) => (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            title="Delete"
+                            onClick={open}
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        )}
+                      </ConfirmAction>
                     </div>
                   </div>
                 )
@@ -359,6 +373,8 @@ export function NotificationCenterPage() {
               <LoadingSpinner size="sm" />
               <p className="ml-2 text-sm text-muted-foreground">Loading digest settings...</p>
             </div>
+          ) : digestIsError ? (
+            <QueryError error={digestError} resource="digest settings" />
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">

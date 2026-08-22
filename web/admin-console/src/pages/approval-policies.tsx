@@ -12,6 +12,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -42,7 +43,7 @@ export function ApprovalPoliciesPage() {
     approval_steps: '[]',
   })
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['approval-policies'],
     queryFn: () => api.get<{ policies: ApprovalPolicy[] }>('/api/v1/governance/approval-policies'),
   })
@@ -138,6 +139,7 @@ export function ApprovalPoliciesPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? <p className="text-center py-8 text-muted-foreground">Loading...</p> :
+           isError ? <QueryError error={error} resource="approval policies" /> :
            policies.length === 0 ? <p className="text-center py-8 text-muted-foreground">No policies defined</p> : (
             <Table>
               <TableHeader><TableRow>

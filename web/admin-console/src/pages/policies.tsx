@@ -32,6 +32,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -132,7 +133,7 @@ export function PoliciesPage() {
   const [totalCount, setTotalCount] = useState(0)
   const PAGE_SIZE = 20
 
-  const { data: policies, isLoading } = useQuery({
+  const { data: policies, isLoading, isError, error } = useQuery({
     queryKey: ['policies', search, page],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -485,6 +486,8 @@ export function PoliciesPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading policies...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="policies" />
           ) : !filteredPolicies || filteredPolicies.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Shield className="h-12 w-12 text-muted-foreground/40 mb-3" />

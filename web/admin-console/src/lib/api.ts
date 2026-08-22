@@ -1,5 +1,19 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
+// Registerable session-expiry hook. The auth context registers a handler; the
+// 401 interceptor calls notifyAuthExpired so a dead session surfaces ONE re-login
+// dialog instead of scattered masked-empty states. Exempts the auth endpoints to
+// avoid redirect loops.
+let authExpiredHandler: (() => void) | null = null
+export function setAuthExpiredHandler(fn: (() => void) | null) {
+  authExpiredHandler = fn
+}
+export function notifyAuthExpired(url: string | undefined) {
+  const u = url || ''
+  const exempt = u.includes('/oauth/') || u.endsWith('/login')
+  if (!exempt && authExpiredHandler) authExpiredHandler()
+}
+
 export interface UserProfile {
   id: string
   username: string
@@ -210,6 +224,7 @@ axiosInstance.interceptors.response.use(
       // Log 401 errors but don't auto-redirect - let the auth context handle session state
       // This prevents redirect loops when the backend rejects tokens during auth flow
       console.warn('[API] 401 Unauthorized:', error.config?.url)
+      notifyAuthExpired(error.config?.url)
     }
 
     // 503 temporarily_unavailable: the backend returns this (with a Retry-After

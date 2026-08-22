@@ -53,6 +53,8 @@ import {
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { SecretField } from '../components/secret-field'
+import { QueryError } from '../components/query-error'
 
 interface DirectoryConfig {
   // LDAP fields
@@ -178,6 +180,19 @@ interface DirectoryFormData {
   type: string
   config: DirectoryConfig
   enabled: boolean
+  // Track whether the user typed a new secret this edit session. Stored secrets
+  // are never hydrated into the form; these gate whether we transmit them.
+  bind_password_changed: boolean
+  client_secret_changed: boolean
+}
+
+// Wire payload sent to the API: the client-only *_changed flags are stripped and
+// unchanged secrets are omitted from config (see buildPayload).
+interface DirectoryPayload {
+  name: string
+  type: string
+  config: Record<string, unknown>
+  enabled: boolean
 }
 
 interface DiagnoseFinding {
@@ -201,11 +216,13 @@ const emptyForm: DirectoryFormData = {
   type: 'ldap',
   config: { ...defaultConfig },
   enabled: true,
+  bind_password_changed: false,
+  client_secret_changed: false,
 }
 
 // validateForm mirrors the backend guard (internal/admin.validateDirectoryIntegration):
 // required fields per directory type. Returns a field-path -> message map.
-function validateForm(f: DirectoryFormData): Record<string, string> {
+function validateForm(f: DirectoryFormData, isEditing: boolean): Record<string, string> {
   const e: Record<string, string> = {}
   const c = f.config
   const s = (v?: string) => (v ?? '').trim()
@@ -216,7 +233,8 @@ function validateForm(f: DirectoryFormData): Record<string, string> {
     if (s(c.host) === '') e['config.host'] = 'Host is required.'
     if (!c.port || c.port <= 0) e['config.port'] = 'Port is required.'
     if (s(c.bind_dn) === '') e['config.bind_dn'] = 'Bind DN is required (e.g. user@domain for AD).'
-    if (s(c.bind_password) === '') e['config.bind_password'] = 'Bind password is required.'
+    // On edit, a blank bind password means "keep the stored one"; only require it on create.
+    if (!isEditing && s(c.bind_password) === '') e['config.bind_password'] = 'Bind password is required.'
     if (s(c.base_dn) === '' && s(c.user_base_dn) === '')
       e['config.base_dn'] = 'Base DN is required (e.g. DC=corp,DC=local). Try "Diagnose & Auto-Fix".'
     if (s(c.user_filter) === '') e['config.user_filter'] = 'User filter is required.'
@@ -227,7 +245,8 @@ function validateForm(f: DirectoryFormData): Record<string, string> {
   } else if (f.type === 'azure_ad') {
     if (s(c.tenant_id) === '') e['config.tenant_id'] = 'Tenant ID is required.'
     if (s(c.client_id) === '') e['config.client_id'] = 'Client ID is required.'
-    if (s(c.client_secret) === '') e['config.client_secret'] = 'Client secret is required.'
+    // On edit, a blank client secret means "keep the stored one"; only require it on create.
+    if (!isEditing && s(c.client_secret) === '') e['config.client_secret'] = 'Client secret is required.'
   }
   return e
 }
@@ -244,7 +263,7 @@ export function DirectoriesPage() {
   const [activeTab, setActiveTab] = useState<'connection' | 'search' | 'mapping' | 'sync'>('connection')
   const [syncLogsId, setSyncLogsId] = useState<string | null>(null)
 
-  const { data: directories = [], isLoading } = useQuery({
+  const { data: directories = [], isLoading, isError, error } = useQuery({
     queryKey: ['directories'],
     queryFn: () => api.get<DirectoryIntegration[]>('/api/v1/directories'),
   })
@@ -256,7 +275,7 @@ export function DirectoriesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: DirectoryFormData) => api.post('/api/v1/directories', data),
+    mutationFn: (data: DirectoryPayload) => api.post('/api/v1/directories', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['directories'] })
       setDialogOpen(false)
@@ -266,7 +285,7 @@ export function DirectoriesPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: DirectoryFormData }) =>
+    mutationFn: ({ id, data }: { id: string; data: DirectoryPayload }) =>
       api.put(`/api/v1/directories/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['directories'] })
@@ -360,8 +379,11 @@ export function DirectoriesPage() {
     setFormData({
       name: dir.name,
       type: dir.type,
-      config: { ...defaultConfig, ...dir.config },
+      // Never hydrate stored secrets into the form; SecretField starts blank on edit.
+      config: { ...defaultConfig, ...dir.config, bind_password: '', client_secret: '' },
       enabled: dir.enabled,
+      bind_password_changed: false,
+      client_secret_changed: false,
     })
     setFieldErrors({})
     setDiagResult(null)
@@ -382,8 +404,19 @@ export function DirectoriesPage() {
     toast({ title: resp?.data?.error || fallback, variant: 'destructive' })
   }
 
+  // buildPayload strips the client-only *_changed flags and, on edit, omits any
+  // secret the user did not retype so the stored value is preserved server-side.
+  const buildPayload = (f: DirectoryFormData, isEditing: boolean): DirectoryPayload => {
+    const config: Record<string, unknown> = { ...f.config }
+    if (isEditing) {
+      if (!f.bind_password_changed) delete config.bind_password
+      if (!f.client_secret_changed) delete config.client_secret
+    }
+    return { name: f.name, type: f.type, config, enabled: f.enabled }
+  }
+
   const handleSubmit = () => {
-    const errs = validateForm(formData)
+    const errs = validateForm(formData, !!editingId)
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) {
       // Jump to the tab holding the first error so it is visible.
@@ -402,9 +435,9 @@ export function DirectoriesPage() {
       return
     }
     if (editingId) {
-      updateMutation.mutate({ id: editingId, data: formData })
+      updateMutation.mutate({ id: editingId, data: buildPayload(formData, true) })
     } else {
-      createMutation.mutate(formData)
+      createMutation.mutate(buildPayload(formData, false))
     }
   }
 
@@ -437,6 +470,8 @@ export function DirectoriesPage() {
   }
 
   if (isLoading) return <div className="flex justify-center p-8"><LoadingSpinner size="lg" /></div>
+
+  if (isError) return <QueryError error={error} resource="directory integrations" />
 
   // Inline error text for a field path (empty when no error).
   const FieldError = ({ path }: { path: string }) =>
@@ -703,14 +738,16 @@ export function DirectoriesPage() {
 
                   <div className="space-y-2">
                     <Label>Client Secret</Label>
-                    <Input
-                      type="password"
+                    <SecretField
+                      mode={editingId ? 'edit' : 'create'}
                       value={formData.config.client_secret}
-                      onChange={(e) => setFormData({
+                      onChange={(v, changed) => setFormData({
                         ...formData,
-                        config: { ...formData.config, client_secret: e.target.value },
+                        config: { ...formData.config, client_secret: v },
+                        client_secret_changed: changed,
                       })}
                     />
+                    <FieldError path="config.client_secret" />
                     <p className="text-xs text-muted-foreground">Client secret from the app registration certificates &amp; secrets</p>
                   </div>
                 </>
@@ -790,12 +827,13 @@ export function DirectoriesPage() {
 
                   <div className="space-y-2">
                     <Label>Bind Password</Label>
-                    <Input
-                      type="password"
+                    <SecretField
+                      mode={editingId ? 'edit' : 'create'}
                       value={formData.config.bind_password}
-                      onChange={(e) => setFormData({
+                      onChange={(v, changed) => setFormData({
                         ...formData,
-                        config: { ...formData.config, bind_password: e.target.value },
+                        config: { ...formData.config, bind_password: v },
+                        bind_password_changed: changed,
                       })}
                     />
                     <FieldError path="config.bind_password" />

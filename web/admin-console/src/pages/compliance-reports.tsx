@@ -35,6 +35,7 @@ import { Input } from '../components/ui/input'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface ComplianceReport {
   id: string
@@ -104,7 +105,7 @@ export function ComplianceReportsPage() {
   const [totalCount, setTotalCount] = useState(0)
   const PAGE_SIZE = 20
 
-  const { data: reports, isLoading } = useQuery({
+  const { data: reports, isLoading, isError, error } = useQuery({
     queryKey: ['compliance-reports', page],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -281,7 +282,9 @@ export function ComplianceReportsPage() {
           <CardTitle>Report History</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <QueryError error={error} resource="compliance reports" />
+          ) : isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading reports...</p>

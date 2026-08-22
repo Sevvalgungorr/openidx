@@ -23,8 +23,10 @@ import {
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
 
 interface BypassCode {
   id: string
@@ -74,7 +76,7 @@ export function MFABypassCodesPage() {
   })
 
   // Fetch codes
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['bypass-codes', statusFilter, userFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -255,6 +257,8 @@ export function MFABypassCodesPage() {
             <div className="flex justify-center py-8">
               <LoadingSpinner size="lg" />
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="MFA bypass codes" />
           ) : codes.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Key className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -289,14 +293,24 @@ export function MFABypassCodesPage() {
                       </td>
                       <td className="py-3 px-2">
                         {code.status === 'active' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => revokeMutation.mutate(code.id)}
-                            className="text-red-600"
+                          <ConfirmAction
+                            title="Revoke this MFA bypass code?"
+                            description={`This immediately revokes the active MFA bypass code for ${code.user_email}. The code can no longer be used to skip MFA. This cannot be undone.`}
+                            destructive
+                            confirmLabel="Revoke"
+                            onConfirm={() => revokeMutation.mutateAsync(code.id)}
                           >
-                            <Ban className="h-4 w-4" />
-                          </Button>
+                            {(open) => (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={open}
+                                className="text-red-600"
+                              >
+                                <Ban className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </ConfirmAction>
                         )}
                       </td>
                     </tr>

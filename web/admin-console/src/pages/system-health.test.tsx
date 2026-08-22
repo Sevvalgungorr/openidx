@@ -116,7 +116,7 @@ describe('SystemHealthPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders the empty / failed-fetch fallback when the request errors', async () => {
+  it('surfaces a read error instead of a misleading "Unhealthy" banner', async () => {
     vi.mocked(api.get).mockImplementation((url: string) =>
       (url.includes('/system/health')
         ? Promise.reject(new Error('boom'))
@@ -126,7 +126,7 @@ describe('SystemHealthPage', () => {
     render(<SystemHealthPage />, { wrapper: createWrapper() })
 
     expect(
-      await screen.findByText(/unable to retrieve health status/i),
+      await screen.findByText(/failed to load system health/i),
     ).toBeInTheDocument()
   })
 })

@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 interface RiskOverview {
@@ -89,7 +90,7 @@ function riskScoreColor(score: number): string {
 }
 
 export function RiskDashboardPage() {
-  const { data: riskData, isLoading: riskLoading } = useQuery<{ risk: RiskOverview }>({
+  const { data: riskData, isLoading: riskLoading, isError: riskError, error: riskErrorObj } = useQuery<{ risk: RiskOverview }>({
     queryKey: ['risk-overview'],
     queryFn: () => api.get<{ risk: RiskOverview }>('/api/v1/analytics/risk'),
   })
@@ -118,6 +119,10 @@ export function RiskDashboardPage() {
         <LoadingSpinner size="lg" />
       </div>
     )
+  }
+
+  if (riskError) {
+    return <QueryError error={riskErrorObj} resource="the risk dashboard" />
   }
 
   if (!risk) {

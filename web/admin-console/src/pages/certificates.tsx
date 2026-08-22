@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
+import { QueryError } from '../components/query-error'
 
 interface PlatformCertConsumer {
   name: string
@@ -75,7 +77,7 @@ export function CertificatesPage() {
   const certFileRef = useRef<HTMLInputElement>(null)
   const keyFileRef = useRef<HTMLInputElement>(null)
 
-  const { data: certStatus, isLoading } = useQuery<PlatformCertHealthStatus>({
+  const { data: certStatus, isLoading, isError, error } = useQuery<PlatformCertHealthStatus>({
     queryKey: ['certificates-status'],
     queryFn: () => api.get('/api/v1/access/certificates/status'),
     refetchInterval: 15000,
@@ -161,6 +163,8 @@ export function CertificatesPage() {
       </div>
     )
   }
+
+  if (isError) return <QueryError error={error} resource="certificates" />
 
   const platform = certStatus?.platform
   const apisix = certStatus?.apisix
@@ -312,15 +316,26 @@ export function CertificatesPage() {
                   Upload Certificate
                 </Button>
                 {platform?.cert_type === 'custom' && (
-                  <Button
-                    onClick={() => revertMutation.mutate()}
-                    disabled={revertMutation.isPending}
-                    variant="outline"
-                    className="gap-2"
+                  <ConfirmAction
+                    title="Revert to self-signed certificate?"
+                    description="This removes the uploaded CA-signed platform TLS certificate and restores the auto-generated self-signed certificate. Every platform TLS consumer (APISIX, OAuth proxy, Ziti controller/router) will serve the self-signed cert, and clients that pinned or trusted the CA-signed cert will see TLS errors until reconfigured. This cannot be undone without re-uploading the certificate."
+                    destructive
+                    requireReason
+                    confirmLabel="Revert to Self-Signed"
+                    onConfirm={() => revertMutation.mutateAsync()}
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Revert to Self-Signed
-                  </Button>
+                    {(open) => (
+                      <Button
+                        onClick={open}
+                        disabled={revertMutation.isPending}
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Revert to Self-Signed
+                      </Button>
+                    )}
+                  </ConfirmAction>
                 )}
               </div>
             </CardContent>
@@ -447,9 +462,19 @@ docker restart openidx-oauth-tls-proxy openidx-ziti-controller-proxy openidx-zit
                         .map(cert => (
                           <div key={cert.id} className="flex items-center justify-between text-sm mt-1">
                             <span>{cert.name} — {cert.days_until_expiry}d remaining</span>
-                            <Button variant="outline" size="sm" onClick={() => rotateMutation.mutate(cert.id)}>
-                              Rotate
-                            </Button>
+                            <ConfirmAction
+                              title="Rotate this certificate?"
+                              description="A new certificate is issued and the old certificate stops working once rotated. Anything still presenting the old certificate will fail until it picks up the new one."
+                              destructive
+                              confirmLabel="Rotate"
+                              onConfirm={() => rotateMutation.mutate(cert.id)}
+                            >
+                              {(open) => (
+                                <Button variant="outline" size="sm" onClick={open}>
+                                  Rotate
+                                </Button>
+                              )}
+                            </ConfirmAction>
                           </div>
                         ))}
                     </div>
@@ -481,15 +506,25 @@ docker restart openidx-oauth-tls-proxy openidx-ziti-controller-proxy openidx-zit
                               </Badge>
                             </td>
                             <td className="p-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => rotateMutation.mutate(cert.id)}
-                                disabled={rotateMutation.isPending}
-                                className="gap-1 text-xs"
+                              <ConfirmAction
+                                title="Rotate this certificate?"
+                                description="A new certificate is issued and the old certificate stops working once rotated. Anything still presenting the old certificate will fail until it picks up the new one."
+                                destructive
+                                confirmLabel="Rotate"
+                                onConfirm={() => rotateMutation.mutate(cert.id)}
                               >
-                                <RefreshCw className="h-3 w-3" /> Rotate
-                              </Button>
+                                {(open) => (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={open}
+                                    disabled={rotateMutation.isPending}
+                                    className="gap-1 text-xs"
+                                  >
+                                    <RefreshCw className="h-3 w-3" /> Rotate
+                                  </Button>
+                                )}
+                              </ConfirmAction>
                             </td>
                           </tr>
                         ))}

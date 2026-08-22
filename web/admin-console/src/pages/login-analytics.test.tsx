@@ -98,8 +98,11 @@ describe('LoginAnalyticsPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows the "No analytics data available" empty branch when undefined', async () => {
-    vi.mocked(api.get).mockResolvedValue(undefined)
+  it('shows the "No analytics data available" empty branch when the payload has no analytics', async () => {
+    // A defined-but-empty response (no `analytics` key) exercises the empty
+    // branch. Note: a rejected/undefined read now surfaces via QueryError
+    // instead of silently falling through to this empty state.
+    vi.mocked(api.get).mockResolvedValue({})
 
     render(<LoginAnalyticsPage />, { wrapper: createWrapper() })
 

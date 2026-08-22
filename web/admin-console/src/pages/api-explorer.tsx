@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from '../components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -101,7 +102,7 @@ export function ApiExplorerPage() {
   const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null)
 
   // Queries
-  const { data: endpoints = [], isLoading } = useQuery({
+  const { data: endpoints = [], isLoading, isError, error } = useQuery({
     queryKey: ['api-endpoints'],
     // The backend returns { endpoints: { <service>: ApiEndpoint[] } }. Flatten to
     // the array the UI groups/filters over (the raw object is not iterable and
@@ -246,6 +247,15 @@ export function ApiExplorerPage() {
       <div className="space-y-6">
         <h1 className="text-3xl font-bold tracking-tight">API Explorer</h1>
         <p className="text-center py-8">Loading API endpoints...</p>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">API Explorer</h1>
+        <QueryError error={error} resource="API endpoints" />
       </div>
     )
   }

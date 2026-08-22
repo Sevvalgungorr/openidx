@@ -5,6 +5,7 @@ import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../components/ui/dialog'
@@ -24,7 +25,7 @@ export function MyWindowsAppsPage() {
   const { toast } = useToast()
   const [conflict, setConflict] = useState<Conflict | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['my-windows-apps'],
     queryFn: () => api.windowsApps.listMine(),
   })
@@ -60,6 +61,8 @@ export function MyWindowsAppsPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-12"><LoadingSpinner /></div>
+      ) : isError ? (
+        <QueryError error={error} resource="your apps" />
       ) : apps.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-2">

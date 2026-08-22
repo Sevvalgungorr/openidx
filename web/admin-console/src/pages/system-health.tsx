@@ -22,6 +22,7 @@ import {
   CardTitle,
 } from '../components/ui/card'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 // ---------------------------------------------------------------------------
@@ -335,6 +336,8 @@ export function SystemHealthPage() {
   const {
     data: health,
     isLoading,
+    isError,
+    error,
     isFetching,
     dataUpdatedAt,
   } = useQuery({
@@ -367,6 +370,17 @@ export function SystemHealthPage() {
       <div className="space-y-6">
         <h1 className="text-3xl font-bold tracking-tight">System Health</h1>
         <p className="text-center py-8">Loading health status...</p>
+      </div>
+    )
+  }
+
+  // A failed/403 health load is distinct from a real outage: surface it as an
+  // error rather than a misleading "Unhealthy" banner.
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">System Health</h1>
+        <QueryError error={error} resource="system health" />
       </div>
     )
   }

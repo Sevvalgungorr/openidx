@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -53,7 +54,7 @@ export function TrustedBrowsersPage() {
   const [trustDialog, setTrustDialog] = useState(false)
 
   // Fetch trusted browsers
-  const { data: browsersRaw, isLoading } = useQuery({
+  const { data: browsersRaw, isLoading, isError, error } = useQuery({
     queryKey: ['trusted-browsers'],
     queryFn: async () => {
       return api.get<TrustedBrowser[]>('/api/v1/identity/trusted-browsers')
@@ -133,6 +134,10 @@ export function TrustedBrowsersPage() {
         <LoadingSpinner size="lg" />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="trusted browsers" />
   }
 
   return (

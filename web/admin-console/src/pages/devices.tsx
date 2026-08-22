@@ -23,6 +23,7 @@ import {
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface EnrichedDevice {
   id: string
@@ -52,7 +53,7 @@ export function DevicesPage() {
   const [deleteDevice, setDeleteDevice] = useState<EnrichedDevice | null>(null)
   const pageSize = 20
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['devices', page],
     queryFn: () => api.get<{ devices: EnrichedDevice[]; total: number }>(`/api/v1/access/devices/enriched?limit=${pageSize}&offset=${(page - 1) * pageSize}`),
   })
@@ -191,7 +192,9 @@ export function DevicesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <QueryError error={error} resource="devices" />
+          ) : isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading devices...</p>

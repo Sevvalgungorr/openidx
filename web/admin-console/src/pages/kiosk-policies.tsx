@@ -20,6 +20,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -66,7 +67,7 @@ export function KioskPoliciesPage() {
   const [assignmentsFor, setAssignmentsFor] = useState<KioskPolicy | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<KioskPolicy | null>(null)
 
-  const { data: policies = [], isLoading } = useQuery({
+  const { data: policies = [], isLoading, isError, error } = useQuery({
     queryKey: ['kiosk-policies'],
     queryFn: () => api.get<KioskPolicy[]>('/api/v1/access/kiosk/policies'),
   })
@@ -111,6 +112,8 @@ export function KioskPoliciesPage() {
         <CardContent>
           {isLoading ? (
             <div className="py-12 flex justify-center"><LoadingSpinner /></div>
+          ) : isError ? (
+            <QueryError error={error} resource="kiosk policies" />
           ) : (
             <Table>
               <TableHeader>

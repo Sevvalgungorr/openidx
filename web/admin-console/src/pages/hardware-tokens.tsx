@@ -29,8 +29,10 @@ import {
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
 
 interface HardwareToken {
   id: string
@@ -68,7 +70,7 @@ export function HardwareTokensPage() {
   })
   const [assignUserId, setAssignUserId] = useState('')
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['hardware-tokens', statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -116,8 +118,8 @@ export function HardwareTokensPage() {
   })
 
   const revokeMutation = useMutation({
-    mutationFn: (tokenId: string) =>
-      api.post(`/api/v1/identity/hardware-tokens/${tokenId}/revoke`, { reason: 'Admin revoked' }),
+    mutationFn: ({ tokenId, reason }: { tokenId: string; reason: string }) =>
+      api.post(`/api/v1/identity/hardware-tokens/${tokenId}/revoke`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hardware-tokens'] })
       toast({ title: 'Token Revoked', description: 'Token has been revoked.' })
@@ -242,6 +244,8 @@ export function HardwareTokensPage() {
             <div className="flex justify-center py-8">
               <LoadingSpinner size="lg" />
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="hardware tokens" />
           ) : filteredTokens.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Key className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -297,22 +301,44 @@ export function HardwareTokensPage() {
                             )}
                             <DropdownMenuSeparator />
                             {token.status !== 'revoked' && (
-                              <DropdownMenuItem
-                                onClick={() => revokeMutation.mutate(token.id)}
-                                className="text-red-600"
+                              <ConfirmAction
+                                title="Revoke this hardware token?"
+                                description={`This permanently revokes token ${token.serial_number}. It can no longer be used for authentication, and any user it is assigned to loses this factor. This cannot be undone. Provide the reason; it is recorded in the audit log.`}
+                                destructive
+                                requireReason
+                                confirmLabel="Revoke"
+                                onConfirm={(reason) => revokeMutation.mutateAsync({ tokenId: token.id, reason: reason! })}
                               >
-                                <Ban className="h-4 w-4 mr-2" />
-                                Revoke
-                              </DropdownMenuItem>
+                                {(open) => (
+                                  <DropdownMenuItem
+                                    onSelect={(e) => { e.preventDefault(); open() }}
+                                    className="text-red-600"
+                                  >
+                                    <Ban className="h-4 w-4 mr-2" />
+                                    Revoke
+                                  </DropdownMenuItem>
+                                )}
+                              </ConfirmAction>
                             )}
                             {token.status !== 'lost' && (
-                              <DropdownMenuItem
-                                onClick={() => reportLostMutation.mutate(token.id)}
-                                className="text-amber-600"
+                              <ConfirmAction
+                                title="Report this token as lost?"
+                                description={`This marks token ${token.serial_number} as lost. It is disabled for authentication and the assigned user loses this factor until a replacement is issued. Provide the reason; it is recorded in the audit log.`}
+                                destructive
+                                requireReason
+                                confirmLabel="Report Lost"
+                                onConfirm={() => reportLostMutation.mutateAsync(token.id)}
                               >
-                                <AlertTriangle className="h-4 w-4 mr-2" />
-                                Report Lost
-                              </DropdownMenuItem>
+                                {(open) => (
+                                  <DropdownMenuItem
+                                    onSelect={(e) => { e.preventDefault(); open() }}
+                                    className="text-amber-600"
+                                  >
+                                    <AlertTriangle className="h-4 w-4 mr-2" />
+                                    Report Lost
+                                  </DropdownMenuItem>
+                                )}
+                              </ConfirmAction>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>

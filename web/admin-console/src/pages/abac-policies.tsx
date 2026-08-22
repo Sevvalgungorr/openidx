@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -146,7 +147,7 @@ export function ABACPoliciesPage() {
   const [testAttributes, setTestAttributes] = useState('{\n  "department": "engineering",\n  "risk_score": 25\n}')
   const [testResult, setTestResult] = useState<ABACEvaluationResult | null>(null)
 
-  const { data: policies, isLoading } = useQuery({
+  const { data: policies, isLoading, isError, error } = useQuery({
     queryKey: ['abac-policies', offset, limit, resourceTypeFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ offset: String(offset), limit: String(limit) })
@@ -381,6 +382,8 @@ export function ABACPoliciesPage() {
         <div className="flex justify-center py-12">
           <LoadingSpinner size="lg" />
         </div>
+      ) : isError ? (
+        <QueryError error={error} resource="ABAC policies" />
       ) : (
         <Card>
           <CardHeader className="pb-3">

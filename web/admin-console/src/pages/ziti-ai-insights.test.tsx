@@ -234,14 +234,19 @@ describe('ZitiAIInsightsPage', () => {
     )
   })
 
-  it('quarantines an identity when the Quarantine button is clicked', async () => {
+  it('quarantines an identity after confirming with a reason', async () => {
     render(<ZitiAIInsightsPage />, { wrapper: createWrapper() })
     const btn = await screen.findByRole('button', { name: /^quarantine$/i })
     fireEvent.click(btn)
+    // Confirmation dialog gates the mutation and requires an audited reason.
+    const reason = await screen.findByLabelText(/reason/i)
+    fireEvent.change(reason, { target: { value: 'confirmed malicious activity' } })
+    const confirm = screen.getAllByRole('button', { name: /^quarantine$/i }).slice(-1)[0]
+    fireEvent.click(confirm)
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         '/api/v1/access/ziti/ai/identities/zid-alice/quarantine',
-        expect.objectContaining({ reason: expect.any(String) }),
+        expect.objectContaining({ reason: 'confirmed malicious activity' }),
       ),
     )
   })

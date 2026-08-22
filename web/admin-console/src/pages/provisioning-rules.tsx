@@ -48,6 +48,7 @@ import {
 import { api, ProvisioningRule, RuleCondition, RuleAction } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 
 const TRIGGER_OPTIONS = [
   { value: 'user_created', label: 'User Created' },
@@ -115,7 +116,7 @@ export function ProvisioningRulesPage() {
   const [totalCount, setTotalCount] = useState(0)
   const PAGE_SIZE = 20
 
-  const { data: rules, isLoading } = useQuery({
+  const { data: rules, isLoading, isError, error } = useQuery({
     queryKey: ['provisioning-rules', page, search],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -249,6 +250,10 @@ export function ProvisioningRulesPage() {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="provisioning rules" />
   }
 
   const formContent = (

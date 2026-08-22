@@ -33,7 +33,9 @@ import {
 } from '../components/ui/select'
 import { Switch } from '../components/ui/switch'
 import { api } from '../lib/api'
+import { ConfirmAction } from '../components/confirm-action'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 // --- Interfaces ---
 
@@ -169,7 +171,7 @@ function formatRequestType(type: string): string {
 function UserConsentsTab() {
   const [filterType, setFilterType] = useState<string>('all')
 
-  const { data: consentsData, isLoading } = useQuery({
+  const { data: consentsData, isLoading, isError, error } = useQuery({
     queryKey: ['privacy-consents'],
     queryFn: () => api.get<{ data: Consent[] }>('/api/v1/privacy/consents'),
   })
@@ -188,6 +190,8 @@ function UserConsentsTab() {
       </div>
     )
   }
+
+  if (isError) return <QueryError error={error} resource="user consents" />
 
   return (
     <div className="space-y-4">
@@ -254,7 +258,7 @@ function DSARsTab() {
   const [formType, setFormType] = useState('export')
   const [formReason, setFormReason] = useState('')
 
-  const { data: dsarsData, isLoading } = useQuery({
+  const { data: dsarsData, isLoading, isError, error } = useQuery({
     queryKey: ['privacy-dsars'],
     queryFn: () => api.get<{ data: DSAR[] }>('/api/v1/privacy/dsars'),
   })
@@ -311,6 +315,8 @@ function DSARsTab() {
       </div>
     )
   }
+
+  if (isError) return <QueryError error={error} resource="data subject requests" />
 
   return (
     <div className="space-y-4">
@@ -460,7 +466,7 @@ function RetentionPoliciesTab() {
   const [formDays, setFormDays] = useState(365)
   const [formAction, setFormAction] = useState('delete')
 
-  const { data: retentionData, isLoading } = useQuery({
+  const { data: retentionData, isLoading, isError, error } = useQuery({
     queryKey: ['privacy-retention'],
     queryFn: () => api.get<{ data: RetentionPolicy[] }>('/api/v1/privacy/retention'),
   })
@@ -519,6 +525,8 @@ function RetentionPoliciesTab() {
     )
   }
 
+  if (isError) return <QueryError error={error} resource="retention policies" />
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -564,14 +572,24 @@ function RetentionPoliciesTab() {
                     />
                   </td>
                   <td className="py-3 px-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(policy.id)}
-                      disabled={deleteMutation.isPending}
+                    <ConfirmAction
+                      title="Delete this retention policy?"
+                      description={`This removes the retention policy ${policy.name}. Data in the ${policy.data_category} category will no longer be governed by it.`}
+                      destructive
+                      confirmLabel="Delete"
+                      onConfirm={() => deleteMutation.mutateAsync(policy.id)}
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                      {(open) => (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={open}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )}
+                    </ConfirmAction>
                   </td>
                 </tr>
               ))}
@@ -662,7 +680,7 @@ function ImpactAssessmentsTab() {
   const [formCategories, setFormCategories] = useState('')
   const [formPurposes, setFormPurposes] = useState('')
 
-  const { data: assessmentsData, isLoading } = useQuery({
+  const { data: assessmentsData, isLoading, isError, error } = useQuery({
     queryKey: ['privacy-assessments'],
     queryFn: () => api.get<{ data: ImpactAssessment[] }>('/api/v1/privacy/assessments'),
   })
@@ -699,6 +717,8 @@ function ImpactAssessmentsTab() {
       </div>
     )
   }
+
+  if (isError) return <QueryError error={error} resource="impact assessments" />
 
   return (
     <div className="space-y-4">

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Layers, Play, Download, X, CheckCircle, AlertTriangle, Clock } from 'lucide-react'
 
 interface BulkOperation {
@@ -66,7 +67,7 @@ export function BulkOperationsPage() {
   const [paramValue, setParamValue] = useState('')
   const [selectedOpId, setSelectedOpId] = useState<string | null>(null)
 
-  const { data: opsData, isLoading } = useQuery({
+  const { data: opsData, isLoading, isError, error } = useQuery({
     queryKey: ['bulk-operations'],
     queryFn: () => api.get<{ data: BulkOperation[] }>('/api/v1/bulk-operations'),
     refetchInterval: 5000,
@@ -128,6 +129,7 @@ export function BulkOperationsPage() {
   }
 
   if (isLoading) return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+  if (isError) return <QueryError error={error} resource="bulk operations" />
 
   const ops = opsData?.data || []
   const detail = detailData?.operation

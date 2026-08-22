@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Mail, Eye, RotateCcw, Save, Palette } from 'lucide-react'
 
 interface EmailTemplate {
@@ -50,7 +51,7 @@ export function EmailTemplatesPage() {
     logo_url: '', primary_color: '#1e40af', accent_color: '#3b82f6', header_text: '', footer_text: '',
   })
 
-  const { data: templatesData, isLoading } = useQuery({
+  const { data: templatesData, isLoading, isError, error } = useQuery({
     queryKey: ['email-templates'],
     queryFn: () => api.get<{ data: EmailTemplate[] }>('/api/v1/email-templates'),
   })
@@ -106,6 +107,7 @@ export function EmailTemplatesPage() {
   }
 
   if (isLoading) return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+  if (isError) return <QueryError error={error} resource="email templates" />
 
   const templates = templatesData?.data || []
   const selectedTemplate = templates.find(t => t.id === selectedId)

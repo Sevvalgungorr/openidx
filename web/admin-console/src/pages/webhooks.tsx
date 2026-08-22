@@ -15,6 +15,7 @@ import {
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 
 interface Subscription {
   id: string
@@ -66,7 +67,7 @@ export function WebhooksPage() {
   const [deleteTarget, setDeleteTarget] = useState<Subscription | null>(null)
   const [expandedSubscription, setExpandedSubscription] = useState<string | null>(null)
 
-  const { data: subsData, isLoading } = useQuery({
+  const { data: subsData, isLoading, isError, error } = useQuery({
     queryKey: ['webhooks', page, search],
     queryFn: () =>
       api.get<{ subscriptions: Subscription[] }>(
@@ -148,6 +149,8 @@ export function WebhooksPage() {
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-sm text-muted-foreground">Loading webhooks...</p>
         </div>
+      ) : isError ? (
+        <QueryError error={error} resource="webhooks" />
       ) : subscriptions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <Webhook className="h-12 w-12 text-muted-foreground/40 mb-3" />
@@ -312,7 +315,7 @@ function DeliveryHistorySection({ subscriptionId }: { subscriptionId: string }) 
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
-  const { data: deliveriesData, isLoading } = useQuery({
+  const { data: deliveriesData, isLoading, isError, error } = useQuery({
     queryKey: ['webhook-deliveries', subscriptionId],
     queryFn: () =>
       api.get<{ deliveries: Delivery[] }>(
@@ -368,6 +371,8 @@ function DeliveryHistorySection({ subscriptionId }: { subscriptionId: string }) 
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading deliveries...</p>
+      ) : isError ? (
+        <QueryError error={error} resource="delivery history" />
       ) : deliveries.length === 0 ? (
         <p className="text-sm text-muted-foreground">No deliveries yet</p>
       ) : (

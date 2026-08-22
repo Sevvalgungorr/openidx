@@ -7,6 +7,7 @@ import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 import { api, QuickLink } from '../lib/api'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 import { TerminalSession } from '../components/remote/terminal-session'
 
@@ -21,7 +22,7 @@ export function QuickLinksPage() {
   const [terminalLink, setTerminalLink] = useState<QuickLink | null>(null)
   const { toast } = useToast()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['quick-links-mine'],
     queryFn: () => api.quickLinks.listMine(),
   })
@@ -83,6 +84,8 @@ export function QuickLinksPage() {
 
       {isLoading ? (
         <p className="text-center py-12 text-muted-foreground">Loading…</p>
+      ) : isError ? (
+        <QueryError error={error} resource="quick links" />
       ) : links.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

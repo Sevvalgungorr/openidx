@@ -13,6 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '../components/ui/alert-dialog'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -78,19 +79,19 @@ export function MyPrivilegedAccessPage() {
   const [selectedRetrieveId, setSelectedRetrieveId] = useState<string | null>(null)
   const [retrievedValue, setRetrievedValue] = useState<string | null>(null)
 
-  const { data: connectionsData, isLoading: connsLoading } = useQuery({
+  const { data: connectionsData, isLoading: connsLoading, isError: connsIsError, error: connsError } = useQuery({
     queryKey: ['my-guac-connections'],
     queryFn: () => api.get<{ connections: UserConnection[] }>('/api/v1/access/guacamole/my-connections'),
   })
   const connections = connectionsData?.connections || []
 
-  const { data: sessionRequestsData, isLoading: sessionReqsLoading } = useQuery({
+  const { data: sessionRequestsData, isLoading: sessionReqsLoading, isError: sessionReqsIsError, error: sessionReqsError } = useQuery({
     queryKey: ['my-guac-session-requests'],
     queryFn: () => api.get<{ requests: MySessionRequest[] }>('/api/v1/access/guacamole/my-session-requests'),
   })
   const sessionRequests = sessionRequestsData?.requests || []
 
-  const { data: myRequestsData, isLoading: checkoutsLoading } = useQuery({
+  const { data: myRequestsData, isLoading: checkoutsLoading, isError: checkoutsIsError, error: checkoutsError } = useQuery({
     queryKey: ['my-requests'],
     queryFn: () => api.get<{ requests: MyAccessRequest[] }>('/api/v1/governance/requests?requester_id=me'),
   })
@@ -196,6 +197,8 @@ export function MyPrivilegedAccessPage() {
             <CardContent>
               {connsLoading ? (
                 <p className="text-center py-8 text-muted-foreground">Loading...</p>
+              ) : connsIsError ? (
+                <QueryError error={connsError} resource="available connections" />
               ) : connections.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground">No connections available</p>
               ) : (
@@ -261,6 +264,8 @@ export function MyPrivilegedAccessPage() {
             <CardContent>
               {sessionReqsLoading ? (
                 <p className="text-center py-8 text-muted-foreground">Loading...</p>
+              ) : sessionReqsIsError ? (
+                <QueryError error={sessionReqsError} resource="your session requests" />
               ) : sessionRequests.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground">No session requests</p>
               ) : (
@@ -334,6 +339,8 @@ export function MyPrivilegedAccessPage() {
             <CardContent>
               {checkoutsLoading ? (
                 <p className="text-center py-8 text-muted-foreground">Loading...</p>
+              ) : checkoutsIsError ? (
+                <QueryError error={checkoutsError} resource="your credential checkouts" />
               ) : credentialCheckouts.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground">No credential checkouts</p>
               ) : (

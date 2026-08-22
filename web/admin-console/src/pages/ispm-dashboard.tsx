@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { AlertTriangle, Eye, Wrench, TrendingUp, RefreshCw, X, CheckCircle } from 'lucide-react'
 
 interface PostureScore {
@@ -86,7 +87,7 @@ function CategoryScore({ name, score }: { name: string; score: number }) {
 export function ISPMDashboardPage() {
   const queryClient = useQueryClient()
 
-  const { data: score, isLoading } = useQuery<PostureScore>({
+  const { data: score, isLoading, isError, error } = useQuery<PostureScore>({
     queryKey: ['ispm-score'],
     queryFn: () => api.get<PostureScore>('/api/v1/ispm/score'),
   })
@@ -132,6 +133,10 @@ export function ISPMDashboardPage() {
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="the security posture dashboard" />
   }
 
   const findings = findingsData?.data || []

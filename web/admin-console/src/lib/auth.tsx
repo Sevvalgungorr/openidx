@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { setAuthInitializing } from './api'
+import { setAuthInitializing, setAuthExpiredHandler } from './api'
+import { SessionExpiredDialog } from '../components/session-expired-dialog'
 
 interface User {
   id: string
@@ -89,6 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
+  const [sessionExpired, setSessionExpired] = useState(false)
+
+  useEffect(() => {
+    setAuthExpiredHandler(() => setSessionExpired(true))
+    return () => setAuthExpiredHandler(null)
+  }, [])
 
   useEffect(() => {
     initOpenIDXAuth()
@@ -365,6 +372,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      <SessionExpiredDialog open={sessionExpired} onSignIn={login} />
     </AuthContext.Provider>
   )
 }

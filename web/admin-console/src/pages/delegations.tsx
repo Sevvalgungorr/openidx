@@ -47,6 +47,7 @@ import {
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 interface AdminDelegation {
   id: string
@@ -106,7 +107,7 @@ export function DelegationsPage() {
   })
 
   // Fetch delegations
-  const { data: delegations, isLoading } = useQuery({
+  const { data: delegations, isLoading, isError, error } = useQuery({
     queryKey: ['delegations', page, scopeFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -252,7 +253,9 @@ export function DelegationsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <QueryError error={error} resource="delegations" />
+          ) : isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading delegations...</p>

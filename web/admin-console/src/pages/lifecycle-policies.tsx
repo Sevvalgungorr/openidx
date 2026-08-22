@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { Trash2, Plus, Play, Eye, Clock, UserMinus, CheckCircle, AlertTriangle } from 'lucide-react'
+import { ConfirmAction } from '../components/confirm-action'
 
 interface LifecyclePolicy {
   id: string
@@ -66,7 +68,7 @@ export function LifecyclePoliciesPage() {
   const [formSchedule, setFormSchedule] = useState('daily')
   const [formGrace, setFormGrace] = useState(7)
 
-  const { data: policiesData, isLoading } = useQuery({
+  const { data: policiesData, isLoading, isError, error } = useQuery({
     queryKey: ['lifecycle-policies'],
     queryFn: () => api.get<{ data: LifecyclePolicy[] }>('/api/v1/lifecycle-policies'),
   })
@@ -127,6 +129,8 @@ export function LifecyclePoliciesPage() {
   }
 
   if (isLoading) return <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+
+  if (isError) return <QueryError error={error} resource="lifecycle policies" />
 
   const policies = policiesData?.data || []
   const executions = executionsData?.data || []
@@ -215,12 +219,33 @@ export function LifecyclePoliciesPage() {
                     <Button size="sm" variant="outline" onClick={() => { setSelectedPolicy(p.id); executeMutation.mutate({ id: p.id, dry_run: true }); }}>
                       <Eye className="h-3 w-3 mr-1" />Preview
                     </Button>
-                    <Button size="sm" onClick={() => executeMutation.mutate({ id: p.id, dry_run: false })}>
-                      <Play className="h-3 w-3 mr-1" />Run
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => deleteMutation.mutate(p.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <ConfirmAction
+                      title="Run this lifecycle policy for real?"
+                      description={`This executes "${p.name}" against live accounts (not a preview). Matching users will be ${p.policy_type === 'disabled_account_cleanup' ? 'permanently deleted' : 'disabled'} according to the policy actions. This affects real users and cannot be undone — use Preview first to review who is affected.`}
+                      destructive
+                      requireReason
+                      confirmLabel="Run Now"
+                      onConfirm={() => executeMutation.mutateAsync({ id: p.id, dry_run: false })}
+                    >
+                      {(open) => (
+                        <Button size="sm" onClick={open}>
+                          <Play className="h-3 w-3 mr-1" />Run
+                        </Button>
+                      )}
+                    </ConfirmAction>
+                    <ConfirmAction
+                      title="Delete this lifecycle policy?"
+                      description={`This permanently removes the "${p.name}" lifecycle policy and its schedule. Existing execution history is retained, but the policy will no longer run.`}
+                      destructive
+                      confirmLabel="Delete"
+                      onConfirm={() => deleteMutation.mutateAsync(p.id)}
+                    >
+                      {(open) => (
+                        <Button size="sm" variant="ghost" onClick={open}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </ConfirmAction>
                   </div>
                 </div>
               </div>

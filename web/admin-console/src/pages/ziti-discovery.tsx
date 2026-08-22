@@ -15,6 +15,7 @@ import {
 } from '../components/ui/dialog'
 import { Label } from '../components/ui/label'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -60,7 +61,7 @@ export function ZitiDiscoveryPage() {
     description: '',
   })
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ziti-discovery'],
     queryFn: async () => {
       return api.get<DiscoveryResult>('/api/v1/access/ziti/discover')
@@ -209,6 +210,8 @@ export function ZitiDiscoveryPage() {
             <div className="flex items-center justify-center py-12">
               <LoadingSpinner />
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="discovered Ziti services" />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">

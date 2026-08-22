@@ -25,6 +25,7 @@ import {
 } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
+import { useRevealedSecret, copyWithWarning } from '../lib/secret-reveal'
 import { TerminalSession } from '../components/remote/terminal-session'
 import { connectionPathSteps } from '../lib/connection-path'
 import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
@@ -97,7 +98,8 @@ export function PamConnectionsPage() {
 
   const [revealFor, setRevealFor] = useState<PamEntry | null>(null)
   const [revealReason, setRevealReason] = useState('')
-  const [revealedValue, setRevealedValue] = useState<string | null>(null)
+  // Revealed plaintext auto-clears after the TTL and on unmount (never lingers in state).
+  const { value: revealedValue, reveal: revealSecret, clear: clearRevealed } = useRevealedSecret()
 
   const [requestFor, setRequestFor] = useState<PamEntry | null>(null)
   const [requestReason, setRequestReason] = useState('')
@@ -281,7 +283,7 @@ export function PamConnectionsPage() {
 
   const reveal = useMutation({
     mutationFn: () => api.pam.reveal(revealFor!.id, revealReason),
-    onSuccess: (res: { value: string }) => setRevealedValue(res.value),
+    onSuccess: (res: { value: string }) => revealSecret(res.value),
     onError: (e: Error) => toast({ title: 'Reveal failed', description: e.message, variant: 'destructive' }),
   })
 
@@ -452,7 +454,7 @@ export function PamConnectionsPage() {
                           </Button>
                         )}
                         {entry.has_secret && entry.allow_reveal && (
-                          <Button size="sm" variant="outline" onClick={() => { setRevealFor(entry); setRevealReason(''); setRevealedValue(null) }} title="Reveal secret">
+                          <Button size="sm" variant="outline" onClick={() => { setRevealFor(entry); setRevealReason(''); clearRevealed() }} title="Reveal secret">
                             <Eye className="h-4 w-4" />
                           </Button>
                         )}
@@ -786,7 +788,7 @@ export function PamConnectionsPage() {
       </Dialog>
 
       {/* Reveal dialog */}
-      <Dialog open={!!revealFor} onOpenChange={(o) => { if (!o) setRevealFor(null) }}>
+      <Dialog open={!!revealFor} onOpenChange={(o) => { if (!o) { clearRevealed(); setRevealFor(null) } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Reveal secret — {revealFor?.name}</DialogTitle></DialogHeader>
           {revealedValue === null ? (
@@ -794,7 +796,7 @@ export function PamConnectionsPage() {
               <p className="text-sm text-muted-foreground">Revealing is audited and reason-stamped.</p>
               <Textarea value={revealReason} onChange={(e) => setRevealReason(e.target.value)} placeholder="Reason for reveal (required)" rows={2} />
               <DialogFooter>
-                <Button variant="outline" onClick={() => setRevealFor(null)}>Cancel</Button>
+                <Button variant="outline" onClick={() => { clearRevealed(); setRevealFor(null) }}>Cancel</Button>
                 <Button onClick={() => reveal.mutate()} disabled={!revealReason || reveal.isPending}>
                   <Eye className="h-4 w-4 mr-1" /> Reveal
                 </Button>
@@ -804,12 +806,19 @@ export function PamConnectionsPage() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Input readOnly value={revealedValue} className="font-mono" />
-                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(revealedValue); toast({ title: 'Copied' }) }}>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const ok = await copyWithWarning(revealedValue)
+                  if (ok) {
+                    toast({ title: 'Copied', description: 'The clipboard may retain this value — clear it when done.' })
+                  } else {
+                    toast({ title: 'Copy failed', description: 'Clipboard unavailable — copy the value manually.', variant: 'destructive' })
+                  }
+                }}>
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
               <DialogFooter>
-                <Button onClick={() => setRevealFor(null)}>Close</Button>
+                <Button onClick={() => { clearRevealed(); setRevealFor(null) }}>Close</Button>
               </DialogFooter>
             </div>
           )}

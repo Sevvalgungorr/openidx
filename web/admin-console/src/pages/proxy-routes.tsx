@@ -22,6 +22,7 @@ import { Label } from '../components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Switch } from '../components/ui/switch'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import {
   AlertDialog,
@@ -174,7 +175,7 @@ export function ProxyRoutesPage() {
     },
   })
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['proxy-routes', page],
     queryFn: async () => {
       return api.get<{ routes: ProxyRoute[]; total: number }>(`/api/v1/access/routes?offset=${page * pageSize}&limit=${pageSize}`)
@@ -359,6 +360,8 @@ export function ProxyRoutesPage() {
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-sm text-muted-foreground">Loading proxy routes...</p>
         </div>
+      ) : isError ? (
+        <QueryError error={error} resource="proxy routes" />
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">

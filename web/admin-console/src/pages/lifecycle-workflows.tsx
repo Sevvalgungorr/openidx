@@ -39,8 +39,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { ConfirmAction } from '../components/confirm-action'
 
 interface LifecycleWorkflow {
   id: string
@@ -151,7 +153,7 @@ export function LifecycleWorkflowsPage() {
   })
   const [newAction, setNewAction] = useState<ActionInput>({ type: 'assign_role' })
 
-  const { data: workflows, isLoading } = useQuery({
+  const { data: workflows, isLoading, isError, error } = useQuery({
     queryKey: ['lifecycle-workflows', search, eventFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -294,6 +296,8 @@ export function LifecycleWorkflowsPage() {
               <LoadingSpinner size="lg" />
               <p className="mt-4 text-sm text-muted-foreground">Loading workflows...</p>
             </div>
+          ) : isError ? (
+            <QueryError error={error} resource="lifecycle workflows" />
           ) : !filteredWorkflows || filteredWorkflows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Workflow className="h-12 w-12 text-muted-foreground/40 mb-3" />
@@ -374,9 +378,22 @@ export function LifecycleWorkflowsPage() {
                               }}>
                                 <Eye className="h-4 w-4 mr-2" /> View History
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => deleteMutation.mutate(wf.id)} className="text-red-600">
-                                <Trash2 className="h-4 w-4 mr-2" /> Delete
-                              </DropdownMenuItem>
+                              <ConfirmAction
+                                title="Delete this workflow?"
+                                description={`This permanently deletes the "${wf.name}" lifecycle workflow and its trigger configuration. Any automation tied to it will stop running. This cannot be undone.`}
+                                destructive
+                                confirmLabel="Delete"
+                                onConfirm={() => deleteMutation.mutateAsync(wf.id)}
+                              >
+                                {(open) => (
+                                  <DropdownMenuItem
+                                    onSelect={(e) => { e.preventDefault(); open() }}
+                                    className="text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                )}
+                              </ConfirmAction>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>

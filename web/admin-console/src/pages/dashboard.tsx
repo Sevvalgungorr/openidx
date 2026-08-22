@@ -31,6 +31,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { roleLevel, ROLE_LEVELS } from '../lib/roles'
 import { GettingStarted } from '../components/getting-started'
+import { QueryError } from '../components/query-error'
 
 // Matches the /api/v1/dashboard recent_events item.
 interface RecentEvent {
@@ -181,7 +182,7 @@ export function DashboardPage() {
   // org-scoped analytics endpoints.
   const isStaff = roleLevel(user?.roles ?? []) >= ROLE_LEVELS.operator
 
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, isError, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get<DashboardStats>('/api/v1/dashboard'),
     enabled: isStaff,
@@ -223,6 +224,8 @@ export function DashboardPage() {
   if (!isStaff) {
     return <PersonalDashboard name={user?.name} />
   }
+
+  if (isError) return <QueryError error={error} resource="the dashboard" />
 
   const statCards = [
     {

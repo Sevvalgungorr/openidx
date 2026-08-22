@@ -19,6 +19,7 @@ import {
 } from '../components/ui/card'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
+import { QueryError } from '../components/query-error'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -137,7 +138,7 @@ export function DeveloperSettingsPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'api_keys' | 'webhooks' | 'cors' | 'rate_limits'>('api_keys')
 
-  const { data: apiSettings, isLoading } = useQuery({
+  const { data: apiSettings, isLoading, isError, error } = useQuery({
     queryKey: ['developer-settings'],
     queryFn: () => api.get<ApiDeveloperSettings>('/api/v1/developer/settings'),
   })
@@ -222,6 +223,15 @@ export function DeveloperSettingsPage() {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Developer Settings</h1>
+        <QueryError error={error} resource="developer settings" />
+      </div>
+    )
+  }
 
   if (isLoading || !formData) {
     return (

@@ -14,6 +14,8 @@ import { Textarea } from '../components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { api } from '../lib/api'
+import { ConfirmAction } from '../components/confirm-action'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 
 interface NamedRef { id: string; name: string }
@@ -184,7 +186,7 @@ export function UserAccess360Page() {
   const [reason, setReason] = useState('')
   const [disableUser, setDisableUser] = useState(false)
 
-  const { data: map, isLoading, refetch, isFetching } = useQuery({
+  const { data: map, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['user-access-map', id],
     queryFn: () => api.get<AccessMap>(`/api/v1/access/users/${id}/access-map`),
     enabled: !!id,
@@ -197,8 +199,8 @@ export function UserAccess360Page() {
   })
 
   const revokeDeviceMutation = useMutation({
-    mutationFn: (agentId: string) =>
-      api.post<DeviceRevokeResult>(`/api/v1/access/users/${id}/devices/${agentId}/revoke`, { reason: 'admin action' }),
+    mutationFn: ({ agentId, reason }: { agentId: string; reason: string }) =>
+      api.post<DeviceRevokeResult>(`/api/v1/access/users/${id}/devices/${agentId}/revoke`, { reason }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['user-devices', id] })
       queryClient.invalidateQueries({ queryKey: ['user-access-map', id] })
@@ -234,6 +236,18 @@ export function UserAccess360Page() {
     },
     onError: () => toast({ title: 'Kill switch failed', variant: 'destructive' }),
   })
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Link to="/users"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+          <h1 className="text-3xl font-bold tracking-tight">Access 360</h1>
+        </div>
+        <QueryError error={error} resource="the user access map" />
+      </div>
+    )
+  }
 
   if (isLoading || !map) {
     return (
@@ -600,11 +614,22 @@ export function UserAccess360Page() {
                       )}
                     </div>
                     {d.ziti && d.ziti.status !== 'revoked' && (
-                      <Button variant="outline" size="sm" className="shrink-0 text-red-600 hover:text-red-700"
-                        disabled={revokeDeviceMutation.isPending}
-                        onClick={() => revokeDeviceMutation.mutate(d.ziti!.agent_id)}>
-                        <Ban className="mr-1 h-3.5 w-3.5" />Revoke
-                      </Button>
+                      <ConfirmAction
+                        title="Revoke this device's access?"
+                        description="This severs the device's Ziti network sessions and revokes its access. The user may need to re-enroll the device to regain access."
+                        destructive
+                        requireReason
+                        confirmLabel="Revoke"
+                        onConfirm={(reason) => revokeDeviceMutation.mutateAsync({ agentId: d.ziti!.agent_id, reason: reason || '' })}
+                      >
+                        {(open) => (
+                          <Button variant="outline" size="sm" className="shrink-0 text-red-600 hover:text-red-700"
+                            disabled={revokeDeviceMutation.isPending}
+                            onClick={open}>
+                            <Ban className="mr-1 h-3.5 w-3.5" />Revoke
+                          </Button>
+                        )}
+                      </ConfirmAction>
                     )}
                   </div>
                 )

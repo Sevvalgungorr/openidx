@@ -12,6 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 
 interface AuthDashboard {
@@ -54,7 +55,7 @@ const periodLabels: Record<string, string> = {
 export function AuthAnalyticsPage() {
   const [period, setPeriod] = useState('7d')
 
-  const { data, isLoading } = useQuery<{ dashboard: AuthDashboard }>({
+  const { data, isLoading, isError, error } = useQuery<{ dashboard: AuthDashboard }>({
     queryKey: ['auth-analytics', period],
     queryFn: () =>
       api.get<{ dashboard: AuthDashboard }>(
@@ -71,6 +72,8 @@ export function AuthAnalyticsPage() {
       </div>
     )
   }
+
+  if (isError) return <QueryError error={error} resource="authentication analytics" />
 
   if (!dashboard) {
     return (

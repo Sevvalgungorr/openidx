@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '../components/ui/table'
 import { api } from '../lib/api'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 
 // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ export function ErrorCatalogPage() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
-  const { data: errors = [], isLoading } = useQuery({
+  const { data: errors = [], isLoading, isError, error } = useQuery({
     queryKey: ['error-catalog'],
     // The backend wraps the list as { errors: [...], total }. Unwrap to the
     // array the UI filters over (a bare array would crash with
@@ -174,6 +175,8 @@ export function ErrorCatalogPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <p className="text-center py-8 text-muted-foreground">Loading error catalog...</p>
+          ) : isError ? (
+            <QueryError error={error} resource="the error catalog" />
           ) : filteredErrors.length === 0 ? (
             <div className="text-center py-12">
               <AlertCircle className="h-10 w-10 mx-auto text-muted-foreground mb-3" />

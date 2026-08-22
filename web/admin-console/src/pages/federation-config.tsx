@@ -25,6 +25,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { api } from '../lib/api'
+import { QueryError } from '../components/query-error'
 import { useToast } from '../hooks/use-toast'
 
 // --- Federation Rules ---
@@ -173,7 +174,7 @@ function FederationRulesTab() {
   const [deleteTarget, setDeleteTarget] = useState<FederationRule | null>(null)
   const [form, setForm] = useState<RuleFormData>(emptyRuleForm)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['federation-rules'],
     queryFn: () =>
       api.get<{ data: FederationRule[] }>('/api/v1/federation/rules'),
@@ -265,6 +266,10 @@ function FederationRulesTab() {
         <p className="mt-4 text-sm text-muted-foreground">Loading federation rules...</p>
       </div>
     )
+  }
+
+  if (isError) {
+    return <QueryError error={error} resource="federation rules" />
   }
 
   return (
@@ -483,7 +488,7 @@ function IdentityLinksTab() {
   const [searchUserId, setSearchUserId] = useState('')
   const [unlinkTarget, setUnlinkTarget] = useState<IdentityLink | null>(null)
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['identity-links', searchUserId],
     queryFn: () =>
       api.get<{ data: IdentityLink[] }>(
@@ -547,6 +552,8 @@ function IdentityLinksTab() {
             <LoadingSpinner size="lg" />
             <p className="mt-4 text-sm text-muted-foreground">Loading identity links...</p>
           </div>
+        ) : isError ? (
+          <QueryError error={error} resource="identity links" />
         ) : (
           <Card>
             <CardHeader>
@@ -658,7 +665,7 @@ function ClaimsMappingTab() {
 
   const applications = appsData || []
 
-  const { data: claimsData, isLoading: claimsLoading } = useQuery({
+  const { data: claimsData, isLoading: claimsLoading, isError: claimsError, error: claimsErrorObj } = useQuery({
     queryKey: ['custom-claims', selectedAppId],
     queryFn: () =>
       api.get<{ data: CustomClaim[] }>(
@@ -783,6 +790,8 @@ function ClaimsMappingTab() {
             <LoadingSpinner size="lg" />
             <p className="mt-4 text-sm text-muted-foreground">Loading claims...</p>
           </div>
+        ) : claimsError ? (
+          <QueryError error={claimsErrorObj} resource="custom claims" />
         ) : (
           <Card>
             <CardHeader>
