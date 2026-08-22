@@ -36,8 +36,11 @@ describe('navigation config integrity', () => {
 
   it('keeps every page reachable that used to be in the menu, plus the audit gaps', () => {
     const hrefs = new Set(allNavHrefs())
-    // Pages the audit found unreachable before this config existed:
-    expect(hrefs.has('/branding')).toBe(true)
+    // Branding was consolidated into Tenant Management: the /branding route
+    // still exists in App.tsx purely as a redirect (old links resolve), so it
+    // is intentionally NOT a nav item anymore.
+    expect(hrefs.has('/branding')).toBe(false)
+    expect(hrefs.has('/tenant-management')).toBe(true)
     expect(hrefs.has('/audit/dashboard')).toBe(true)
   })
 
@@ -92,7 +95,8 @@ describe('filterNavigation role visibility', () => {
     const hrefs = groups.flatMap((g) => g.sections.flatMap((s) => s.items.map((i) => i.href)))
     expect(hrefs).toContain('/vault-secrets')
     expect(hrefs).toContain('/ziti-network')
-    expect(hrefs).toContain('/branding')
+    // Branding was folded into Tenant Management; it is no longer its own item.
+    expect(hrefs).not.toContain('/branding')
     // Backend: tenant-management endpoints are gated by RequireAdmin
     // (admin/super_admin), so admins legitimately get this entry.
     expect(hrefs).toContain('/tenant-management')

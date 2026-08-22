@@ -18,6 +18,7 @@ import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { UserLink } from '../components/user-link'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -132,6 +133,8 @@ export function AIIdentityIntelligencePage() {
           Refresh
         </Button>
       </div>
+
+      <RelatedLinks links={[{ to: '/ziti-ai-insights', label: 'Ziti AI Insights' }]} />
 
       {/* Summary cards */}
       <div className="grid gap-4 md:grid-cols-4">

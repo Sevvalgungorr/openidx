@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ShieldAlert, AlertTriangle, Activity, Plane, TrendingUp, Users, Clock,
@@ -359,9 +360,10 @@ export function RiskDashboardPage() {
             {alerts.length > 0 ? (
               <div className="space-y-3">
                 {alerts.slice(0, 10).map((alert) => (
-                  <div
+                  <Link
                     key={alert.id}
-                    className="flex items-start justify-between p-3 border rounded-lg"
+                    to="/security-alerts"
+                    className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -385,7 +387,7 @@ export function RiskDashboardPage() {
                       <Clock className="h-3 w-3" />
                       {new Date(alert.created_at).toLocaleDateString()}
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (

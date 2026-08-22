@@ -13,6 +13,7 @@ import {
 } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 import { api } from '../lib/api'
 
 interface AuthDashboard {
@@ -118,6 +119,8 @@ export function AuthAnalyticsPage() {
           </SelectContent>
         </Select>
       </div>
+
+      <RelatedLinks links={[{ to: '/login-analytics', label: 'Login Analytics' }]} />
 
       {/* Stat Cards */}
       <div className="grid gap-4 md:grid-cols-4">

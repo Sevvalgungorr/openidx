@@ -110,6 +110,15 @@ describe('PredictiveAnalyticsPage', () => {
     expect(screen.getByText('alice')).toBeInTheDocument()
   })
 
+  it('links each at-risk user to their Access 360 drill-down', async () => {
+    render(<PredictiveAnalyticsPage />, { wrapper: createWrapper() })
+
+    const username = await screen.findByText('alice')
+    const link = username.closest('a')
+    expect(link).not.toBeNull()
+    expect(link).toHaveAttribute('href', '/users/u-1/access-360')
+  })
+
   it('surfaces a read error when the fetch fails', async () => {
     vi.mocked(api.get).mockRejectedValue({ response: { status: 403 } })
 

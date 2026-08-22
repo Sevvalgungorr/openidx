@@ -40,6 +40,7 @@ import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { ConfirmAction } from '../components/confirm-action'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 
 interface Campaign {
   id: string
@@ -202,6 +203,13 @@ export function CertificationCampaignsPage() {
           <Plus className="mr-2 h-4 w-4" /> Create Campaign
         </Button>
       </div>
+
+      <RelatedLinks
+        links={[
+          { to: '/access-reviews', label: 'Access Reviews' },
+          { to: '/attestation-campaigns', label: 'Attestation' },
+        ]}
+      />
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">

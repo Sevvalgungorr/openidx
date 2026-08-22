@@ -127,6 +127,15 @@ describe('RiskDashboardPage', () => {
     expect(screen.getByText('bob@example.com')).toBeInTheDocument()
   })
 
+  it('renders each active alert as a link to the actionable /security-alerts view', async () => {
+    render(<RiskDashboardPage />, { wrapper: createWrapper() })
+
+    const alertTitle = await screen.findByText('Multiple failed logins from suspicious IP')
+    const link = alertTitle.closest('a')
+    expect(link).not.toBeNull()
+    expect(link).toHaveAttribute('href', '/security-alerts')
+  })
+
   it('renders the loading branch when the queries are pending', async () => {
     vi.mocked(api.get).mockReturnValue(new Promise(() => undefined) as ReturnType<typeof api.get>)
     const { container } = render(<RiskDashboardPage />, { wrapper: createWrapper() })

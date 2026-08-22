@@ -25,6 +25,7 @@ import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 
@@ -266,6 +267,13 @@ export function AccessReviewsPage() {
           <Plus className="mr-2 h-4 w-4" /> Create Review
         </Button>
       </div>
+
+      <RelatedLinks
+        links={[
+          { to: '/certification-campaigns', label: 'Cert Campaigns' },
+          { to: '/attestation-campaigns', label: 'Attestation' },
+        ]}
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>

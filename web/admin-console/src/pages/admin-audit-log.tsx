@@ -27,6 +27,7 @@ import {
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,6 +105,45 @@ function formatDate(iso: string): string {
   } catch {
     return iso
   }
+}
+
+// Build a CSV document from a full set of audit entries. Extracted so the
+// "export all pages" flow is unit-testable without touching the DOM.
+export function buildAuditCsv(entries: AuditEntry[]): string {
+  const headers = ['Timestamp', 'Actor', 'Action', 'Target Type', 'Target', 'ID']
+  const rows = entries.map((e) => [
+    e.timestamp,
+    e.actor_email,
+    e.action,
+    e.target_type,
+    e.target_label,
+    e.id,
+  ])
+  return [
+    headers.join(','),
+    ...rows.map((r) =>
+      r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ),
+  ].join('\n')
+}
+
+// Maximum pages to walk when exporting, as a safety cap.
+const EXPORT_MAX_PAGES = 50
+
+// Walk every page of the (filtered) audit log and accumulate all entries.
+// `fetchPage(offset)` returns one page; the walk stops when a page returns
+// fewer than PAGE_SIZE rows (the last page) or the safety cap is hit.
+export async function fetchAllAuditEntries(
+  fetchPage: (offset: number) => Promise<AuditResponse>
+): Promise<AuditEntry[]> {
+  const all: AuditEntry[] = []
+  for (let page = 0; page < EXPORT_MAX_PAGES; page++) {
+    const resp = await fetchPage(page * PAGE_SIZE)
+    const items = resp?.items || []
+    all.push(...items)
+    if (items.length < PAGE_SIZE) break
+  }
+  return all
 }
 
 function renderJsonDiff(
@@ -185,18 +225,28 @@ export function AdminAuditLogPage() {
   // Expanded rows
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
-  // Build query params
-  const queryParams = useMemo(() => {
+  // Export in-flight state (drives the button's loading affordance).
+  const [isExporting, setIsExporting] = useState(false)
+
+  // Filter-only params (no limit/offset) — shared by the paged query and the
+  // export-all walk so both apply the same filters.
+  const filterParams = useMemo(() => {
     const params = new URLSearchParams()
     if (actorFilter.trim()) params.set('actor_id', actorFilter.trim())
     if (actionFilter) params.set('action', actionFilter)
     if (targetTypeFilter) params.set('target_type', targetTypeFilter)
     if (startDate) params.set('start_date', startDate)
     if (endDate) params.set('end_date', endDate)
+    return params
+  }, [actorFilter, actionFilter, targetTypeFilter, startDate, endDate])
+
+  // Build query params for the current page
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams(filterParams)
     params.set('limit', String(PAGE_SIZE))
     params.set('offset', String(offset))
     return params.toString()
-  }, [actorFilter, actionFilter, targetTypeFilter, startDate, endDate, offset])
+  }, [filterParams, offset])
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin-audit-log', queryParams],
@@ -221,34 +271,38 @@ export function AdminAuditLogPage() {
     })
   }
 
-  const handleExportCSV = () => {
-    // Build CSV from current view
-    const headers = ['Timestamp', 'Actor', 'Action', 'Target Type', 'Target', 'ID']
-    const rows = entries.map((e) => [
-      e.timestamp,
-      e.actor_email,
-      e.action,
-      e.target_type,
-      e.target_label,
-      e.id,
-    ])
+  const handleExportCSV = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      // Walk every page (not just the current one) so the CSV is the full
+      // filtered result set.
+      const all = await fetchAllAuditEntries((offsetVal) => {
+        const params = new URLSearchParams(filterParams)
+        params.set('limit', String(PAGE_SIZE))
+        params.set('offset', String(offsetVal))
+        return api.get<AuditResponse>(`/api/v1/audit-log?${params.toString()}`)
+      })
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((r) =>
-        r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-      ),
-    ].join('\n')
+      const csvContent = buildAuditCsv(all)
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `admin-audit-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `admin-audit-${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-
-    toast({ title: 'Exported', description: `Exported ${entries.length} records to CSV.` })
+      toast({ title: 'Exported', description: `Exported ${all.length} records to CSV.` })
+    } catch {
+      toast({
+        title: 'Export failed',
+        description: 'Could not export the audit log. Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const resetFilters = () => {
@@ -273,11 +327,22 @@ export function AdminAuditLogPage() {
             Track administrative operations and configuration changes
           </p>
         </div>
-        <Button variant="outline" onClick={handleExportCSV} disabled={entries.length === 0}>
+        <Button
+          variant="outline"
+          onClick={handleExportCSV}
+          disabled={entries.length === 0 || isExporting}
+        >
           <Download className="mr-2 h-4 w-4" />
-          Export CSV
+          {isExporting ? 'Exporting...' : 'Export CSV'}
         </Button>
       </div>
+
+      <RelatedLinks
+        links={[
+          { to: '/audit-logs', label: 'Audit Logs' },
+          { to: '/unified-audit', label: 'Unified Audit' },
+        ]}
+      />
 
       {/* Filters */}
       <Card>

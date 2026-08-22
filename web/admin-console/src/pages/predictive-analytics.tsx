@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { QueryError } from '../components/query-error'
+import { UserLink } from '../components/user-link'
 import { TrendingUp, TrendingDown, Minus, Users, Activity, Shield, Server, UserX, BarChart3 } from 'lucide-react'
 
 interface DailyMetric {
@@ -257,10 +258,12 @@ export function PredictiveAnalyticsPage() {
               <div className="divide-y">
                 {churn.map((u) => (
                   <div key={u.user_id} className="py-2 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">{u.username}</p>
-                      <p className="text-xs text-muted-foreground">Last login: {u.last_login}</p>
-                    </div>
+                    <UserLink
+                      userId={u.user_id}
+                      name={u.username}
+                      subtitle={`Last login: ${u.last_login}`}
+                      className="text-sm"
+                    />
                     <div className="text-right">
                       <Badge variant={u.risk_score > 0.7 ? 'destructive' : 'secondary'}>
                         Risk: {(u.risk_score * 100).toFixed(0)}%

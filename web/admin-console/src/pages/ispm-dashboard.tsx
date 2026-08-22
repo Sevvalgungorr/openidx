@@ -5,6 +5,7 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 import { AlertTriangle, Eye, Wrench, TrendingUp, RefreshCw, X, CheckCircle } from 'lucide-react'
 
 interface PostureScore {
@@ -155,6 +156,8 @@ export function ISPMDashboardPage() {
           {scanMutation.isPending ? 'Scanning...' : 'Run Scan'}
         </Button>
       </div>
+
+      <RelatedLinks links={[{ to: '/zero-trust', label: 'Zero Trust Access' }]} />
 
       {/* Score Overview */}
       {score && (

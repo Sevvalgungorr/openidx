@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -26,6 +26,7 @@ const openidxEvent = {
   user_email: 'alice@example.com',
   actor_ip: '203.0.113.10',
   created_at: '2026-06-09T10:00:00Z',
+  details: { mfa_method: 'totp', session_id: 'sess-abc123' },
 }
 
 const zitiEvent = {
@@ -123,6 +124,19 @@ describe('UnifiedAuditPage', () => {
     ).toBeInTheDocument()
     // The Select trigger renders its placeholder copy.
     expect(screen.getByText('All Sources')).toBeInTheDocument()
+  })
+
+  it('opens a details dialog showing the event details when a row is clicked', async () => {
+    render(<UnifiedAuditPage />, { wrapper: createWrapper() })
+    const eventCell = await screen.findByText('login.success')
+
+    // Click the row (or its View button) to open the drill-down.
+    fireEvent.click(eventCell)
+
+    // The dialog surfaces the details object contents.
+    expect(await screen.findByText('Event Details')).toBeInTheDocument()
+    expect(screen.getByText(/mfa_method/)).toBeInTheDocument()
+    expect(screen.getByText(/sess-abc123/)).toBeInTheDocument()
   })
 
   it('shows the empty-events message when no events match', async () => {

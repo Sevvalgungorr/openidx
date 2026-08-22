@@ -12,6 +12,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '.
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 
 interface AuditEvent {
   id: string
@@ -200,6 +201,13 @@ export function AuditLogsPage() {
           </Button>
         </div>
       </div>
+
+      <RelatedLinks
+        links={[
+          { to: '/unified-audit', label: 'Unified Audit' },
+          { to: '/admin-audit-log', label: 'Admin Audit Log' },
+        ]}
+      />
 
       {/* Date Range Selector */}
       <Card>

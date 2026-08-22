@@ -8,6 +8,7 @@ import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { QueryError } from '../components/query-error'
 import { ClipboardCheck, Plus, Rocket, CheckCircle, X, ArrowRight, BarChart3 } from 'lucide-react'
 import { ConfirmAction } from '../components/confirm-action'
+import { RelatedLinks } from '../components/related-links'
 
 interface AttestationCampaign {
   id: string
@@ -152,6 +153,13 @@ export function AttestationCampaignsPage() {
           <Plus className="h-4 w-4 mr-2" />{showCreate ? 'Cancel' : 'New Campaign'}
         </Button>
       </div>
+
+      <RelatedLinks
+        links={[
+          { to: '/access-reviews', label: 'Access Reviews' },
+          { to: '/certification-campaigns', label: 'Cert Campaigns' },
+        ]}
+      />
 
       {/* Create Form */}
       {showCreate && (

@@ -12,10 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../components/ui/dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { api } from '../lib/api'
 import { QueryError } from '../components/query-error'
+import { RelatedLinks } from '../components/related-links'
 
 interface AuditEvent {
   id: string
@@ -72,6 +80,7 @@ export function UnifiedAuditPage() {
   const [page, setPage] = useState(0)
   const [source, setSource] = useState<string>('all')
   const [eventType, setEventType] = useState<string>('')
+  const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null)
   const pageSize = 50
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -116,6 +125,13 @@ export function UnifiedAuditPage() {
           Refresh
         </Button>
       </div>
+
+      <RelatedLinks
+        links={[
+          { to: '/audit-logs', label: 'Audit Logs' },
+          { to: '/admin-audit-log', label: 'Admin Audit Log' },
+        ]}
+      />
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -186,11 +202,16 @@ export function UnifiedAuditPage() {
                     <TableHead className="text-left p-4 font-medium">Service</TableHead>
                     <TableHead className="text-left p-4 font-medium">User</TableHead>
                     <TableHead className="text-left p-4 font-medium">IP</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y">
                   {data?.events?.map((event) => (
-                    <TableRow key={event.id} className="hover:bg-muted/50">
+                    <TableRow
+                      key={event.id}
+                      className="hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setSelectedEvent(event)}
+                    >
                       <TableCell className="p-4 text-sm font-mono whitespace-nowrap">
                         {new Date(event.created_at).toLocaleString()}
                       </TableCell>
@@ -209,11 +230,23 @@ export function UnifiedAuditPage() {
                       <TableCell className="p-4 text-sm font-mono">
                         {event.actor_ip || '-'}
                       </TableCell>
+                      <TableCell className="p-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedEvent(event)
+                          }}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {(!data?.events || data.events.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={6} className="p-8 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="p-8 text-center text-muted-foreground">
                         No audit events found
                       </TableCell>
                     </TableRow>
@@ -250,6 +283,46 @@ export function UnifiedAuditPage() {
           </Button>
         </div>
       </div>
+
+      {/* Event Details */}
+      <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Event Details</DialogTitle>
+            <DialogDescription>
+              {selectedEvent?.event_type} · {selectedEvent?.source}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEvent && (
+            <div className="space-y-4">
+              <dl className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Timestamp</dt>
+                <dd className="col-span-2 font-mono">{new Date(selectedEvent.created_at).toLocaleString()}</dd>
+                <dt className="text-muted-foreground">Source</dt>
+                <dd className="col-span-2 capitalize">{selectedEvent.source}</dd>
+                <dt className="text-muted-foreground">Event Type</dt>
+                <dd className="col-span-2 font-medium">{selectedEvent.event_type}</dd>
+                <dt className="text-muted-foreground">Service</dt>
+                <dd className="col-span-2">{selectedEvent.route_name || selectedEvent.route_id || '-'}</dd>
+                <dt className="text-muted-foreground">User</dt>
+                <dd className="col-span-2">{selectedEvent.user_email || selectedEvent.user_id || '-'}</dd>
+                <dt className="text-muted-foreground">IP</dt>
+                <dd className="col-span-2 font-mono">{selectedEvent.actor_ip || '-'}</dd>
+              </dl>
+              <div>
+                <p className="mb-1 text-sm font-medium text-muted-foreground">Details</p>
+                {selectedEvent.details && Object.keys(selectedEvent.details).length > 0 ? (
+                  <pre className="max-h-80 overflow-auto rounded-md bg-muted p-3 text-xs">
+                    {JSON.stringify(selectedEvent.details, null, 2)}
+                  </pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No additional details.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

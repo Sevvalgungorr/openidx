@@ -85,7 +85,6 @@ import {
   APIDocs,
   SystemHealth,
   Organizations,
-  Branding,
   Delegations,
   Webhooks,
   TenantManagement,
@@ -346,7 +345,9 @@ function App() {
         {/* System - Admin Protected */}
         <Route path="system-health" element={<SystemHealth />} />
         <Route path="organizations" element={<Organizations />} />
-        <Route path="branding" element={<Branding />} />
+        {/* Branding consolidated into Tenant Management. Keep the route as a
+            redirect so old links/bookmarks still resolve. */}
+        <Route path="branding" element={<Navigate to="/tenant-management" replace />} />
         <Route path="delegations" element={<Delegations />} />
         <Route path="webhooks" element={<Webhooks />} />
         <Route path="settings" element={<Settings />} />

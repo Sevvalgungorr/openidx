@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Save, Building, Shield, Key, Palette, X, Plus, Smartphone, Send } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -989,6 +990,12 @@ export function SettingsPage() {
                 <CardDescription>Customize the look and feel of the login page</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="bg-muted border border-border rounded-md p-3 text-sm">
+                  Full per-tenant branding — logo, colors, and a live login preview — is managed in Tenant Management.{' '}
+                  <Link to="/tenant-management" className="text-primary hover:underline">
+                    Open Tenant Management → Branding
+                  </Link>
+                </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Logo URL</label>
