@@ -74,6 +74,7 @@ func TestAllPermissionsConstant(t *testing.T) {
 		PermAuditExport,
 		PermPoliciesManage,
 		PermTenantsManage,
+		PermSelfHealManage,
 	}
 
 	if len(AllPermissions) != len(expectedPermissions) {

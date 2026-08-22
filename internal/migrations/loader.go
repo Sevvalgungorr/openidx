@@ -943,5 +943,12 @@ func allMigrations() []*Migration {
 			UpSQL:       sessionsAuthMethodsUp,
 			DownSQL:     sessionsAuthMethodsDown,
 		},
+		{
+			Version:     134,
+			Name:        "selfheal_manage_permission",
+			Description: "Seed the selfheal:manage permission and grant it to admin/super_admin roles across all orgs. The self-heal control panel gates its mutating endpoints (mode/kill-switch/sweep) on this permission, which PermissionResolver reads from role_permissions in the DB (not the in-code RBAC maps), so admins would be 403'd on control actions without it.",
+			UpSQL:       selfHealPermUp,
+			DownSQL:     selfHealPermDown,
+		},
 	}
 }

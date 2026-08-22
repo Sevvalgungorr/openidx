@@ -256,6 +256,37 @@ axiosInstance.interceptors.response.use(
   }
 )
 
+// Self-heal control panel types (mirror internal/selfheal + the admin-api handler).
+export type SelfHealMode = 'off' | 'observe' | 'tier0' | 'tier1'
+
+export interface SelfHealFinding {
+  fingerprint: string
+  class: string
+  severity: string
+  service: string
+  message: string
+  suggested_action?: string
+  count?: number
+  first_seen?: string
+  last_seen?: string
+  status?: string
+}
+
+export interface SelfHealStatus {
+  mode: SelfHealMode
+  kill_switch: boolean
+  stale: boolean
+  snapshot_ts: string
+  findings: SelfHealFinding[]
+}
+
+export interface SelfHealAction {
+  ts: string
+  fingerprint: string
+  action: string
+  result: string
+}
+
 export const api = {
   get: async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
     const response = await axiosInstance.get<T>(url, config)
@@ -291,6 +322,25 @@ export const api = {
   delete: async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
     const response = await axiosInstance.delete<T>(url, config)
     return response.data
+  },
+
+  // Self-heal control panel
+  selfheal: {
+    status: () => api.get<SelfHealStatus>('/api/v1/selfheal/status'),
+    findings: (params?: { class?: string; severity?: string; status?: string }) => {
+      const q = new URLSearchParams()
+      if (params?.class) q.set('class', params.class)
+      if (params?.severity) q.set('severity', params.severity)
+      if (params?.status) q.set('status', params.status)
+      const qs = q.toString()
+      return api.get<{ findings: SelfHealFinding[] }>(`/api/v1/selfheal/findings${qs ? '?' + qs : ''}`)
+    },
+    history: (limit = 50) => api.get<{ actions: SelfHealAction[] }>(`/api/v1/selfheal/history?limit=${limit}`),
+    setMode: (mode: SelfHealMode, confirm?: string) =>
+      api.put<{ mode: SelfHealMode }>('/api/v1/selfheal/mode', { mode, confirm }),
+    killSwitch: (enabled: boolean) =>
+      api.post<{ kill_switch: boolean }>('/api/v1/selfheal/kill-switch', { enabled }),
+    sweep: () => api.post<{ output: string }>('/api/v1/selfheal/sweep', {}),
   },
 
   // Identity Providers API
