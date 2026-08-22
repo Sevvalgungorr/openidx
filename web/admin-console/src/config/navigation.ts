@@ -40,6 +40,7 @@ import {
   Link2,
   Activity,
   Search,
+  Share2,
   Layers,
   Globe,
   FileKey,
@@ -136,6 +137,12 @@ export const navigation: NavDomainGroup[] = [
           { name: 'Notifications', href: '/notification-center', icon: Bell, minRole: 'user', keywords: ['inbox', 'alerts'] },
         ],
       },
+      {
+        label: 'Operations',
+        items: [
+          { name: 'Ops Cockpit', href: '/ops-cockpit', icon: Gauge, minRole: 'operator', keywords: ['operations', 'situational', 'overview', 'command center', 'noc'] },
+        ],
+      },
     ],
   },
   {
@@ -212,6 +219,7 @@ export const navigation: NavDomainGroup[] = [
           { name: 'Proxy Routes', href: '/proxy-routes', icon: Network, minRole: 'admin', keywords: ['reverse proxy', 'gateway', 'vhost'] },
           { name: 'Network Setup', href: '/ziti-setup', icon: Server, minRole: 'admin', keywords: ['ziti setup', 'controller', 'router'] },
           { name: 'Ziti Network', href: '/ziti-network', icon: Globe, minRole: 'admin', keywords: ['openziti', 'identities', 'edge routers'] },
+          { name: 'Network Topology', href: '/network-topology', icon: Share2, minRole: 'operator', keywords: ['map', 'overlay', 'graph', 'topology'] },
           { name: 'Ziti Discovery', href: '/ziti-discovery', icon: Search, minRole: 'admin', keywords: ['scan', 'discover services'] },
           { name: 'AI Insights', href: '/ziti-ai-insights', icon: Brain, minRole: 'admin', keywords: ['anomaly', 'risk score', 'quarantine', 'ai'] },
           { name: 'BrowZer', href: '/browzer-management', icon: Play, minRole: 'admin', keywords: ['browser access', 'clientless'] },

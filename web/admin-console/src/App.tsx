@@ -45,6 +45,8 @@ import {
   ProxyRoutes,
   ZitiSetup,
   ZitiNetwork,
+  NetworkTopology,
+  OpsCockpit,
   ZitiDiscovery,
   ZitiAIInsights,
   BrowzerManagement,
@@ -262,6 +264,8 @@ function App() {
         <Route path="proxy-routes" element={<ProxyRoutes />} />
         <Route path="ziti-setup" element={<ZitiSetup />} />
         <Route path="ziti-network" element={<ZitiNetwork />} />
+        <Route path="network-topology" element={<NetworkTopology />} />
+        <Route path="ops-cockpit" element={<OpsCockpit />} />
         <Route path="ziti-discovery" element={<ZitiDiscovery />} />
         <Route path="ziti-ai-insights" element={<ZitiAIInsights />} />
         <Route path="browzer-management" element={<BrowzerManagement />} />
