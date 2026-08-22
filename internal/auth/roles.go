@@ -71,6 +71,11 @@ const (
 
 	// Tenant permissions
 	PermTenantsManage = "tenants:manage"
+
+	// Self-heal permissions — controlling the self-heal loop (mode, kill-switch,
+	// on-demand sweep) from the admin console. Viewing is RequireAdmin; only this
+	// permission authorizes the mutating actions.
+	PermSelfHealManage = "selfheal:manage"
 )
 
 // AllPermissions lists all available permissions in the system
@@ -84,6 +89,7 @@ var AllPermissions = []string{
 	PermAuditExport,
 	PermPoliciesManage,
 	PermTenantsManage,
+	PermSelfHealManage,
 }
 
 // RoleLevel defines the hierarchy level of each role (higher = more privileges)
@@ -122,6 +128,7 @@ var RolePermissions = map[Role][]Permission{
 		{"audit", "export"},
 		{"policies", "manage"},
 		{"tenants", "manage"},
+		{"selfheal", "manage"},
 	},
 	RoleAdmin: {
 		{"users", "read"},
@@ -132,6 +139,7 @@ var RolePermissions = map[Role][]Permission{
 		{"audit", "read"},
 		{"audit", "export"},
 		{"policies", "manage"},
+		{"selfheal", "manage"},
 		// Note: admin does NOT have tenants:manage
 	},
 	RoleOperator: {

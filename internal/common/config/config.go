@@ -208,6 +208,14 @@ type Config struct {
 	// rpm) served at /downloads/<file> and advertised by /downloads/agent-manifest.json.
 	AgentDownloadsDir string `mapstructure:"agent_downloads_dir"`
 
+	// SelfHealStateDir is where the self-heal loop writes its runtime state
+	// (latest.json, ledger.jsonl, actions.jsonl, MODE, DISABLE, flap). The
+	// admin-console control panel reads these and writes MODE/DISABLE.
+	SelfHealStateDir string `mapstructure:"selfheal_state_dir"`
+	// SelfHealScriptsDir is the dir holding the self-heal scripts; the panel's
+	// on-demand "refresh now" shells out to selfheal-watch.sh here.
+	SelfHealScriptsDir string `mapstructure:"selfheal_scripts_dir"`
+
 	// PAMSessionRiskGate drives the privileged-session risk scorer (PAM C2).
 	// A leader-gated worker scores every active Guacamole/PAM session on
 	// off-hours, duration, and the user's live risk score, and can auto-suspend
@@ -723,6 +731,8 @@ func setDefaults(v *viper.Viper, serviceName string) {
 	v.SetDefault("device_autotrust_require_posture", false)
 	v.SetDefault("enroll_session_ttl_minutes", 15)
 	v.SetDefault("agent_downloads_dir", "deployments/downloads")
+	v.SetDefault("selfheal_state_dir", "/home/cmit/oidx-runtime/selfheal")
+	v.SetDefault("selfheal_scripts_dir", "scripts/selfheal")
 	v.SetDefault("pam_session_risk_gate", "off")
 	v.SetDefault("pam_session_risk_threshold", 80)
 	v.SetDefault("dev_admin_bypass", false)
@@ -956,6 +966,8 @@ func bindEnvVars(v *viper.Viper) {
 		"device_autotrust_require_posture":    "DEVICE_AUTOTRUST_REQUIRE_POSTURE",
 		"enroll_session_ttl_minutes":          "ENROLL_SESSION_TTL_MINUTES",
 		"agent_downloads_dir":                 "AGENT_DOWNLOADS_DIR",
+		"selfheal_state_dir":                  "SELFHEAL_STATE_DIR",
+		"selfheal_scripts_dir":                "SELFHEAL_SCRIPTS_DIR",
 		"pam_session_risk_gate":               "PAM_SESSION_RISK_GATE",
 		"pam_session_risk_threshold":          "PAM_SESSION_RISK_THRESHOLD",
 		"dev_admin_bypass":                    "DEV_ADMIN_BYPASS",

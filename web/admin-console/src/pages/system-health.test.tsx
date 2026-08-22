@@ -16,6 +16,12 @@ vi.mock('../hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }))
 
+// The page gates an admin-only Self-Heal panel behind useAuth().hasRole; this
+// test focuses on the health view, so stub a non-admin so the panel is skipped.
+vi.mock('../lib/auth', () => ({
+  useAuth: () => ({ hasRole: () => false }),
+}))
+
 import { SystemHealthPage } from './system-health'
 import { api } from '../lib/api'
 

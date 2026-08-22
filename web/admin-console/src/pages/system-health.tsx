@@ -24,6 +24,8 @@ import {
 import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import { SelfHealPanel } from '../components/selfheal-panel'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -332,6 +334,7 @@ function RelationsDoctor() {
 export function SystemHealthPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { hasRole } = useAuth()
 
   const {
     data: health,
@@ -499,6 +502,15 @@ export function SystemHealthPage() {
 
       {/* Relations & Integrity Doctor */}
       <RelationsDoctor />
+
+      {/* Self-heal control panel — admin-only (mutations also require
+          selfheal:manage server-side; the controls simply won't render for
+          non-admins). */}
+      {hasRole('admin') && (
+        <div className="border-t pt-6">
+          <SelfHealPanel />
+        </div>
+      )}
 
       {/* Empty state if no health data */}
       {!health && (
