@@ -375,7 +375,7 @@ export default function MFAManagement() {
                             </TableCell>
                             <TableCell>{policy.grace_period_hours}h</TableCell>
                             <TableCell>
-                              <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                              <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
                                 #{policy.priority}
                               </span>
                             </TableCell>
@@ -487,35 +487,35 @@ export default function MFAManagement() {
                               {user.totp_enabled ? (
                                 <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
                               ) : (
-                                <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                                <XCircle className="h-5 w-5 text-muted-foreground mx-auto" />
                               )}
                             </TableCell>
                             <TableCell className="text-center">
                               {user.sms_enabled ? (
                                 <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
                               ) : (
-                                <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                                <XCircle className="h-5 w-5 text-muted-foreground mx-auto" />
                               )}
                             </TableCell>
                             <TableCell className="text-center">
                               {user.email_otp_enabled ? (
                                 <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
                               ) : (
-                                <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                                <XCircle className="h-5 w-5 text-muted-foreground mx-auto" />
                               )}
                             </TableCell>
                             <TableCell className="text-center">
                               {user.push_enabled ? (
                                 <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
                               ) : (
-                                <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                                <XCircle className="h-5 w-5 text-muted-foreground mx-auto" />
                               )}
                             </TableCell>
                             <TableCell className="text-center">
                               {user.webauthn_enabled ? (
                                 <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
                               ) : (
-                                <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                                <XCircle className="h-5 w-5 text-muted-foreground mx-auto" />
                               )}
                             </TableCell>
                           </TableRow>

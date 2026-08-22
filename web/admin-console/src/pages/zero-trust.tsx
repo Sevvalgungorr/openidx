@@ -145,7 +145,7 @@ function healthColor(h: string) {
   if (h === 'healthy') return 'bg-green-500'
   if (h === 'degraded') return 'bg-amber-500'
   if (h === 'unhealthy') return 'bg-red-500'
-  return 'bg-gray-300'
+  return 'bg-muted'
 }
 
 export function ZeroTrustPage() {

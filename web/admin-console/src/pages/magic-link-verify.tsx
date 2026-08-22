@@ -17,7 +17,7 @@ export function MagicLinkVerifyPage() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
+        <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
         <p className="text-sm text-muted-foreground">Verifying your sign-in link...</p>
       </div>
     </div>

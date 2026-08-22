@@ -63,7 +63,7 @@ const statusStyles: Record<string, string> = {
   open: 'bg-red-100 text-red-800',
   investigating: 'bg-yellow-100 text-yellow-800',
   resolved: 'bg-green-100 text-green-800',
-  false_positive: 'bg-gray-100 text-gray-800',
+  false_positive: 'bg-muted text-foreground',
 }
 
 function bucketColor(min: number): string {
@@ -159,7 +159,7 @@ export function RiskDashboardPage() {
             <div className={`text-2xl font-bold ${riskScoreColor(risk.avg_risk_score)}`}>
               {risk.avg_risk_score.toFixed(1)}
             </div>
-            <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
                   risk.avg_risk_score >= 60
@@ -255,7 +255,7 @@ export function RiskDashboardPage() {
                           {bucket.count.toLocaleString()} ({percentage.toFixed(1)}%)
                         </span>
                       </div>
-                      <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-3 bg-muted rounded-full overflow-hidden">
                         <div
                           className={`h-full ${bucketColor(bucket.min)} transition-all rounded-full`}
                           style={{ width: `${percentage}%` }}
@@ -366,12 +366,12 @@ export function RiskDashboardPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <Badge
-                          className={`${severityStyles[alert.severity] || 'bg-gray-100 text-gray-800'} hover:${severityStyles[alert.severity] || 'bg-gray-100'}`}
+                          className={`${severityStyles[alert.severity] || 'bg-muted text-foreground'} hover:${severityStyles[alert.severity] || 'bg-muted'}`}
                         >
                           {alert.severity}
                         </Badge>
                         <Badge
-                          className={`${statusStyles[alert.status] || 'bg-gray-100 text-gray-800'} hover:${statusStyles[alert.status] || 'bg-gray-100'}`}
+                          className={`${statusStyles[alert.status] || 'bg-muted text-foreground'} hover:${statusStyles[alert.status] || 'bg-muted'}`}
                         >
                           {alert.status}
                         </Badge>

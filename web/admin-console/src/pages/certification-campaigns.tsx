@@ -35,6 +35,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { ConfirmAction } from '../components/confirm-action'
@@ -75,7 +76,7 @@ interface CampaignRun {
 const statusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-800',
   paused: 'bg-yellow-100 text-yellow-800',
-  completed: 'bg-gray-100 text-gray-800',
+  completed: 'bg-muted text-foreground',
 }
 
 const statusIcons: Record<string, React.ReactNode> = {
@@ -212,7 +213,7 @@ export function CertificationCampaignsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{campaigns?.filter(c => c.status === 'active').length || 0}</p>
-                <p className="text-sm text-gray-500">Active Campaigns</p>
+                <p className="text-sm text-muted-foreground">Active Campaigns</p>
               </div>
             </div>
           </CardContent>
@@ -225,7 +226,7 @@ export function CertificationCampaignsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{campaigns?.filter(c => c.status === 'paused').length || 0}</p>
-                <p className="text-sm text-gray-500">Paused</p>
+                <p className="text-sm text-muted-foreground">Paused</p>
               </div>
             </div>
           </CardContent>
@@ -238,7 +239,7 @@ export function CertificationCampaignsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{campaigns?.filter(c => c.next_run_at).length || 0}</p>
-                <p className="text-sm text-gray-500">Scheduled</p>
+                <p className="text-sm text-muted-foreground">Scheduled</p>
               </div>
             </div>
           </CardContent>
@@ -250,7 +251,7 @@ export function CertificationCampaignsPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search campaigns..."
                 value={search}
@@ -288,50 +289,50 @@ export function CertificationCampaignsPage() {
           ) : (
             <>
               <div className="rounded-md border">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="p-3 text-left text-sm font-medium">Campaign</th>
-                      <th className="p-3 text-left text-sm font-medium">Type</th>
-                      <th className="p-3 text-left text-sm font-medium">Schedule</th>
-                      <th className="p-3 text-left text-sm font-medium">Status</th>
-                      <th className="p-3 text-left text-sm font-medium">Last Run</th>
-                      <th className="p-3 text-left text-sm font-medium">Next Run</th>
-                      <th className="p-3 text-right text-sm font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b bg-muted">
+                      <TableHead className="p-3 text-left text-sm font-medium">Campaign</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Type</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Schedule</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Status</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Last Run</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Next Run</TableHead>
+                      <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {filteredCampaigns.map((campaign) => (
-                      <tr key={campaign.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3">
+                      <TableRow key={campaign.id} className="border-b hover:bg-muted">
+                        <TableCell className="p-3">
                           <div className="flex items-center gap-3">
                             <div className="h-9 w-9 rounded-lg bg-indigo-100 flex items-center justify-center">
                               <Target className="h-4 w-4 text-indigo-700" />
                             </div>
                             <div>
                               <p className="font-medium">{campaign.name}</p>
-                              <p className="text-sm text-gray-500 max-w-xs truncate">{campaign.description || '-'}</p>
+                              <p className="text-sm text-muted-foreground max-w-xs truncate">{campaign.description || '-'}</p>
                             </div>
                           </div>
-                        </td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3">
                           <Badge variant="outline">{typeLabels[campaign.type] || campaign.type}</Badge>
-                        </td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3">
                           <div className="text-sm">
                             <p>{scheduleLabels[campaign.schedule] || campaign.schedule}</p>
-                            <p className="text-gray-500">{campaign.duration_days}d duration</p>
+                            <p className="text-muted-foreground">{campaign.duration_days}d duration</p>
                           </div>
-                        </td>
-                        <td className="p-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusColors[campaign.status] || 'bg-gray-100 text-gray-800'}`}>
+                        </TableCell>
+                        <TableCell className="p-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusColors[campaign.status] || 'bg-muted text-foreground'}`}>
                             {statusIcons[campaign.status]}
                             {campaign.status}
                           </span>
-                        </td>
-                        <td className="p-3 text-sm">{formatDate(campaign.last_run_at)}</td>
-                        <td className="p-3 text-sm">{formatDate(campaign.next_run_at)}</td>
-                        <td className="p-3 text-right">
+                        </TableCell>
+                        <TableCell className="p-3 text-sm">{formatDate(campaign.last_run_at)}</TableCell>
+                        <TableCell className="p-3 text-sm">{formatDate(campaign.next_run_at)}</TableCell>
+                        <TableCell className="p-3 text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -373,23 +374,23 @@ export function CertificationCampaignsPage() {
                               </ConfirmAction>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
 
               {totalCount > PAGE_SIZE && (
                 <div className="flex items-center justify-between pt-4 px-1">
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
                   </p>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
                       <ChevronLeft className="h-4 w-4 mr-1" /> Previous
                     </Button>
-                    <span className="text-sm text-gray-600">Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}</span>
+                    <span className="text-sm text-muted-foreground">Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}</span>
                     <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}>
                       Next <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
@@ -462,14 +463,14 @@ export function CertificationCampaignsPage() {
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <input type="checkbox" id="auto_revoke" checked={newCampaign.auto_revoke} onChange={(e) => setNewCampaign(prev => ({ ...prev, auto_revoke: e.target.checked }))} className="rounded border-gray-300" />
+                <input type="checkbox" id="auto_revoke" checked={newCampaign.auto_revoke} onChange={(e) => setNewCampaign(prev => ({ ...prev, auto_revoke: e.target.checked }))} className="rounded border-border" />
                 <Label htmlFor="auto_revoke">Auto-revoke unreviewed items</Label>
               </div>
               {newCampaign.auto_revoke && (
                 <div className="flex items-center gap-2">
                   <Label>Grace period:</Label>
                   <Input type="number" value={newCampaign.grace_period_days} onChange={(e) => setNewCampaign(prev => ({ ...prev, grace_period_days: parseInt(e.target.value) || 7 }))} className="w-20" min={0} />
-                  <span className="text-sm text-gray-500">days</span>
+                  <span className="text-sm text-muted-foreground">days</span>
                 </div>
               )}
             </div>
@@ -497,42 +498,42 @@ export function CertificationCampaignsPage() {
               </div>
             ) : (
               <div className="rounded-md border">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="p-3 text-left text-sm font-medium">Started</th>
-                      <th className="p-3 text-left text-sm font-medium">Deadline</th>
-                      <th className="p-3 text-left text-sm font-medium">Status</th>
-                      <th className="p-3 text-left text-sm font-medium">Progress</th>
-                      <th className="p-3 text-left text-sm font-medium">Auto-Revoked</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b bg-muted">
+                      <TableHead className="p-3 text-left text-sm font-medium">Started</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Deadline</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Status</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Progress</TableHead>
+                      <TableHead className="p-3 text-left text-sm font-medium">Auto-Revoked</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {runs.map((run) => (
-                      <tr key={run.id} className="border-b">
-                        <td className="p-3 text-sm">{formatDate(run.started_at)}</td>
-                        <td className="p-3 text-sm">{formatDate(run.deadline)}</td>
-                        <td className="p-3">
+                      <TableRow key={run.id} className="border-b">
+                        <TableCell className="p-3 text-sm">{formatDate(run.started_at)}</TableCell>
+                        <TableCell className="p-3 text-sm">{formatDate(run.deadline)}</TableCell>
+                        <TableCell className="p-3">
                           <Badge variant={run.status === 'in_progress' ? 'default' : run.status === 'completed' ? 'secondary' : 'destructive'}>
                             {run.status}
                           </Badge>
-                        </td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3">
                           <div className="w-28">
                             <div className="flex justify-between text-xs mb-1">
                               <span>{run.reviewed_items}/{run.total_items}</span>
                               <span>{getRunProgress(run)}%</span>
                             </div>
-                            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
                               <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${getRunProgress(run)}%` }} />
                             </div>
                           </div>
-                        </td>
-                        <td className="p-3 text-sm">{run.auto_revoked_items}</td>
-                      </tr>
+                        </TableCell>
+                        <TableCell className="p-3 text-sm">{run.auto_revoked_items}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </div>

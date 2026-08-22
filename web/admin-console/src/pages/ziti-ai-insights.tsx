@@ -12,6 +12,7 @@ import {
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
@@ -233,7 +234,7 @@ export function ZitiAIInsightsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Recommendations</CardDescription>
-            <CardTitle className="text-2xl text-blue-600">{insights?.recommendation_count ?? 0}</CardTitle>
+            <CardTitle className="text-2xl text-primary">{insights?.recommendation_count ?? 0}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -283,32 +284,31 @@ export function ZitiAIInsightsPage() {
           <CardDescription>Deviations from each identity's learned behavioral baseline</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="text-left p-4 font-medium">Identity</th>
-                  <th className="text-left p-4 font-medium">Anomaly</th>
-                  <th className="text-left p-4 font-medium">Severity</th>
-                  <th className="text-left p-4 font-medium">Detected</th>
-                  <th className="text-left p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+          <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead className="text-left p-4 font-medium">Identity</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Anomaly</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Severity</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Detected</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y">
                 {(anomalies || []).map((anomaly) => (
-                  <tr key={anomaly.id} className="hover:bg-muted/50">
-                    <td className="p-4">
+                  <TableRow key={anomaly.id} className="hover:bg-muted/50">
+                    <TableCell className="p-4">
                       <div className="font-medium">{anomaly.identity_name || anomaly.identity_id}</div>
                       <div className="text-xs text-muted-foreground font-mono">{anomaly.identity_id}</div>
-                    </td>
-                    <td className="p-4">{anomalyTypeLabel[anomaly.anomaly_type] || anomaly.anomaly_type}</td>
-                    <td className="p-4">
+                    </TableCell>
+                    <TableCell className="p-4">{anomalyTypeLabel[anomaly.anomaly_type] || anomaly.anomaly_type}</TableCell>
+                    <TableCell className="p-4">
                       <Badge className={severityBadge(anomaly.severity)}>{anomaly.severity}</Badge>
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="p-4 text-sm text-muted-foreground">
                       {new Date(anomaly.detected_at).toLocaleString()}
-                    </td>
-                    <td className="p-4 space-x-2">
+                    </TableCell>
+                    <TableCell className="p-4 space-x-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -323,19 +323,18 @@ export function ZitiAIInsightsPage() {
                       >
                         Resolve
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {(anomalies || []).length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                  <TableRow>
+                    <TableCell colSpan={5} className="p-8 text-center text-muted-foreground">
                       No open anomalies — run an analysis to check the fabric against learned baselines
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         </CardContent>
       </Card>
 
@@ -351,21 +350,20 @@ export function ZitiAIInsightsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="text-left p-4 font-medium">Identity</th>
-                  <th className="text-left p-4 font-medium">Score</th>
-                  <th className="text-left p-4 font-medium">Level</th>
-                  <th className="text-left p-4 font-medium">Signals</th>
-                  <th className="text-left p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+          <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead className="text-left p-4 font-medium">Identity</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Score</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Level</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Signals</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y">
                 {(insights?.top_risks || []).map((risk) => (
-                  <tr key={risk.identity_id} className="hover:bg-muted/50">
-                    <td className="p-4">
+                  <TableRow key={risk.identity_id} className="hover:bg-muted/50">
+                    <TableCell className="p-4">
                       {/* Lead with the person, not the UUID: the action in this
                           row disconnects them, so who it affects has to be the
                           first thing read. The fabric name stays visible
@@ -389,15 +387,15 @@ export function ZitiAIInsightsPage() {
                               rendered twice, which reads like two identities. */}
                           {risk.subject ? risk.identity_name : null}
                         </div>
-                    </td>
-                    <td className="p-4 font-mono">{risk.score}</td>
-                    <td className="p-4">
+                    </TableCell>
+                    <TableCell className="p-4 font-mono">{risk.score}</TableCell>
+                    <TableCell className="p-4">
                       <Badge className={severityBadge(risk.level)}>{risk.level}</Badge>
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="p-4 text-sm text-muted-foreground">
                       {risk.signals?.length ? risk.signals.join(', ') : '—'}
-                    </td>
-                    <td className="p-4">
+                    </TableCell>
+                    <TableCell className="p-4">
                       {risk.quarantined ? (
                         <Button
                           size="sm"
@@ -430,19 +428,18 @@ export function ZitiAIInsightsPage() {
                           )}
                         </ConfirmAction>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {(insights?.top_risks || []).length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                  <TableRow>
+                    <TableCell colSpan={5} className="p-8 text-center text-muted-foreground">
                       No identities found
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         </CardContent>
       </Card>
 

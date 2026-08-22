@@ -13,6 +13,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -268,22 +269,22 @@ export function DelegationsPage() {
             </div>
           ) : (
             <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="p-3 text-left text-sm font-medium">Delegate</th>
-                    <th className="p-3 text-left text-sm font-medium">Scope Type</th>
-                    <th className="p-3 text-left text-sm font-medium">Scope</th>
-                    <th className="p-3 text-left text-sm font-medium">Permissions</th>
-                    <th className="p-3 text-left text-sm font-medium">Expires</th>
-                    <th className="p-3 text-left text-sm font-medium">Enabled</th>
-                    <th className="p-3 text-right text-sm font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b bg-muted">
+                    <TableHead className="p-3 text-left text-sm font-medium">Delegate</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Scope Type</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Scope</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Permissions</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Expires</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Enabled</TableHead>
+                    <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {items.map((d) => (
-                    <tr key={d.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
+                    <TableRow key={d.id} className="border-b hover:bg-muted">
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
                             <UserCheck className="h-5 w-5 text-blue-700" />
@@ -291,18 +292,18 @@ export function DelegationsPage() {
                           <div>
                             <p className="font-medium">{d.delegate_name || d.delegate_id}</p>
                             {d.delegated_by_name && (
-                              <p className="text-xs text-gray-500">by {d.delegated_by_name}</p>
+                              <p className="text-xs text-muted-foreground">by {d.delegated_by_name}</p>
                             )}
                           </div>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant="secondary">{d.scope_type}</Badge>
-                      </td>
-                      <td className="p-3 text-gray-600">
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground">
                         {d.scope_name || d.scope_id}
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="flex flex-wrap gap-1">
                           {d.permissions.slice(0, 3).map((p, i) => (
                             <Badge key={i} variant="outline" className="text-xs">{p}</Badge>
@@ -311,16 +312,16 @@ export function DelegationsPage() {
                             <Badge variant="outline" className="text-xs">+{d.permissions.length - 3} more</Badge>
                           )}
                         </div>
-                      </td>
-                      <td className="p-3 text-gray-500 text-sm">
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground text-sm">
                         {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : 'Never'}
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant={d.enabled ? 'default' : 'secondary'}>
                           {d.enabled ? 'Yes' : 'No'}
                         </Badge>
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="p-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
@@ -343,18 +344,18 @@ export function DelegationsPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
 
           {/* Pagination */}
           {totalCount > PAGE_SIZE && (
             <div className="flex items-center justify-between pt-4 px-1">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount} delegations
               </p>
               <div className="flex items-center gap-2">
@@ -367,7 +368,7 @@ export function DelegationsPage() {
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Previous
                 </Button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
                   Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
                 </span>
                 <Button
@@ -401,7 +402,7 @@ export function DelegationsPage() {
                 required
                 placeholder="e.g. 00000000-0000-0000-0000-000000000000"
               />
-              <p className="text-xs text-gray-500">User UUID of the delegate — copy it from the Users page.</p>
+              <p className="text-xs text-muted-foreground">User UUID of the delegate — copy it from the Users page.</p>
               {formData.delegate_id.trim() !== '' && !isUuid(formData.delegate_id) && (
                 <p className="text-xs text-destructive">Must be a user UUID, not a username or email.</p>
               )}
@@ -437,7 +438,7 @@ export function DelegationsPage() {
                 required
                 placeholder="e.g. 00000000-0000-0000-0000-000000000000"
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 {SCOPE_ID_HINT[formData.scope_type] ?? 'UUID of the scoped resource.'}
               </p>
               {formData.scope_id.trim() !== '' && !isUuid(formData.scope_id) && (
@@ -452,7 +453,7 @@ export function DelegationsPage() {
                 onChange={(e) => setFormData(prev => ({ ...prev, permissions_text: e.target.value }))}
                 placeholder="users:read, users:write, groups:manage"
               />
-              <p className="text-xs text-gray-500">Format: resource:action, separated by commas</p>
+              <p className="text-xs text-muted-foreground">Format: resource:action, separated by commas</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="expires_at">Expires At (optional)</Label>

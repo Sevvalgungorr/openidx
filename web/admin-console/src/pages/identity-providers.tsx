@@ -377,7 +377,7 @@ export function IdentityProvidersPage() {
         <CardContent>
           <div className="mb-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search providers..."
                 value={search}
@@ -486,7 +486,7 @@ export function IdentityProvidersPage() {
                 href={selectedTemplate.docsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
               >
                 Setup guide <ExternalLink className="h-3 w-3" />
               </a>

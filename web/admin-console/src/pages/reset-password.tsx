@@ -182,8 +182,8 @@ export function ResetPasswordPage() {
           )}
         </CardContent>
 
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-          <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+        <div className="px-6 py-4 bg-muted border-t border-border rounded-b-lg">
+          <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
             <span>Privacy</span>
             <span>•</span>
             <span>Terms</span>
@@ -194,8 +194,8 @@ export function ResetPasswordPage() {
       </Card>
 
       <div className="absolute bottom-4 text-center w-full">
-        <p className="text-sm text-gray-500">
-          Powered by <span className="font-semibold text-gray-700">OpenIDX</span>
+        <p className="text-sm text-muted-foreground">
+          Powered by <span className="font-semibold text-foreground">OpenIDX</span>
         </p>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { Smartphone, Check, X, Clock, Settings, CheckCircle2, XCircle, AlertCirc
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -162,7 +163,7 @@ export function DeviceTrustApprovalPage() {
       case 'rejected':
         return <Badge className="bg-red-100 text-red-800"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>
       case 'expired':
-        return <Badge className="bg-gray-100 text-gray-800"><AlertCircle className="h-3 w-3 mr-1" />Expired</Badge>
+        return <Badge className="bg-muted text-foreground"><AlertCircle className="h-3 w-3 mr-1" />Expired</Badge>
       default:
         return <Badge>{status}</Badge>
     }
@@ -304,59 +305,58 @@ export function DeviceTrustApprovalPage() {
               <p>No trust requests found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
+            <Table className="text-sm">
+                <TableHeader>
+                  <TableRow className="border-b">
                     {statusFilter === 'pending' && (
-                      <th className="py-3 px-2">
+                      <TableHead className="py-3 px-2">
                         <Checkbox
                           checked={selectedRequests.length === requests.length}
                           onCheckedChange={selectAll}
                         />
-                      </th>
+                      </TableHead>
                     )}
-                    <th className="text-left py-3 px-2 font-medium">User</th>
-                    <th className="text-left py-3 px-2 font-medium">Device</th>
-                    <th className="text-left py-3 px-2 font-medium">IP Address</th>
-                    <th className="text-left py-3 px-2 font-medium">Justification</th>
-                    <th className="text-left py-3 px-2 font-medium">Status</th>
-                    <th className="text-left py-3 px-2 font-medium">Requested</th>
-                    <th className="text-left py-3 px-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+                    <TableHead className="text-left py-3 px-2 font-medium">User</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Device</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">IP Address</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Justification</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Status</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Requested</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {requests.map((request) => (
-                    <tr key={request.id} className="border-b hover:bg-muted/50">
+                    <TableRow key={request.id} className="border-b hover:bg-muted/50">
                       {statusFilter === 'pending' && (
-                        <td className="py-3 px-2">
+                        <TableCell className="py-3 px-2">
                           <Checkbox
                             checked={selectedRequests.includes(request.id)}
                             onCheckedChange={() => toggleSelectRequest(request.id)}
                           />
-                        </td>
+                        </TableCell>
                       )}
-                      <td className="py-3 px-2">
+                      <TableCell className="py-3 px-2">
                         <div>
                           <p className="font-medium">{request.user_name}</p>
                           <p className="text-xs text-muted-foreground">{request.user_email}</p>
                         </div>
-                      </td>
-                      <td className="py-3 px-2">
+                      </TableCell>
+                      <TableCell className="py-3 px-2">
                         <div>
                           <p>{request.device_name}</p>
                           <p className="text-xs text-muted-foreground">{request.device_type}</p>
                         </div>
-                      </td>
-                      <td className="py-3 px-2 font-mono text-xs">{request.ip_address}</td>
-                      <td className="py-3 px-2 max-w-[200px] truncate" title={request.justification}>
+                      </TableCell>
+                      <TableCell className="py-3 px-2 font-mono text-xs">{request.ip_address}</TableCell>
+                      <TableCell className="py-3 px-2 max-w-[200px] truncate" title={request.justification}>
                         {request.justification || '-'}
-                      </td>
-                      <td className="py-3 px-2">{getStatusBadge(request.status)}</td>
-                      <td className="py-3 px-2 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell className="py-3 px-2">{getStatusBadge(request.status)}</TableCell>
+                      <TableCell className="py-3 px-2 whitespace-nowrap">
                         {new Date(request.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-2">
+                      </TableCell>
+                      <TableCell className="py-3 px-2">
                         {request.status === 'pending' && (
                           <div className="flex gap-1">
                             <Button
@@ -382,12 +382,11 @@ export function DeviceTrustApprovalPage() {
                             {request.review_notes.substring(0, 20)}...
                           </span>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>

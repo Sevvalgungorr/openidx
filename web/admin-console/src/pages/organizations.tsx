@@ -184,7 +184,7 @@ export function OrganizationsPage() {
                       <Badge variant={org.status === 'active' ? 'default' : 'secondary'}>{org.status}</Badge>
                     </TableCell>
                     <TableCell>
-                      <button className="flex items-center gap-1 text-blue-600 hover:underline" onClick={() => setMembersOrg(org)}>
+                      <button className="flex items-center gap-1 text-primary hover:underline" onClick={() => setMembersOrg(org)}>
                         <Users className="h-3 w-3" />{org.member_count}
                       </button>
                     </TableCell>

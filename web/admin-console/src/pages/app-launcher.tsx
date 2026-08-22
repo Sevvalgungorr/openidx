@@ -81,7 +81,7 @@ export function AppLauncherPage() {
                     <img src={app.logo_url} alt={app.name} className="h-10 w-10 rounded-lg object-cover" />
                   ) : (
                     <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <AppWindow className="h-6 w-6 text-blue-600" />
+                      <AppWindow className="h-6 w-6 text-primary" />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">

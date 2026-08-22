@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bell, Plus, Trash2, Send, BarChart3, Route, Megaphone, Edit } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import { QueryError } from '../components/query-error'
@@ -53,11 +54,11 @@ const CHANNELS = ['in_app', 'email', 'sms', 'push']
 
 const statusBadgeClass = (status: string) => {
   const map: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-800',
+    draft: 'bg-muted text-foreground',
     scheduled: 'bg-yellow-100 text-yellow-800',
     sent: 'bg-green-100 text-green-800',
   }
-  return map[status] || 'bg-gray-100 text-gray-800'
+  return map[status] || 'bg-muted text-foreground'
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -366,45 +367,45 @@ export function NotificationAdminPage() {
               </div>
             ) : (
               <div className="rounded-md border">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left py-3 px-4 text-sm font-medium">Name</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Event Type</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Channels</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Priority</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Enabled</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b bg-muted/50">
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Name</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Event Type</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Channels</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Priority</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Enabled</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {rules.map(rule => (
-                      <tr key={rule.id} className="border-b last:border-0">
-                        <td className="py-3 px-4 text-sm font-medium">{rule.name}</td>
-                        <td className="py-3 px-4 text-sm">
+                      <TableRow key={rule.id} className="border-b last:border-0">
+                        <TableCell className="py-3 px-4 text-sm font-medium">{rule.name}</TableCell>
+                        <TableCell className="py-3 px-4 text-sm">
                           <Badge variant="outline">{rule.event_type}</Badge>
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <div className="flex gap-1 flex-wrap">
                             {rule.channels.map(ch => (
                               <Badge key={ch} className="text-xs bg-blue-100 text-blue-800">{ch}</Badge>
                             ))}
                           </div>
-                        </td>
-                        <td className="py-3 px-4 text-sm">{rule.priority}</td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm">{rule.priority}</TableCell>
+                        <TableCell className="py-3 px-4">
                           <button
                             onClick={() => toggleRuleMutation.mutate({ id: rule.id, enabled: !rule.enabled })}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                              rule.enabled ? 'bg-blue-600' : 'bg-gray-200'
+                              rule.enabled ? 'bg-primary' : 'bg-muted'
                             }`}
                           >
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                               rule.enabled ? 'translate-x-6' : 'translate-x-1'
                             }`} />
                           </button>
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <div className="flex gap-1">
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Edit" onClick={() => startEditRule(rule)}>
                               <Edit className="h-4 w-4" />
@@ -423,11 +424,11 @@ export function NotificationAdminPage() {
                               )}
                             </ConfirmAction>
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>
@@ -550,39 +551,39 @@ export function NotificationAdminPage() {
                 <p className="text-sm">Create a broadcast to send notifications to users</p>
               </div>
             ) : (
-              <div className="rounded-md border overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left py-3 px-4 text-sm font-medium">Title</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Channel</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Target</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Status</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Recipients</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Delivered</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Read</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b bg-muted/50">
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Title</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Channel</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Target</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Status</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Recipients</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Delivered</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Read</TableHead>
+                      <TableHead className="text-left py-3 px-4 text-sm font-medium">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {broadcasts.map(broadcast => (
-                      <tr key={broadcast.id} className="border-b last:border-0">
-                        <td className="py-3 px-4 text-sm font-medium">{broadcast.title}</td>
-                        <td className="py-3 px-4 text-sm">
+                      <TableRow key={broadcast.id} className="border-b last:border-0">
+                        <TableCell className="py-3 px-4 text-sm font-medium">{broadcast.title}</TableCell>
+                        <TableCell className="py-3 px-4 text-sm">
                           <Badge variant="outline">{broadcast.channel}</Badge>
-                        </td>
-                        <td className="py-3 px-4 text-sm">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm">
                           <Badge variant="outline">{broadcast.target_type}</Badge>
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <Badge className={statusBadgeClass(broadcast.status)}>
                             {broadcast.status}
                           </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-sm">{broadcast.total_recipients}</td>
-                        <td className="py-3 px-4 text-sm">{broadcast.delivered_count}</td>
-                        <td className="py-3 px-4 text-sm">{broadcast.read_count}</td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-sm">{broadcast.total_recipients}</TableCell>
+                        <TableCell className="py-3 px-4 text-sm">{broadcast.delivered_count}</TableCell>
+                        <TableCell className="py-3 px-4 text-sm">{broadcast.read_count}</TableCell>
+                        <TableCell className="py-3 px-4">
                           <div className="flex gap-1">
                             {broadcast.status === 'draft' && (
                               <>
@@ -630,11 +631,11 @@ export function NotificationAdminPage() {
                               </>
                             )}
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>
@@ -714,9 +715,9 @@ export function NotificationAdminPage() {
                               {channel}
                             </div>
                             <div className="flex-1">
-                              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                              <div className="w-full bg-muted rounded-full h-2.5">
                                 <div
-                                  className="bg-blue-600 h-2.5 rounded-full transition-all"
+                                  className="bg-primary h-2.5 rounded-full transition-all"
                                   style={{ width: `${percentage}%` }}
                                 />
                               </div>

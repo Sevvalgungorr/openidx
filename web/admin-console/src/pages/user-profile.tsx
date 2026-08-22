@@ -7,6 +7,7 @@ import { Label } from '../components/ui/label'
 import { Switch } from '../components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog'
 import { useToast } from '../hooks/use-toast'
 import { api, UserProfile, MFASetupResponse, MFAEnableResponse } from '../lib/api'
@@ -604,7 +605,7 @@ export function UserProfilePage() {
                     <CardDescription>Scan QR code or enter secret manually</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="flex justify-center bg-white p-8 rounded-lg border">
+                    <div className="flex justify-center bg-background p-8 rounded-lg border">
                       <QRCodeSVG
                         value={mfaSetup.qrCodeUrl}
                         size={320}
@@ -961,11 +962,11 @@ export function UserProfilePage() {
                     <div
                       key={browser.id}
                       className={`flex items-center justify-between p-3 border rounded-lg ${
-                        browser.active ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 opacity-60'
+                        browser.active ? 'bg-green-50 border-green-200' : 'bg-muted border-border opacity-60'
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <Globe className={`h-5 w-5 ${browser.active ? 'text-green-600' : 'text-gray-400'}`} />
+                        <Globe className={`h-5 w-5 ${browser.active ? 'text-green-600' : 'text-muted-foreground'}`} />
                         <div>
                           <p className="font-medium">{browser.name}</p>
                           <p className="text-xs text-muted-foreground">
@@ -1139,35 +1140,34 @@ export function UserProfilePage() {
                   <p className="text-muted-foreground">No active sessions</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2 font-medium">IP Address</th>
-                        <th className="text-left py-2 px-2 font-medium">User Agent</th>
-                        <th className="text-left py-2 px-2 font-medium">Started</th>
-                        <th className="text-left py-2 px-2 font-medium">Last Seen</th>
-                        <th className="text-left py-2 px-2 font-medium">Expires</th>
-                        <th className="text-left py-2 px-2 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <Table className="text-sm">
+                    <TableHeader>
+                      <TableRow className="border-b">
+                        <TableHead className="text-left py-2 px-2 font-medium">IP Address</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">User Agent</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Started</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Last Seen</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Expires</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {sessions.map((session) => (
-                        <tr key={session.id} className="border-b">
-                          <td className="py-2 px-2 font-mono text-xs">{session.ip_address}</td>
-                          <td className="py-2 px-2 max-w-[200px] truncate" title={session.user_agent}>
+                        <TableRow key={session.id} className="border-b">
+                          <TableCell className="py-2 px-2 font-mono text-xs">{session.ip_address}</TableCell>
+                          <TableCell className="py-2 px-2 max-w-[200px] truncate" title={session.user_agent}>
                             {session.user_agent}
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
                             {new Date(session.started_at).toLocaleString()}
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
                             {new Date(session.last_seen_at).toLocaleString()}
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
                             {new Date(session.expires_at).toLocaleString()}
-                          </td>
-                          <td className="py-2 px-2">
+                          </TableCell>
+                          <TableCell className="py-2 px-2">
                             <Button
                               variant="destructive"
                               size="sm"
@@ -1176,12 +1176,11 @@ export function UserProfilePage() {
                             >
                               Revoke
                             </Button>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
               )}
             </CardContent>
           </Card>
@@ -1196,7 +1195,7 @@ export function UserProfilePage() {
                   <div className="space-y-2 flex-1">
                     <p className="font-medium text-amber-900">Copy this token now. You won't be able to see it again.</p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-white border border-amber-200 px-3 py-2 rounded text-sm font-mono break-all select-all">
+                      <code className="flex-1 bg-background border border-amber-200 px-3 py-2 rounded text-sm font-mono break-all select-all">
                         {createdRawToken}
                       </code>
                       <Button
@@ -1330,26 +1329,25 @@ export function UserProfilePage() {
                   <p className="text-sm text-muted-foreground">Create a token to access the API programmatically.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2 font-medium">Name</th>
-                        <th className="text-left py-2 px-2 font-medium">Prefix</th>
-                        <th className="text-left py-2 px-2 font-medium">Scopes</th>
-                        <th className="text-left py-2 px-2 font-medium">Created</th>
-                        <th className="text-left py-2 px-2 font-medium">Last Used</th>
-                        <th className="text-left py-2 px-2 font-medium">Expires</th>
-                        <th className="text-left py-2 px-2 font-medium">Status</th>
-                        <th className="text-left py-2 px-2 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <Table className="text-sm">
+                    <TableHeader>
+                      <TableRow className="border-b">
+                        <TableHead className="text-left py-2 px-2 font-medium">Name</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Prefix</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Scopes</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Created</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Last Used</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Expires</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Status</TableHead>
+                        <TableHead className="text-left py-2 px-2 font-medium">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {accessTokens.map((token) => (
-                        <tr key={token.id} className="border-b">
-                          <td className="py-2 px-2 font-medium">{token.name}</td>
-                          <td className="py-2 px-2 font-mono text-xs">{token.key_prefix}...</td>
-                          <td className="py-2 px-2">
+                        <TableRow key={token.id} className="border-b">
+                          <TableCell className="py-2 px-2 font-medium">{token.name}</TableCell>
+                          <TableCell className="py-2 px-2 font-mono text-xs">{token.key_prefix}...</TableCell>
+                          <TableCell className="py-2 px-2">
                             <div className="flex flex-wrap gap-1">
                               {token.scopes.map((scope) => (
                                 <Badge key={scope} variant="secondary" className="text-xs">
@@ -1357,29 +1355,29 @@ export function UserProfilePage() {
                                 </Badge>
                               ))}
                             </div>
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
                             {new Date(token.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
                             {token.last_used_at
                               ? new Date(token.last_used_at).toLocaleDateString()
                               : 'Never'}
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
                             {token.expires_at
                               ? new Date(token.expires_at).toLocaleDateString()
                               : 'Never'}
-                          </td>
-                          <td className="py-2 px-2">
+                          </TableCell>
+                          <TableCell className="py-2 px-2">
                             <Badge
                               variant={token.status === 'active' ? 'secondary' : 'destructive'}
                               className="text-xs"
                             >
                               {token.status}
                             </Badge>
-                          </td>
-                          <td className="py-2 px-2">
+                          </TableCell>
+                          <TableCell className="py-2 px-2">
                             {token.status === 'active' && (
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -1404,12 +1402,11 @@ export function UserProfilePage() {
                                 </AlertDialogContent>
                               </AlertDialog>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
               )}
             </CardContent>
           </Card>

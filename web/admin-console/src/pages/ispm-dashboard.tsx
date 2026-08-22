@@ -53,7 +53,7 @@ const severityColors: Record<string, string> = {
 }
 
 const categoryColors: Record<string, string> = {
-  authentication: 'text-blue-600',
+  authentication: 'text-primary',
   authorization: 'text-purple-600',
   accounts: 'text-green-600',
   compliance: 'text-orange-600',
@@ -77,7 +77,7 @@ function CategoryScore({ name, score }: { name: string; score: number }) {
         <span className="capitalize">{name}</span>
         <span className="font-medium">{score}%</span>
       </div>
-      <div className="h-2 bg-gray-200 rounded-full">
+      <div className="h-2 bg-muted rounded-full">
         <div className={`h-2 rounded-full ${color}`} style={{ width: `${score}%` }} />
       </div>
     </div>

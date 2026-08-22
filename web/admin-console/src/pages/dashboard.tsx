@@ -140,7 +140,7 @@ function activityIcon(type: string) {
 function PersonalDashboard({ name }: { name?: string }) {
   const firstName = (name ?? '').trim().split(/\s+/)[0] || 'there'
   const actions = [
-    { title: 'My Apps', description: 'Launch the applications assigned to you', icon: Rocket, link: '/app-launcher', color: 'text-blue-600' },
+    { title: 'My Apps', description: 'Launch the applications assigned to you', icon: Rocket, link: '/app-launcher', color: 'text-primary' },
     { title: 'My Access', description: 'See your roles and groups; request more', icon: Eye, link: '/my-access', color: 'text-green-600' },
     { title: 'My Security', description: 'Your security score and recommendations', icon: ShieldCheck, link: '/my-security', color: 'text-purple-600' },
     { title: 'My Devices', description: 'Manage your registered devices', icon: Smartphone, link: '/my-devices', color: 'text-orange-600' },
@@ -233,7 +233,7 @@ export function DashboardPage() {
       value: stats?.total_users || 0,
       description: `${stats?.active_users || 0} active`,
       icon: Users,
-      color: 'text-blue-600',
+      color: 'text-primary',
       link: '/users',
     },
     {
@@ -349,17 +349,17 @@ export function DashboardPage() {
           <CardContent>
             <div className="space-y-2">
               {recentActivity.length === 0 ? (
-                <p className="text-sm text-gray-500">No recent activity</p>
+                <p className="text-sm text-muted-foreground">No recent activity</p>
               ) : (
                 recentActivity.map((item) => {
                   const Icon = activityIcon(item.type)
                   return (
-                    <div key={item.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg">
+                    <div key={item.id} className="flex items-center justify-between p-2 hover:bg-muted rounded-lg">
                       <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-gray-500" />
+                        <Icon className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">{eventLabel(item)}</span>
                       </div>
-                      <span className="text-xs text-gray-500">{relativeTime(item.timestamp)}</span>
+                      <span className="text-xs text-muted-foreground">{relativeTime(item.timestamp)}</span>
                     </div>
                   )
                 })
@@ -375,7 +375,7 @@ export function DashboardPage() {
           <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200 bg-blue-50/30">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Network className="h-4 w-4 text-blue-600" />
+                <Network className="h-4 w-4 text-primary" />
                 Zero Trust Network
                 {zitiStatus.controller_reachable ? (
                   <span className="ml-auto flex items-center gap-1.5 text-xs text-green-600">

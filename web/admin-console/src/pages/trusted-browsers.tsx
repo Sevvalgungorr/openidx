@@ -196,7 +196,7 @@ export function TrustedBrowsersPage() {
       <Card>
         <CardContent className="pt-4">
           <div className="flex items-start gap-3">
-            <Shield className="h-5 w-5 text-blue-600 mt-0.5" />
+            <Shield className="h-5 w-5 text-primary mt-0.5" />
             <div>
               <p className="font-medium">How Trusted Browsers Work</p>
               <ul className="text-sm text-muted-foreground mt-1 space-y-1">
@@ -230,7 +230,7 @@ export function TrustedBrowsersPage() {
               {activeBrowsers.map((browser) => (
                 <div
                   key={browser.id}
-                  className="flex items-center justify-between p-4 border rounded-lg bg-white"
+                  className="flex items-center justify-between p-4 border rounded-lg bg-background"
                 >
                   <div className="flex items-center gap-4">
                     <Monitor className="h-8 w-8 text-muted-foreground" />
@@ -276,7 +276,7 @@ export function TrustedBrowsersPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-gray-400" />
+              <XCircle className="h-5 w-5 text-muted-foreground" />
               Expired or Revoked
             </CardTitle>
             <CardDescription>These browsers are no longer trusted</CardDescription>
@@ -286,7 +286,7 @@ export function TrustedBrowsersPage() {
               {inactiveBrowsers.map((browser) => (
                 <div
                   key={browser.id}
-                  className="flex items-center justify-between p-4 border rounded-lg bg-gray-50 opacity-60"
+                  className="flex items-center justify-between p-4 border rounded-lg bg-muted opacity-60"
                 >
                   <div className="flex items-center gap-4">
                     <Monitor className="h-8 w-8 text-muted-foreground" />

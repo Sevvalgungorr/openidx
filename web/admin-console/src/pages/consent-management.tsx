@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { Switch } from '../components/ui/switch'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { api } from '../lib/api'
 import { ConfirmAction } from '../components/confirm-action'
 import { useToast } from '../hooks/use-toast'
@@ -110,7 +111,7 @@ function getStatusBadge(status: string) {
     in_progress: 'bg-blue-100 text-blue-800',
     completed: 'bg-green-100 text-green-800',
     rejected: 'bg-red-100 text-red-800',
-    draft: 'bg-gray-100 text-gray-800',
+    draft: 'bg-muted text-foreground',
     in_review: 'bg-blue-100 text-blue-800',
     approved: 'bg-green-100 text-green-800',
   }
@@ -124,7 +125,7 @@ function getStatusBadge(status: string) {
     approved: 'Approved',
   }
   return (
-    <Badge className={styles[status] || 'bg-gray-100 text-gray-800'}>
+    <Badge className={styles[status] || 'bg-muted text-foreground'}>
       {labels[status] || status}
     </Badge>
   )
@@ -138,7 +139,7 @@ function getRiskBadge(level: string) {
     critical: 'bg-red-100 text-red-800',
   }
   return (
-    <Badge className={styles[level] || 'bg-gray-100 text-gray-800'}>
+    <Badge className={styles[level] || 'bg-muted text-foreground'}>
       {level.charAt(0).toUpperCase() + level.slice(1)}
     </Badge>
   )
@@ -216,34 +217,34 @@ function UserConsentsTab() {
         <p className="text-sm text-muted-foreground py-8 text-center">No consent records found</p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-3 px-4 font-medium text-gray-500">User</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Type</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Version</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Granted</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Granted At</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Revoked At</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b bg-muted">
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">User</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Type</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Version</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Granted</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Granted At</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Revoked At</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filtered.map((consent) => (
-                <tr key={consent.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="py-3 px-4 font-medium">{consent.username}</td>
-                  <td className="py-3 px-4 capitalize">{consent.consent_type.replace(/_/g, ' ')}</td>
-                  <td className="py-3 px-4 text-gray-500">{consent.version}</td>
-                  <td className="py-3 px-4">
+                <TableRow key={consent.id} className="border-b last:border-0 hover:bg-muted">
+                  <TableCell className="py-3 px-4 font-medium">{consent.username}</TableCell>
+                  <TableCell className="py-3 px-4 capitalize">{consent.consent_type.replace(/_/g, ' ')}</TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{consent.version}</TableCell>
+                  <TableCell className="py-3 px-4">
                     <Badge className={consent.granted ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                       {consent.granted ? 'Yes' : 'No'}
                     </Badge>
-                  </td>
-                  <td className="py-3 px-4 text-gray-500">{formatDate(consent.granted_at)}</td>
-                  <td className="py-3 px-4 text-gray-500">{formatDate(consent.revoked_at)}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{formatDate(consent.granted_at)}</TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{formatDate(consent.revoked_at)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
@@ -332,28 +333,28 @@ function DSARsTab() {
         <p className="text-sm text-muted-foreground py-8 text-center">No DSARs found</p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-3 px-4 font-medium text-gray-500">ID</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">User</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Type</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Due Date</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Created</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b bg-muted">
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">ID</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">User</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Type</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Status</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Due Date</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Created</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {dsars.map((dsar) => (
-                <tr key={dsar.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="py-3 px-4 font-mono text-xs">{dsar.id.slice(0, 8)}...</td>
-                  <td className="py-3 px-4 font-medium">{dsar.username}</td>
-                  <td className="py-3 px-4">{formatRequestType(dsar.request_type)}</td>
-                  <td className="py-3 px-4">{getStatusBadge(dsar.status)}</td>
-                  <td className="py-3 px-4 text-gray-500">{formatDate(dsar.due_date)}</td>
-                  <td className="py-3 px-4 text-gray-500">{formatDate(dsar.created_at)}</td>
-                  <td className="py-3 px-4">
+                <TableRow key={dsar.id} className="border-b last:border-0 hover:bg-muted">
+                  <TableCell className="py-3 px-4 font-mono text-xs">{dsar.id.slice(0, 8)}...</TableCell>
+                  <TableCell className="py-3 px-4 font-medium">{dsar.username}</TableCell>
+                  <TableCell className="py-3 px-4">{formatRequestType(dsar.request_type)}</TableCell>
+                  <TableCell className="py-3 px-4">{getStatusBadge(dsar.status)}</TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{formatDate(dsar.due_date)}</TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{formatDate(dsar.created_at)}</TableCell>
+                  <TableCell className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       {dsar.status === 'pending' && (
                         <Button
@@ -378,11 +379,11 @@ function DSARsTab() {
                         </Button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -541,37 +542,37 @@ function RetentionPoliciesTab() {
         <p className="text-sm text-muted-foreground py-8 text-center">No retention policies configured</p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Category</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-500">Retention (Days)</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Action</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-500">Enabled</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b bg-muted">
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Name</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Category</TableHead>
+                <TableHead className="text-right py-3 px-4 font-medium text-muted-foreground">Retention (Days)</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Action</TableHead>
+                <TableHead className="text-center py-3 px-4 font-medium text-muted-foreground">Enabled</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {policies.map((policy) => (
-                <tr key={policy.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="py-3 px-4 font-medium">{policy.name}</td>
-                  <td className="py-3 px-4 capitalize">{policy.data_category.replace(/_/g, ' ')}</td>
-                  <td className="py-3 px-4 text-right">{policy.retention_days}</td>
-                  <td className="py-3 px-4">
+                <TableRow key={policy.id} className="border-b last:border-0 hover:bg-muted">
+                  <TableCell className="py-3 px-4 font-medium">{policy.name}</TableCell>
+                  <TableCell className="py-3 px-4 capitalize">{policy.data_category.replace(/_/g, ' ')}</TableCell>
+                  <TableCell className="py-3 px-4 text-right">{policy.retention_days}</TableCell>
+                  <TableCell className="py-3 px-4">
                     <Badge className={policy.action === 'delete' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}>
                       {policy.action === 'delete' ? 'Delete' : 'Anonymize'}
                     </Badge>
-                  </td>
-                  <td className="py-3 px-4 text-center">
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-center">
                     <Switch
                       checked={policy.enabled}
                       onCheckedChange={(checked) =>
                         toggleMutation.mutate({ id: policy.id, enabled: checked })
                       }
                     />
-                  </td>
-                  <td className="py-3 px-4">
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
                     <ConfirmAction
                       title="Delete this retention policy?"
                       description={`This removes the retention policy ${policy.name}. Data in the ${policy.data_category} category will no longer be governed by it.`}
@@ -590,11 +591,11 @@ function RetentionPoliciesTab() {
                         </Button>
                       )}
                     </ConfirmAction>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -734,35 +735,35 @@ function ImpactAssessmentsTab() {
         <p className="text-sm text-muted-foreground py-8 text-center">No impact assessments found</p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Title</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Risk Level</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Assessor</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Created</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b bg-muted">
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Title</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Risk Level</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Status</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Assessor</TableHead>
+                <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {assessments.map((assessment) => (
-                <tr key={assessment.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="py-3 px-4">
+                <TableRow key={assessment.id} className="border-b last:border-0 hover:bg-muted">
+                  <TableCell className="py-3 px-4">
                     <div>
                       <p className="font-medium">{assessment.title}</p>
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                         {assessment.description}
                       </p>
                     </div>
-                  </td>
-                  <td className="py-3 px-4">{getRiskBadge(assessment.risk_level)}</td>
-                  <td className="py-3 px-4">{getStatusBadge(assessment.status)}</td>
-                  <td className="py-3 px-4 text-gray-600">{assessment.assessor}</td>
-                  <td className="py-3 px-4 text-gray-500">{formatDate(assessment.created_at)}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="py-3 px-4">{getRiskBadge(assessment.risk_level)}</TableCell>
+                  <TableCell className="py-3 px-4">{getStatusBadge(assessment.status)}</TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{assessment.assessor}</TableCell>
+                  <TableCell className="py-3 px-4 text-muted-foreground">{formatDate(assessment.created_at)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -881,8 +882,8 @@ export function ConsentManagementPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                   activeTab === tab.key
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-blue-600 text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 }`}
               >
                 <Icon className="h-4 w-4" />

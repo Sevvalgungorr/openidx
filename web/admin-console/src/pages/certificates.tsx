@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { useToast } from '../hooks/use-toast'
 import { ConfirmAction } from '../components/confirm-action'
 import { QueryError } from '../components/query-error'
@@ -482,30 +483,30 @@ docker restart openidx-oauth-tls-proxy openidx-ziti-controller-proxy openidx-zit
 
                   {/* Cert list */}
                   <div className="rounded-md border">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="p-2 text-left text-xs font-medium text-muted-foreground">Name</th>
-                          <th className="p-2 text-left text-xs font-medium text-muted-foreground">Type</th>
-                          <th className="p-2 text-left text-xs font-medium text-muted-foreground">Subject</th>
-                          <th className="p-2 text-left text-xs font-medium text-muted-foreground">Expiry</th>
-                          <th className="p-2 text-left text-xs font-medium text-muted-foreground">Auto Renew</th>
-                          <th className="p-2 w-[80px]"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b bg-muted/50">
+                          <TableHead className="p-2 text-left text-xs font-medium text-muted-foreground">Name</TableHead>
+                          <TableHead className="p-2 text-left text-xs font-medium text-muted-foreground">Type</TableHead>
+                          <TableHead className="p-2 text-left text-xs font-medium text-muted-foreground">Subject</TableHead>
+                          <TableHead className="p-2 text-left text-xs font-medium text-muted-foreground">Expiry</TableHead>
+                          <TableHead className="p-2 text-left text-xs font-medium text-muted-foreground">Auto Renew</TableHead>
+                          <TableHead className="p-2 w-[80px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {zitiCerts.map(cert => (
-                          <tr key={cert.id} className="border-b hover:bg-muted/50">
-                            <td className="p-2 text-sm font-medium">{cert.name}</td>
-                            <td className="p-2"><Badge variant="outline" className="text-xs">{cert.cert_type}</Badge></td>
-                            <td className="p-2 text-sm text-muted-foreground truncate max-w-[200px]">{cert.subject}</td>
-                            <td className="p-2">{expiryBadge(cert.days_until_expiry)}</td>
-                            <td className="p-2">
+                          <TableRow key={cert.id} className="border-b hover:bg-muted/50">
+                            <TableCell className="p-2 text-sm font-medium">{cert.name}</TableCell>
+                            <TableCell className="p-2"><Badge variant="outline" className="text-xs">{cert.cert_type}</Badge></TableCell>
+                            <TableCell className="p-2 text-sm text-muted-foreground truncate max-w-[200px]">{cert.subject}</TableCell>
+                            <TableCell className="p-2">{expiryBadge(cert.days_until_expiry)}</TableCell>
+                            <TableCell className="p-2">
                               <Badge variant={cert.auto_renew ? 'default' : 'secondary'} className="text-xs">
                                 {cert.auto_renew ? 'Yes' : 'No'}
                               </Badge>
-                            </td>
-                            <td className="p-2">
+                            </TableCell>
+                            <TableCell className="p-2">
                               <ConfirmAction
                                 title="Rotate this certificate?"
                                 description="A new certificate is issued and the old certificate stops working once rotated. Anything still presenting the old certificate will fail until it picks up the new one."
@@ -525,11 +526,11 @@ docker restart openidx-oauth-tls-proxy openidx-ziti-controller-proxy openidx-zit
                                   </Button>
                                 )}
                               </ConfirmAction>
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
               )}

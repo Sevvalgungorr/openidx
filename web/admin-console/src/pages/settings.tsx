@@ -312,8 +312,8 @@ export function SettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
               <tab.icon className="h-4 w-4" />
@@ -774,7 +774,7 @@ export function SettingsPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(formData.authentication.allowed_domains || []).length === 0 ? (
-                      <p className="text-sm text-gray-500">No domain restrictions. All domains are allowed.</p>
+                      <p className="text-sm text-muted-foreground">No domain restrictions. All domains are allowed.</p>
                     ) : (
                       formData.authentication.allowed_domains.map(domain => (
                         <span
@@ -785,7 +785,7 @@ export function SettingsPage() {
                           <button
                             type="button"
                             onClick={() => updateAuthentication('allowed_domains', formData.authentication.allowed_domains.filter(d => d !== domain))}
-                            className="hover:text-blue-600"
+                            className="hover:text-primary"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -810,7 +810,7 @@ export function SettingsPage() {
                       { id: 'apple', label: 'Apple' },
                       { id: 'facebook', label: 'Facebook' },
                     ].map(provider => (
-                      <label key={provider.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <label key={provider.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted cursor-pointer">
                         <input
                           type="checkbox"
                           checked={(formData.authentication.social_providers || []).includes(provider.id)}

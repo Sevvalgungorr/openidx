@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { api } from '../lib/api'
 import { QueryError } from '../components/query-error'
 
@@ -49,7 +50,7 @@ const SourceIcon = ({ source }: { source: string }) => {
     case 'guacamole':
       return <Monitor className="h-4 w-4 text-green-500" />
     default:
-      return <Globe className="h-4 w-4 text-gray-500" />
+      return <Globe className="h-4 w-4 text-muted-foreground" />
   }
 }
 
@@ -60,7 +61,7 @@ const SourceBadge = ({ source }: { source: string }) => {
     guacamole: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   }
   return (
-    <Badge className={colors[source] || 'bg-gray-100 text-gray-800'}>
+    <Badge className={colors[source] || 'bg-muted text-foreground'}>
       <SourceIcon source={source} />
       <span className="ml-1 capitalize">{source}</span>
     </Badge>
@@ -176,51 +177,49 @@ export function UnifiedAuditPage() {
           ) : isError ? (
             <div className="p-4"><QueryError error={error} resource="audit events" /></div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="text-left p-4 font-medium">Timestamp</th>
-                    <th className="text-left p-4 font-medium">Source</th>
-                    <th className="text-left p-4 font-medium">Event</th>
-                    <th className="text-left p-4 font-medium">Service</th>
-                    <th className="text-left p-4 font-medium">User</th>
-                    <th className="text-left p-4 font-medium">IP</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+            <Table>
+                <TableHeader className="bg-muted">
+                  <TableRow>
+                    <TableHead className="text-left p-4 font-medium">Timestamp</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Source</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Event</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Service</TableHead>
+                    <TableHead className="text-left p-4 font-medium">User</TableHead>
+                    <TableHead className="text-left p-4 font-medium">IP</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y">
                   {data?.events?.map((event) => (
-                    <tr key={event.id} className="hover:bg-muted/50">
-                      <td className="p-4 text-sm font-mono whitespace-nowrap">
+                    <TableRow key={event.id} className="hover:bg-muted/50">
+                      <TableCell className="p-4 text-sm font-mono whitespace-nowrap">
                         {new Date(event.created_at).toLocaleString()}
-                      </td>
-                      <td className="p-4">
+                      </TableCell>
+                      <TableCell className="p-4">
                         <SourceBadge source={event.source} />
-                      </td>
-                      <td className="p-4">
+                      </TableCell>
+                      <TableCell className="p-4">
                         <span className="font-medium">{event.event_type}</span>
-                      </td>
-                      <td className="p-4 text-sm">
+                      </TableCell>
+                      <TableCell className="p-4 text-sm">
                         {event.route_name || event.route_id || '-'}
-                      </td>
-                      <td className="p-4 text-sm">
+                      </TableCell>
+                      <TableCell className="p-4 text-sm">
                         {event.user_email || event.user_id || '-'}
-                      </td>
-                      <td className="p-4 text-sm font-mono">
+                      </TableCell>
+                      <TableCell className="p-4 text-sm font-mono">
                         {event.actor_ip || '-'}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
                   {(!data?.events || data.events.length === 0) && (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    <TableRow>
+                      <TableCell colSpan={6} className="p-8 text-center text-muted-foreground">
                         No audit events found
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>

@@ -866,8 +866,8 @@ export function LoginPage() {
             </div>
           </CardContent>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+          <div className="px-6 py-4 bg-muted border-t border-border rounded-b-lg">
+            <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
               <span>Privacy</span>
               <span>•</span>
               <span>Terms</span>
@@ -919,7 +919,7 @@ export function LoginPage() {
                   onClick={() => selectMfaMethod(method)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                    <div className="p-2 bg-blue-100 rounded-lg text-primary">
                       {info.icon}
                     </div>
                     <div className="text-left">
@@ -948,8 +948,8 @@ export function LoginPage() {
             </Button>
           </CardContent>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+          <div className="px-6 py-4 bg-muted border-t border-border rounded-b-lg">
+            <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
               <span>Privacy</span>
               <span>•</span>
               <span>Terms</span>
@@ -1009,7 +1009,7 @@ export function LoginPage() {
               <div className="space-y-4">
                 {webauthnLoading ? (
                   <div className="text-center py-6">
-                    <Loader2 className="h-10 w-10 animate-spin mx-auto text-blue-600 mb-4" />
+                    <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary mb-4" />
                     <p className="text-lg font-medium">Waiting for your security key...</p>
                     <p className="text-sm text-muted-foreground mt-2">
                       Touch your security key or use biometrics when prompted by your browser.
@@ -1164,8 +1164,8 @@ export function LoginPage() {
             </div>
           </CardContent>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+          <div className="px-6 py-4 bg-muted border-t border-border rounded-b-lg">
+            <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
               <span>Privacy</span>
               <span>•</span>
               <span>Terms</span>
@@ -1176,8 +1176,8 @@ export function LoginPage() {
         </Card>
 
         <div className="absolute bottom-4 text-center w-full">
-          <p className="text-sm text-gray-500">
-            Powered by <span className="font-semibold text-gray-700">OpenIDX</span>
+          <p className="text-sm text-muted-foreground">
+            Powered by <span className="font-semibold text-foreground">OpenIDX</span>
           </p>
         </div>
       </div>
@@ -1228,7 +1228,7 @@ export function LoginPage() {
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-2 text-muted-foreground">Or continue with password</span>
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with password</span>
                   </div>
                 </div>
               </div>
@@ -1286,7 +1286,7 @@ export function LoginPage() {
               </Button>
 
               <div className="text-center">
-                <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800">
+                <Link to="/forgot-password" className="text-sm text-primary hover:text-blue-800">
                   Forgot your password?
                 </Link>
               </div>
@@ -1370,8 +1370,8 @@ export function LoginPage() {
             </div>
           </CardContent>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+          <div className="px-6 py-4 bg-muted border-t border-border rounded-b-lg">
+            <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
               <span>Privacy</span>
               <span>•</span>
               <span>Terms</span>
@@ -1382,8 +1382,8 @@ export function LoginPage() {
         </Card>
 
         <div className="absolute bottom-4 text-center w-full">
-          <p className="text-sm text-gray-500">
-            Powered by <span className="font-semibold text-gray-700">OpenIDX</span>
+          <p className="text-sm text-muted-foreground">
+            Powered by <span className="font-semibold text-foreground">OpenIDX</span>
           </p>
         </div>
       </div>
@@ -1417,13 +1417,13 @@ export function LoginPage() {
           )}
 
           <div className="space-y-4">
-            <p className="text-center text-sm text-gray-600">
+            <p className="text-center text-sm text-muted-foreground">
               Sign in to access your OpenIDX admin console
             </p>
 
             {loadingIdPs ? (
               <div className="flex justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
               <>
@@ -1469,7 +1469,7 @@ export function LoginPage() {
                 </Button>
 
                 <div className="text-center">
-                  <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800">
+                  <Link to="/forgot-password" className="text-sm text-primary hover:text-blue-800">
                     Forgot your password?
                   </Link>
                 </div>
@@ -1478,14 +1478,14 @@ export function LoginPage() {
           </div>
 
           <div className="text-center">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Secured by OpenIDX authentication
             </p>
           </div>
         </CardContent>
 
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-          <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+        <div className="px-6 py-4 bg-muted border-t border-border rounded-b-lg">
+          <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
             <span>Privacy</span>
             <span>•</span>
             <span>Terms</span>
@@ -1529,11 +1529,11 @@ export function LoginPage() {
       {/* Footer branding */}
       <div className="absolute bottom-4 text-center w-full space-y-1">
         {branding.custom_footer && (
-          <p className="text-sm text-gray-600">{branding.custom_footer}</p>
+          <p className="text-sm text-muted-foreground">{branding.custom_footer}</p>
         )}
         {branding.powered_by_visible !== false && (
-          <p className="text-sm text-gray-500">
-            Powered by <span className="font-semibold text-gray-700">OpenIDX</span>
+          <p className="text-sm text-muted-foreground">
+            Powered by <span className="font-semibold text-foreground">OpenIDX</span>
           </p>
         )}
       </div>

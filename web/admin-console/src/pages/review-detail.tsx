@@ -15,6 +15,7 @@ import {
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -74,7 +75,7 @@ const statusColors: Record<string, string> = {
   in_progress: 'bg-blue-100 text-blue-800',
   completed: 'bg-green-100 text-green-800',
   expired: 'bg-red-100 text-red-800',
-  canceled: 'bg-gray-100 text-gray-800',
+  canceled: 'bg-muted text-foreground',
 }
 
 export function ReviewDetailPage() {
@@ -273,7 +274,7 @@ export function ReviewDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Status</p>
+                <p className="text-sm text-muted-foreground">Status</p>
                 <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${statusColors[review.status]}`}>
                   {review.status.replace('_', ' ')}
                 </span>
@@ -284,18 +285,18 @@ export function ReviewDetailPage() {
         <Card>
           <CardContent className="pt-6">
             <div>
-              <p className="text-sm text-gray-500">Review Period</p>
+              <p className="text-sm text-muted-foreground">Review Period</p>
               <p className="font-medium mt-1">{formatDate(review.start_date)}</p>
-              <p className="text-sm text-gray-500">to {formatDate(review.end_date)}</p>
+              <p className="text-sm text-muted-foreground">to {formatDate(review.end_date)}</p>
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div>
-              <p className="text-sm text-gray-500">Progress</p>
+              <p className="text-sm text-muted-foreground">Progress</p>
               <p className="text-2xl font-bold mt-1">{reviewedCount}/{totalItems}</p>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden mt-2">
+              <div className="h-2 bg-muted rounded-full overflow-hidden mt-2">
                 <div
                   className="h-full bg-indigo-600 rounded-full transition-all"
                   style={{ width: `${progress}%` }}
@@ -307,7 +308,7 @@ export function ReviewDetailPage() {
         <Card>
           <CardContent className="pt-6">
             <div>
-              <p className="text-sm text-gray-500">Pending Items</p>
+              <p className="text-sm text-muted-foreground">Pending Items</p>
               <p className="text-2xl font-bold mt-1 text-yellow-600">{pendingItems.length}</p>
             </div>
           </CardContent>
@@ -378,8 +379,8 @@ export function ReviewDetailPage() {
         </CardHeader>
         <CardContent>
           {review.status === 'pending' ? (
-            <div className="text-center py-12 text-gray-500">
-              <Clock className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+            <div className="text-center py-12 text-muted-foreground">
+              <Clock className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p>Start the review to populate items</p>
               <Button onClick={() => startReviewMutation.mutate()} className="mt-4" disabled={startReviewMutation.isPending}>
                 <Play className="mr-2 h-4 w-4" />
@@ -389,13 +390,13 @@ export function ReviewDetailPage() {
           ) : itemsLoading ? (
             <div className="text-center py-8">Loading items...</div>
           ) : items?.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No items to review</div>
+            <div className="text-center py-8 text-muted-foreground">No items to review</div>
           ) : (
             <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="p-3 text-left w-10">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b bg-muted">
+                    <TableHead className="p-3 text-left w-10">
                       <input
                         type="checkbox"
                         checked={selectedItems.length === pendingItems.length && pendingItems.length > 0}
@@ -403,18 +404,18 @@ export function ReviewDetailPage() {
                         disabled={pendingItems.length === 0}
                         className="h-4 w-4"
                       />
-                    </th>
-                    <th className="p-3 text-left text-sm font-medium">User</th>
-                    <th className="p-3 text-left text-sm font-medium">Resource</th>
-                    <th className="p-3 text-left text-sm font-medium">Type</th>
-                    <th className="p-3 text-left text-sm font-medium">Decision</th>
-                    <th className="p-3 text-right text-sm font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+                    </TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">User</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Resource</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Type</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Decision</TableHead>
+                    <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {items?.map((item) => (
-                    <tr key={item.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
+                    <TableRow key={item.id} className="border-b hover:bg-muted">
+                      <TableCell className="p-3">
                         <input
                           type="checkbox"
                           checked={selectedItems.includes(item.id)}
@@ -422,30 +423,30 @@ export function ReviewDetailPage() {
                           disabled={item.decision !== 'pending'}
                           className="h-4 w-4"
                         />
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center">
-                            <User className="h-4 w-4 text-gray-600" />
+                          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                            <User className="h-4 w-4 text-muted-foreground" />
                           </div>
                           <span className="text-sm truncate max-w-[150px]" title={item.user_id}>
                             {item.user_id.substring(0, 8)}...
                           </span>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <p className="font-medium">{item.resource_name || item.resource_id}</p>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant="outline">{item.resource_type}</Badge>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${decisionColors[item.decision]}`}>
                           {decisionIcons[item.decision]}
                           {item.decision}
                         </span>
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="p-3 text-right">
                         {item.decision === 'pending' ? (
                           <div className="flex justify-end gap-1">
                             <Button
@@ -477,15 +478,15 @@ export function ReviewDetailPage() {
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-sm text-gray-500">
+                          <span className="text-sm text-muted-foreground">
                             {item.decided_at ? formatDate(item.decided_at) : '-'}
                           </span>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -503,7 +504,7 @@ export function ReviewDetailPage() {
             <div className="space-y-2">
               <Label htmlFor="comments">Comments (optional)</Label>
               <div className="flex items-start gap-2">
-                <MessageSquare className="h-5 w-5 text-gray-400 mt-2" />
+                <MessageSquare className="h-5 w-5 text-muted-foreground mt-2" />
                 <Textarea
                   id="comments"
                   value={comments}

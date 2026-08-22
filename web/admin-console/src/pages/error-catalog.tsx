@@ -118,7 +118,7 @@ export function ErrorCatalogPage() {
 
   const httpStatusColor = (status: number) => {
     const prefix = String(status).charAt(0)
-    return HTTP_STATUS_COLORS[prefix] || 'bg-gray-100 text-gray-800'
+    return HTTP_STATUS_COLORS[prefix] || 'bg-muted text-foreground'
   }
 
   // ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ export function ErrorCatalogPage() {
                 {filteredErrors.map((err) => {
                   const isExpanded = expandedRows.has(err.code)
                   const catColor =
-                    CATEGORY_COLORS[err.category] || 'bg-gray-100 text-gray-800 border-gray-200'
+                    CATEGORY_COLORS[err.category] || 'bg-muted text-foreground border-border'
 
                   return (
                     <>

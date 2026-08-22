@@ -44,7 +44,7 @@ const typeColors: Record<string, string> = {
   password: 'bg-blue-100 text-blue-800',
   api_key: 'bg-purple-100 text-purple-800',
   ssh_key: 'bg-green-100 text-green-800',
-  generic: 'bg-gray-100 text-gray-800',
+  generic: 'bg-muted text-foreground',
 }
 
 const typeLabels: Record<string, string> = {
@@ -398,7 +398,7 @@ export function VaultSecretsPage() {
                   >
                     <TableCell className="font-medium">{s.name}</TableCell>
                     <TableCell>
-                      <Badge className={typeColors[s.type] || 'bg-gray-100 text-gray-800'}>
+                      <Badge className={typeColors[s.type] || 'bg-muted text-foreground'}>
                         {typeLabels[s.type] || s.type}
                       </Badge>
                     </TableCell>
@@ -408,7 +408,7 @@ export function VaultSecretsPage() {
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       {selectedId === s.id && (
-                        <span className="text-xs text-blue-600">▶ selected</span>
+                        <span className="text-xs text-primary">▶ selected</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -606,7 +606,7 @@ export function VaultSecretsPage() {
                             className={
                               c.status === 'active'
                                 ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
+                                : 'bg-muted text-foreground'
                             }
                           >
                             {c.status}

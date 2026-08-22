@@ -139,7 +139,7 @@ export function MyAccessPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg"><Shield className="h-6 w-6 text-blue-600" /></div>
+              <div className="p-2 bg-blue-100 rounded-lg"><Shield className="h-6 w-6 text-primary" /></div>
               <div>
                 <p className="text-2xl font-bold">{overview?.roles_count || 0}</p>
                 <p className="text-sm text-muted-foreground">Roles</p>
@@ -240,7 +240,7 @@ export function MyAccessPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <Clock className="h-5 w-5 text-blue-600" />
+                  <Clock className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-xl font-bold">{overview.privileged.active_checkouts}</p>
                     <p className="text-xs text-muted-foreground">Active checkouts</p>

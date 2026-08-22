@@ -70,7 +70,7 @@ function methodBadge(method: string) {
     DELETE: 'bg-red-100 text-red-800',
     PATCH: 'bg-purple-100 text-purple-800',
   }
-  return colors[method] || 'bg-gray-100 text-gray-800'
+  return colors[method] || 'bg-muted text-foreground'
 }
 
 export function UsageAnalyticsPage() {
@@ -146,7 +146,7 @@ export function UsageAnalyticsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">WAU</CardTitle>
-            <UserCheck className="h-4 w-4 text-blue-600" />
+            <UserCheck className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -251,7 +251,7 @@ export function UsageAnalyticsPage() {
                         {feature.adoption_percentage.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${featureColor(feature.adoption_percentage)}`}
                         style={{ width: `${feature.adoption_percentage}%` }}

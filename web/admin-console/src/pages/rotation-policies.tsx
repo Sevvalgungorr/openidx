@@ -440,7 +440,7 @@ export function RotationPoliciesPage() {
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">{secretName(p.secret_id)}</TableCell>
                     <TableCell>
-                      <Badge className={connectorColors[p.connector_type] || 'bg-gray-100 text-gray-800'}>
+                      <Badge className={connectorColors[p.connector_type] || 'bg-muted text-foreground'}>
                         {connectorLabels[p.connector_type] || p.connector_type}
                       </Badge>
                     </TableCell>
@@ -455,7 +455,7 @@ export function RotationPoliciesPage() {
                     <TableCell>
                       <Badge
                         className={
-                          p.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          p.enabled ? 'bg-green-100 text-green-800' : 'bg-muted text-foreground'
                         }
                       >
                         {p.enabled ? 'enabled' : 'disabled'}

@@ -40,6 +40,7 @@ import {
   DialogDescription,
 } from '../components/ui/dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { ConfirmAction } from '../components/confirm-action'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
@@ -112,7 +113,7 @@ const classificationIcons: Record<string, React.ComponentType<{ className?: stri
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-800',
+  pending: 'bg-muted text-foreground',
   discovering: 'bg-yellow-100 text-yellow-800',
   discovered: 'bg-green-100 text-green-800',
   published: 'bg-blue-100 text-blue-800',
@@ -373,7 +374,7 @@ export function AppPublishPage() {
                           {app.target_url}
                         </CardDescription>
                       </div>
-                      <Badge className={statusColors[app.status] || 'bg-gray-100'}>
+                      <Badge className={statusColors[app.status] || 'bg-muted'}>
                         {app.status === 'discovering' && (
                           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                         )}
@@ -558,11 +559,10 @@ export function AppPublishPage() {
                       <LoadingSpinner />
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-muted">
-                          <tr>
-                            <th className="w-12 p-4">
+                      <Table>
+                        <TableHeader className="bg-muted">
+                          <TableRow>
+                            <TableHead className="w-12 p-4">
                               <Checkbox
                                 checked={
                                   selected.size === unpublishedPaths.length &&
@@ -570,33 +570,33 @@ export function AppPublishPage() {
                                 }
                                 onCheckedChange={selectAllUnpublished}
                               />
-                            </th>
-                            <th className="text-left p-4 font-medium">Path</th>
-                            <th className="text-left p-4 font-medium">Methods</th>
-                            <th className="text-left p-4 font-medium">Classification</th>
-                            <th className="text-left p-4 font-medium">Auth</th>
-                            <th className="text-left p-4 font-medium">Source</th>
-                            <th className="text-left p-4 font-medium">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
+                            </TableHead>
+                            <TableHead className="text-left p-4 font-medium">Path</TableHead>
+                            <TableHead className="text-left p-4 font-medium">Methods</TableHead>
+                            <TableHead className="text-left p-4 font-medium">Classification</TableHead>
+                            <TableHead className="text-left p-4 font-medium">Auth</TableHead>
+                            <TableHead className="text-left p-4 font-medium">Source</TableHead>
+                            <TableHead className="text-left p-4 font-medium">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody className="divide-y">
                           {filteredPaths.map((path) => {
                             const ClsIcon = classificationIcons[path.classification] || ShieldCheck
                             return (
-                              <tr key={path.id} className="hover:bg-muted/50">
-                                <td className="p-4">
+                              <TableRow key={path.id} className="hover:bg-muted/50">
+                                <TableCell className="p-4">
                                   <Checkbox
                                     checked={selected.has(path.id)}
                                     onCheckedChange={() => togglePath(path.id)}
                                     disabled={path.published}
                                   />
-                                </td>
-                                <td className="p-4">
+                                </TableCell>
+                                <TableCell className="p-4">
                                   <code className="text-sm bg-muted px-2 py-0.5 rounded">
                                     {path.path}
                                   </code>
-                                </td>
-                                <td className="p-4">
+                                </TableCell>
+                                <TableCell className="p-4">
                                   <div className="flex gap-1 flex-wrap">
                                     {path.http_methods.map((m) => (
                                       <Badge key={m} variant="secondary" className="text-xs">
@@ -604,8 +604,8 @@ export function AppPublishPage() {
                                       </Badge>
                                     ))}
                                   </div>
-                                </td>
-                                <td className="p-4">
+                                </TableCell>
+                                <TableCell className="p-4">
                                   <Select
                                     value={path.classification}
                                     onValueChange={(val) =>
@@ -639,8 +639,8 @@ export function AppPublishPage() {
                                       )}
                                     </SelectContent>
                                   </Select>
-                                </td>
-                                <td className="p-4 text-sm">
+                                </TableCell>
+                                <TableCell className="p-4 text-sm">
                                   {path.require_auth ? (
                                     <span className="flex items-center gap-1 text-amber-600">
                                       <Lock className="h-3 w-3" /> Required
@@ -653,13 +653,13 @@ export function AppPublishPage() {
                                   ) : (
                                     <span className="text-green-600">Public</span>
                                   )}
-                                </td>
-                                <td className="p-4">
+                                </TableCell>
+                                <TableCell className="p-4">
                                   <Badge variant="outline" className="text-xs">
                                     {path.classification_source}
                                   </Badge>
-                                </td>
-                                <td className="p-4">
+                                </TableCell>
+                                <TableCell className="p-4">
                                   {path.published ? (
                                     <Badge className="bg-green-100 text-green-800">
                                       <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -668,22 +668,21 @@ export function AppPublishPage() {
                                   ) : (
                                     <Badge variant="secondary">Pending</Badge>
                                   )}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             )
                           })}
                           {filteredPaths.length === 0 && (
-                            <tr>
-                              <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                            <TableRow>
+                              <TableCell colSpan={7} className="p-8 text-center text-muted-foreground">
                                 {paths.length === 0
                                   ? 'No paths discovered yet. Run discovery first.'
                                   : 'No paths match your filter.'}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
                   )}
                 </CardContent>
               </Card>
@@ -696,30 +695,29 @@ export function AppPublishPage() {
           {selectedApp && (
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-muted">
-                      <tr>
-                        <th className="text-left p-4 font-medium">Path</th>
-                        <th className="text-left p-4 font-medium">Methods</th>
-                        <th className="text-left p-4 font-medium">Classification</th>
-                        <th className="text-left p-4 font-medium">Auth Policy</th>
-                        <th className="text-left p-4 font-medium">Route</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
+                  <Table>
+                    <TableHeader className="bg-muted">
+                      <TableRow>
+                        <TableHead className="text-left p-4 font-medium">Path</TableHead>
+                        <TableHead className="text-left p-4 font-medium">Methods</TableHead>
+                        <TableHead className="text-left p-4 font-medium">Classification</TableHead>
+                        <TableHead className="text-left p-4 font-medium">Auth Policy</TableHead>
+                        <TableHead className="text-left p-4 font-medium">Route</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="divide-y">
                       {paths
                         .filter((p) => p.published)
                         .map((path) => {
                           const ClsIcon = classificationIcons[path.classification] || ShieldCheck
                           return (
-                            <tr key={path.id} className="hover:bg-muted/50">
-                              <td className="p-4">
+                            <TableRow key={path.id} className="hover:bg-muted/50">
+                              <TableCell className="p-4">
                                 <code className="text-sm bg-muted px-2 py-0.5 rounded">
                                   {path.path}
                                 </code>
-                              </td>
-                              <td className="p-4">
+                              </TableCell>
+                              <TableCell className="p-4">
                                 <div className="flex gap-1">
                                   {path.http_methods.map((m) => (
                                     <Badge key={m} variant="secondary" className="text-xs">
@@ -727,43 +725,42 @@ export function AppPublishPage() {
                                     </Badge>
                                   ))}
                                 </div>
-                              </td>
-                              <td className="p-4">
+                              </TableCell>
+                              <TableCell className="p-4">
                                 <Badge className={classificationColors[path.classification]}>
                                   <ClsIcon className="h-3 w-3 mr-1" />
                                   {path.classification}
                                 </Badge>
-                              </td>
-                              <td className="p-4 text-sm">
+                              </TableCell>
+                              <TableCell className="p-4 text-sm">
                                 {path.require_auth
                                   ? `Auth: ${path.allowed_roles.length > 0 ? path.allowed_roles.join(', ') : 'any user'}`
                                   : 'Public'}
                                 {path.require_device_trust && ' + Device Trust'}
-                              </td>
-                              <td className="p-4">
+                              </TableCell>
+                              <TableCell className="p-4">
                                 {path.route_id && (
                                   <a
                                     href="/proxy-routes"
-                                    className="text-blue-600 hover:underline flex items-center gap-1 text-sm"
+                                    className="text-primary hover:underline flex items-center gap-1 text-sm"
                                   >
                                     View Route
                                     <ExternalLink className="h-3 w-3" />
                                   </a>
                                 )}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           )
                         })}
                       {paths.filter((p) => p.published).length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                        <TableRow>
+                          <TableCell colSpan={5} className="p-8 text-center text-muted-foreground">
                             No paths published yet. Go to Discovered Paths and publish some.
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       )}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
               </CardContent>
             </Card>
           )}

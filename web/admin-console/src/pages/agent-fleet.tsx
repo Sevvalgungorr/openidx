@@ -345,7 +345,7 @@ export function AgentFleetPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex justify-center bg-white p-4 rounded">
+              <div className="flex justify-center bg-background p-4 rounded">
                 <QRCodeCanvas value={qrData.qr_payload_json} size={280} level="M" includeMargin />
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">

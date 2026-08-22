@@ -271,8 +271,8 @@ export function DeveloperSettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
               <tab.icon className="h-4 w-4" />

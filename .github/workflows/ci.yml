@@ -75,10 +75,14 @@ jobs:
         run: |
           bash scripts/check-query-error-coverage.test.sh
           bash scripts/check-destructive-confirm.test.sh
+          bash scripts/check-no-raw-neutral-literals.test.sh
+          bash scripts/check-no-handrolled-tables.test.sh
       - name: Enforce UI safety guards
         run: |
           bash scripts/check-query-error-coverage.sh --enforce
           bash scripts/check-destructive-confirm.sh --enforce
+          bash scripts/check-no-raw-neutral-literals.sh --enforce
+          bash scripts/check-no-handrolled-tables.sh --enforce
 
   # The fault matrix used to run only on a developer's machine, which is the
   # same defect the prose checker had: a gate nobody runs cannot fail, so the

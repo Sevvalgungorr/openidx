@@ -119,7 +119,7 @@ export function LandingPage() {
       {/* Navigation */}
       <nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          scrolled ? 'bg-white/95 backdrop-blur-sm shadow-md' : 'bg-transparent'
+          scrolled ? 'bg-background/95 backdrop-blur-sm shadow-md' : 'bg-transparent'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -135,16 +135,16 @@ export function LandingPage() {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+              <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Features
               </a>
-              <a href="#integration" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+              <a href="#integration" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Integrations
               </a>
-              <a href="#pricing" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+              <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Pricing
               </a>
-              <a href="#docs" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+              <a href="#docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Documentation
               </a>
             </div>
@@ -174,18 +174,18 @@ export function LandingPage() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-b">
+          <div className="md:hidden bg-background border-b">
             <div className="px-4 py-4 space-y-3">
-              <a href="#features" className="block text-sm text-gray-600 hover:text-gray-900">
+              <a href="#features" className="block text-sm text-muted-foreground hover:text-foreground">
                 Features
               </a>
-              <a href="#integration" className="block text-sm text-gray-600 hover:text-gray-900">
+              <a href="#integration" className="block text-sm text-muted-foreground hover:text-foreground">
                 Integrations
               </a>
-              <a href="#pricing" className="block text-sm text-gray-600 hover:text-gray-900">
+              <a href="#pricing" className="block text-sm text-muted-foreground hover:text-foreground">
                 Pricing
               </a>
-              <a href="#docs" className="block text-sm text-gray-600 hover:text-gray-900">
+              <a href="#docs" className="block text-sm text-muted-foreground hover:text-foreground">
                 Documentation
               </a>
               <div className="pt-3 space-y-2">
@@ -214,14 +214,14 @@ export function LandingPage() {
               <span>Enterprise-Grade Security at 70% Less Cost</span>
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-6">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-6">
               Zero Trust Access Platform for{' '}
               <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                 Modern Enterprises
               </span>
             </h1>
 
-            <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            <p className="text-lg sm:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
               OpenIDX provides complete Identity and Access Management with SSO, MFA, access governance,
               and compliance reporting. Open source, self-hosted, enterprise-ready.
             </p>
@@ -240,7 +240,7 @@ export function LandingPage() {
               </Button>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
+            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <CheckCircle className="h-4 w-4 text-green-600" />
                 <span>No credit card required</span>
@@ -261,8 +261,8 @@ export function LandingPage() {
             {stats.map((stat, index) => (
               <Card key={index} className="text-center">
                 <CardContent className="pt-6">
-                  <div className="text-2xl sm:text-3xl font-bold text-blue-600">{stat.value}</div>
-                  <div className="text-sm text-gray-600 mt-1">{stat.label}</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-primary">{stat.value}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{stat.label}</div>
                 </CardContent>
               </Card>
             ))}
@@ -271,13 +271,13 @@ export function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
+      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-background">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
               Complete Security Platform
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Everything you need to secure access to your applications, data, and infrastructure
             </p>
           </div>
@@ -286,11 +286,11 @@ export function LandingPage() {
             {features.map((feature, index) => (
               <Card key={index} className="border-none shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
-                  <div className="h-12 w-12 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mb-4">
+                  <div className="h-12 w-12 rounded-lg bg-blue-100 text-primary flex items-center justify-center mb-4">
                     {feature.icon}
                   </div>
                   <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">{feature.description}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
                 </CardContent>
               </Card>
             ))}
@@ -299,13 +299,13 @@ export function LandingPage() {
       </section>
 
       {/* Integration Section */}
-      <section id="integration" className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
+      <section id="integration" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
               Integrates with Your Stack
             </h2>
-            <p className="text-lg text-gray-600">
+            <p className="text-lg text-muted-foreground">
               Connect with 100+ enterprise applications and identity providers
             </p>
           </div>
@@ -314,7 +314,7 @@ export function LandingPage() {
             {integrations.map((integration, index) => (
               <div
                 key={index}
-                className="px-6 py-3 bg-white rounded-full shadow-sm text-sm font-medium text-gray-700"
+                className="px-6 py-3 bg-background rounded-full shadow-sm text-sm font-medium text-foreground"
               >
                 {integration}
               </div>
@@ -336,7 +336,7 @@ export function LandingPage() {
                 <Button
                   size="lg"
                   variant="secondary"
-                  className="bg-white text-blue-600 hover:bg-gray-100 px-8"
+                  className="bg-background text-primary hover:bg-muted px-8"
                   onClick={handleLogin}
                 >
                   Start Free Trial
@@ -345,7 +345,7 @@ export function LandingPage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white text-white hover:bg-white/10 px-8"
+                  className="border-white text-white hover:bg-background/10 px-8"
                   onClick={() => navigate('/login')}
                 >
                   Schedule Demo
@@ -357,7 +357,7 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-900 text-gray-400">
+      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-900 text-muted-foreground">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>

@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Badge } from '../components/ui/badge'
 import { Input } from '../components/ui/input'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { UserLink } from '../components/user-link'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
@@ -152,7 +153,7 @@ export function AIIdentityIntelligencePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>MFA Coverage</CardDescription>
-            <CardTitle className="text-2xl text-blue-600">
+            <CardTitle className="text-2xl text-primary">
               {(overview?.mfa_coverage_pct ?? 0).toFixed(0)}%
             </CardTitle>
           </CardHeader>
@@ -251,53 +252,51 @@ export function AIIdentityIntelligencePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="text-left p-4 font-medium">User</th>
-                  <th className="text-left p-4 font-medium">Score</th>
-                  <th className="text-left p-4 font-medium">Level</th>
-                  <th className="text-left p-4 font-medium">MFA</th>
-                  <th className="text-left p-4 font-medium">Friction</th>
-                  <th className="text-left p-4 font-medium">Why</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+            <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead className="text-left p-4 font-medium">User</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Score</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Level</TableHead>
+                  <TableHead className="text-left p-4 font-medium">MFA</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Friction</TableHead>
+                  <TableHead className="text-left p-4 font-medium">Why</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y">
                 {(overview?.top_risks || []).map((u) => (
-                  <tr key={u.user_id} className="hover:bg-muted/50">
-                    <td className="p-4">
+                  <TableRow key={u.user_id} className="hover:bg-muted/50">
+                    <TableCell className="p-4">
                       <UserLink userId={u.user_id} name={u.username} subtitle={u.email} />
-                    </td>
-                    <td className="p-4 font-mono">{u.score}</td>
-                    <td className="p-4">
+                    </TableCell>
+                    <TableCell className="p-4 font-mono">{u.score}</TableCell>
+                    <TableCell className="p-4">
                       <Badge className={levelBadge(u.level)}>{u.level}</Badge>
-                    </td>
-                    <td className="p-4">
+                    </TableCell>
+                    <TableCell className="p-4">
                       {u.mfa_enrolled ? (
                         <ShieldCheck className="h-4 w-4 text-green-600" />
                       ) : (
                         <Badge variant="secondary">none</Badge>
                       )}
-                    </td>
-                    <td className="p-4">
+                    </TableCell>
+                    <TableCell className="p-4">
                       <Badge variant="secondary">{u.friction}</Badge>
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground max-w-md">
+                    </TableCell>
+                    <TableCell className="p-4 text-sm text-muted-foreground max-w-md">
                       {u.reasons?.length ? u.reasons.join('; ') : '—'}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {(overview?.top_risks || []).length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                  <TableRow>
+                    <TableCell colSpan={6} className="p-8 text-center text-muted-foreground">
                       No identities found
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         </CardContent>
       </Card>
     </div>

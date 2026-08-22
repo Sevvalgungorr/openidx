@@ -20,6 +20,8 @@ import { filterNavigation, type ViewMode } from '../config/navigation'
 import { CommandPalette } from './command-palette'
 import { NotificationBell } from './notification-bell'
 import { TenantSelector } from './tenant-selector'
+import { ThemeToggle } from './theme-toggle'
+import { Breadcrumbs } from './breadcrumbs'
 import { ErrorBoundary } from './error-boundary'
 import { LoadingSpinner } from './ui/loading-spinner'
 import { Badge } from './ui/badge'
@@ -54,7 +56,7 @@ function ZitiStatusIndicator() {
   return (
     <button
       onClick={() => navigate('/ziti-network')}
-      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors text-sm"
+      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted transition-colors text-sm"
       title="Ziti Network Status"
     >
       <Network className="h-4 w-4 text-blue-600" />
@@ -88,7 +90,7 @@ function ViewModeSwitcher({ level }: { level: number }) {
 
   return (
     <div
-      className="flex rounded-lg border bg-gray-50 p-0.5"
+      className="flex rounded-lg border bg-muted p-0.5"
       role="group"
       aria-label="Console view"
     >
@@ -98,8 +100,8 @@ function ViewModeSwitcher({ level }: { level: number }) {
           onClick={() => setViewMode(option.mode)}
           className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
             viewMode === option.mode
-              ? 'bg-white text-blue-700 shadow-sm'
-              : 'text-gray-500 hover:text-gray-800'
+              ? 'bg-background text-blue-700 shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
           aria-pressed={viewMode === option.mode}
         >
@@ -113,6 +115,7 @@ function ViewModeSwitcher({ level }: { level: number }) {
 export function Layout() {
   const { user, logout, hasRole } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [query, setQuery] = useState('')
   const { viewMode, collapsedDomains, toggleDomain } = useAppStore()
   const navigate = useNavigate()
@@ -136,12 +139,22 @@ export function Layout() {
     .toUpperCase() || 'U'
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-muted">
+      {/* Mobile drawer overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       {/* Sidebar */}
       <aside
         className={`${
           sidebarOpen ? 'w-64' : 'w-16'
-        } flex flex-col bg-white border-r transition-all duration-300`}
+        } fixed inset-y-0 left-0 z-50 flex flex-col bg-card border-r transition-transform duration-300 md:transition-all md:static md:z-auto md:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
       >
         {/* Logo */}
         <div className="flex h-16 items-center justify-between px-4 border-b">
@@ -166,7 +179,7 @@ export function Layout() {
           <div className="space-y-2 px-4 pt-3">
             <ViewModeSwitcher level={level} />
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
                 value={query}
@@ -178,13 +191,13 @@ export function Layout() {
               {searching ? (
                 <button
                   onClick={() => setQuery('')}
-                  className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"
+                  className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
                   aria-label="Clear menu search"
                 >
                   <X className="h-4 w-4" />
                 </button>
               ) : (
-                <kbd className="pointer-events-none absolute right-2 top-2 hidden rounded border bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-400 sm:block">
+                <kbd className="pointer-events-none absolute right-2 top-2 hidden rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:block">
                   ⌘K
                 </kbd>
               )}
@@ -195,7 +208,7 @@ export function Layout() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           {groups.length === 0 && sidebarOpen && (
-            <p className="px-3 py-2 text-sm text-gray-400">No menu items match.</p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">No menu items match.</p>
           )}
           {groups.map((group, gIdx) => {
             // While searching, everything relevant stays visible.
@@ -205,7 +218,7 @@ export function Layout() {
                 {group.label && sidebarOpen && (
                   <button
                     onClick={() => toggleDomain(group.id)}
-                    className="mt-4 flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    className="mt-4 flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
                     aria-expanded={!collapsed}
                   >
                     <group.icon className="h-3.5 w-3.5" />
@@ -220,7 +233,7 @@ export function Layout() {
                   group.sections.map((section, sIdx) => (
                     <div key={`${group.id}-${sIdx}`}>
                       {section.label && sidebarOpen && (
-                        <div className="px-3 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                        <div className="px-3 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                           {section.label}
                         </div>
                       )}
@@ -229,11 +242,12 @@ export function Layout() {
                           key={item.href}
                           to={item.href}
                           title={sidebarOpen ? undefined : item.name}
+                          onClick={() => setMobileOpen(false)}
                           className={({ isActive }) =>
                             `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                               isActive
                                 ? 'bg-blue-50 text-blue-700'
-                                : 'text-gray-600 hover:bg-gray-100'
+                                : 'text-muted-foreground hover:bg-muted'
                             }`
                           }
                         >
@@ -262,7 +276,7 @@ export function Layout() {
                 {sidebarOpen && (
                   <div className="ml-3 text-left">
                     <p className="text-sm font-medium">{user?.name}</p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
+                    <p className="text-xs text-muted-foreground">{user?.email}</p>
                   </div>
                 )}
               </Button>
@@ -271,7 +285,7 @@ export function Layout() {
               <DropdownMenuLabel>
                 <div>My Account</div>
                 {user?.roles && user.roles.length > 0 && (
-                  <div className="text-xs font-normal text-gray-500 mt-0.5">
+                  <div className="text-xs font-normal text-muted-foreground mt-0.5">
                     {user.roles.join(', ')}
                   </div>
                 )}
@@ -300,13 +314,25 @@ export function Layout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar with tenant selector, status indicators and notification bell */}
-        <header className="h-16 border-b bg-white flex items-center justify-end px-8 gap-4">
+        <header className="h-16 border-b bg-background flex items-center px-4 md:px-8 gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <div className="flex-1" />
           {isPlatformAdmin && <TenantSelector />}
           {isAdmin && <ZitiStatusIndicator />}
+          <ThemeToggle />
           <NotificationBell />
         </header>
         <main className="flex-1 overflow-auto">
           <div className="p-8">
+            <Breadcrumbs />
             {/* Keyed by route so a page-level render error shows a fallback
                 instead of white-screening the whole console, and clears when
                 the user navigates away. */}

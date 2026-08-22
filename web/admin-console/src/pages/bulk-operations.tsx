@@ -46,18 +46,18 @@ const operationTypes: Record<string, { label: string; description: string; needs
 
 const statusIcons: Record<string, React.ReactNode> = {
   completed: <CheckCircle className="h-4 w-4 text-green-600" />,
-  running: <Clock className="h-4 w-4 text-blue-600 animate-spin" />,
+  running: <Clock className="h-4 w-4 text-primary animate-spin" />,
   failed: <AlertTriangle className="h-4 w-4 text-red-600" />,
-  pending: <Clock className="h-4 w-4 text-gray-400" />,
-  cancelled: <X className="h-4 w-4 text-gray-400" />,
+  pending: <Clock className="h-4 w-4 text-muted-foreground" />,
+  cancelled: <X className="h-4 w-4 text-muted-foreground" />,
 }
 
 const statusColors: Record<string, string> = {
   completed: 'bg-green-100 text-green-800',
   running: 'bg-blue-100 text-blue-800',
   failed: 'bg-red-100 text-red-800',
-  pending: 'bg-gray-100 text-gray-800',
-  cancelled: 'bg-gray-100 text-gray-500',
+  pending: 'bg-muted text-foreground',
+  cancelled: 'bg-muted text-muted-foreground',
 }
 
 export function BulkOperationsPage() {
@@ -203,7 +203,7 @@ export function BulkOperationsPage() {
         <CardContent>
           <div className="divide-y">
             {ops.map(op => (
-              <div key={op.id} className="py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 px-2 rounded"
+              <div key={op.id} className="py-3 flex items-center justify-between cursor-pointer hover:bg-muted px-2 rounded"
                 onClick={() => setSelectedOpId(op.id)}>
                 <div className="flex items-center gap-3">
                   {statusIcons[op.status]}
@@ -222,7 +222,7 @@ export function BulkOperationsPage() {
                     </div>
                   </div>
                   {op.total_items > 0 && (
-                    <div className="w-20 h-2 bg-gray-200 rounded-full">
+                    <div className="w-20 h-2 bg-muted rounded-full">
                       <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${(op.processed_items / op.total_items) * 100}%` }} />
                     </div>
                   )}
@@ -254,7 +254,7 @@ export function BulkOperationsPage() {
                     <p className="text-xs text-muted-foreground">{item.entity_id}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge className={item.status === 'success' ? 'bg-green-100 text-green-800' : item.status === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}>
+                    <Badge className={item.status === 'success' ? 'bg-green-100 text-green-800' : item.status === 'error' ? 'bg-red-100 text-red-800' : 'bg-muted text-foreground'}>
                       {item.status}
                     </Badge>
                     {item.error_message && <span className="text-xs text-red-600">{item.error_message}</span>}

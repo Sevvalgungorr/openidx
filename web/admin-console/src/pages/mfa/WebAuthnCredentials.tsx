@@ -198,7 +198,7 @@ export function WebAuthnCredentialsPage() {
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-blue-600" />
+              <AlertCircle className="h-5 w-5 text-primary" />
               <p className="text-sm text-blue-800">
                 Security key registration requires a secure HTTPS connection. This feature will be available in
                 production.
@@ -284,7 +284,7 @@ export function WebAuthnCredentialsPage() {
                 >
                   <div className="flex items-center gap-3 flex-1">
                     <div className="p-2 bg-blue-100 rounded-lg">
-                      <KeyRound className="h-5 w-5 text-blue-600" />
+                      <KeyRound className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1">
                       {editingId === cred.id ? (

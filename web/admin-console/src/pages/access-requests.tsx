@@ -50,10 +50,10 @@ const statusBadge = (status: string) => {
     approved: 'bg-green-100 text-green-800',
     fulfilled: 'bg-green-100 text-green-800',
     denied: 'bg-red-100 text-red-800',
-    cancelled: 'bg-gray-100 text-gray-800',
+    cancelled: 'bg-muted text-foreground',
     expired: 'bg-orange-100 text-orange-800',
   }
-  return map[status] || 'bg-gray-100 text-gray-800'
+  return map[status] || 'bg-muted text-foreground'
 }
 
 const DURATION_OPTIONS = [

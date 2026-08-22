@@ -298,7 +298,7 @@ export function UserAccess360Page() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg"><Shield className="h-6 w-6 text-blue-600" /></div>
+              <div className="p-2 bg-blue-100 rounded-lg"><Shield className="h-6 w-6 text-primary" /></div>
               <div>
                 <p className="text-2xl font-bold">{iam.active_sessions}</p>
                 <p className="text-sm text-muted-foreground">IAM Sessions</p>
@@ -358,7 +358,7 @@ export function UserAccess360Page() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Shield className="h-5 w-5 text-blue-600" />Identity (IAM)
+              <Shield className="h-5 w-5 text-primary" />Identity (IAM)
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -56,7 +56,7 @@ const typeColors: Record<string, string> = {
 }
 
 const trustColors: Record<string, string> = {
-  low: 'bg-gray-100 text-gray-800',
+  low: 'bg-muted text-foreground',
   medium: 'bg-yellow-100 text-yellow-800',
   high: 'bg-red-100 text-red-800',
 }
@@ -64,7 +64,7 @@ const trustColors: Record<string, string> = {
 const statusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-800',
   suspended: 'bg-red-100 text-red-800',
-  inactive: 'bg-gray-100 text-gray-800',
+  inactive: 'bg-muted text-foreground',
 }
 
 export function AIAgentsPage() {
@@ -158,7 +158,7 @@ export function AIAgentsPage() {
         <Card className="border-yellow-300 bg-yellow-50">
           <CardContent className="pt-4">
             <p className="font-medium text-yellow-800 mb-2">New API Key Generated - Copy it now, it won't be shown again:</p>
-            <code className="block bg-white p-3 rounded border text-sm break-all">{newApiKey}</code>
+            <code className="block bg-background p-3 rounded border text-sm break-all">{newApiKey}</code>
             <Button variant="outline" className="mt-2" onClick={() => setNewApiKey(null)}>Dismiss</Button>
           </CardContent>
         </Card>
@@ -168,7 +168,7 @@ export function AIAgentsPage() {
       {analytics && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <Card><CardContent className="pt-4 text-center">
-            <Bot className="h-5 w-5 mx-auto mb-1 text-blue-600" />
+            <Bot className="h-5 w-5 mx-auto mb-1 text-primary" />
             <p className="text-2xl font-bold">{analytics.total_agents}</p>
             <p className="text-xs text-muted-foreground">Total Agents</p>
           </CardContent></Card>
@@ -254,19 +254,19 @@ export function AIAgentsPage() {
             <CardContent>
               <div className="divide-y">
                 {agents.map((agent) => (
-                  <div key={agent.id} className={`py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 px-2 rounded ${selectedAgent === agent.id ? 'bg-blue-50' : ''}`}
+                  <div key={agent.id} className={`py-3 flex items-center justify-between cursor-pointer hover:bg-muted px-2 rounded ${selectedAgent === agent.id ? 'bg-blue-50' : ''}`}
                     onClick={() => setSelectedAgent(agent.id)}>
                     <div className="flex items-center gap-3">
-                      <Bot className="h-8 w-8 text-gray-400" />
+                      <Bot className="h-8 w-8 text-muted-foreground" />
                       <div>
                         <p className="font-medium">{agent.name}</p>
                         <p className="text-sm text-muted-foreground">{agent.description || 'No description'}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge className={typeColors[agent.agent_type] || 'bg-gray-100'}>{agent.agent_type}</Badge>
-                      <Badge className={trustColors[agent.trust_level] || 'bg-gray-100'}>Trust: {agent.trust_level}</Badge>
-                      <Badge className={statusColors[agent.status] || 'bg-gray-100'}>{agent.status}</Badge>
+                      <Badge className={typeColors[agent.agent_type] || 'bg-muted'}>{agent.agent_type}</Badge>
+                      <Badge className={trustColors[agent.trust_level] || 'bg-muted'}>Trust: {agent.trust_level}</Badge>
+                      <Badge className={statusColors[agent.status] || 'bg-muted'}>{agent.status}</Badge>
                     </div>
                   </div>
                 ))}
@@ -378,7 +378,7 @@ export function AIAgentsPage() {
           ) : (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                <Bot className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <Bot className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
                 <p>Select an agent to view details</p>
               </CardContent>
             </Card>

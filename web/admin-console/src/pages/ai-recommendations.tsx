@@ -46,7 +46,7 @@ const effortColors: Record<string, string> = {
 
 const categoryIcons: Record<string, React.ReactNode> = {
   security: <Shield className="h-4 w-4 text-red-600" />,
-  compliance: <Scale className="h-4 w-4 text-blue-600" />,
+  compliance: <Scale className="h-4 w-4 text-primary" />,
   governance: <Settings className="h-4 w-4 text-purple-600" />,
   optimization: <Zap className="h-4 w-4 text-yellow-600" />,
 }
@@ -140,12 +140,12 @@ export function AIRecommendationsPage() {
             <p className="text-xs text-muted-foreground">Accepted</p>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <Zap className="h-5 w-5 mx-auto mb-1 text-blue-600" />
+            <Zap className="h-5 w-5 mx-auto mb-1 text-primary" />
             <p className="text-2xl font-bold">{stats.by_status?.applied || 0}</p>
             <p className="text-xs text-muted-foreground">Applied</p>
           </CardContent></Card>
           <Card><CardContent className="pt-4 text-center">
-            <X className="h-5 w-5 mx-auto mb-1 text-gray-600" />
+            <X className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
             <p className="text-2xl font-bold">{stats.by_status?.dismissed || 0}</p>
             <p className="text-xs text-muted-foreground">Dismissed</p>
           </CardContent></Card>
@@ -164,7 +164,7 @@ export function AIRecommendationsPage() {
           <CardContent>
             <div className="flex gap-4">
               {Object.entries(stats.pending_by_category).map(([cat, count]) => (
-                <div key={cat} className="flex items-center gap-2 bg-gray-50 rounded-lg px-4 py-2">
+                <div key={cat} className="flex items-center gap-2 bg-muted rounded-lg px-4 py-2">
                   {categoryIcons[cat] || <Bot className="h-4 w-4" />}
                   <span className="capitalize font-medium">{cat}</span>
                   <Badge variant="secondary">{count}</Badge>
@@ -229,7 +229,7 @@ export function AIRecommendationsPage() {
                     <p className="text-xs text-green-600 mt-2">Applied on {new Date(rec.applied_at).toLocaleDateString()}</p>
                   )}
                   {rec.dismissed_reason && (
-                    <p className="text-xs text-gray-500 mt-2">Dismissed: {rec.dismissed_reason}</p>
+                    <p className="text-xs text-muted-foreground mt-2">Dismissed: {rec.dismissed_reason}</p>
                   )}
                 </div>
 
@@ -253,7 +253,7 @@ export function AIRecommendationsPage() {
         {recs.length === 0 && (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
-              <Sparkles className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <Sparkles className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
               <p className="font-medium">No {statusFilter || ''} recommendations</p>
               <p className="text-sm mt-1">Click "Generate Recommendations" to analyze your environment</p>
             </CardContent>

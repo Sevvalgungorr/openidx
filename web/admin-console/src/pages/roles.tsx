@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../components/ui/alert-dialog'
-import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { TableSkeleton } from '../components/ui/skeleton'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
@@ -263,7 +264,7 @@ export function RolesPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search roles..."
                 value={search}
@@ -275,10 +276,7 @@ export function RolesPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <LoadingSpinner size="lg" />
-              <p className="mt-4 text-sm text-muted-foreground">Loading roles...</p>
-            </div>
+            <TableSkeleton rows={8} cols={5} />
           ) : isError ? (
             <QueryError error={error} resource="roles" />
           ) : filteredRoles.length === 0 ? (
@@ -289,20 +287,20 @@ export function RolesPage() {
             </div>
           ) : (
           <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="p-3 text-left text-sm font-medium">Role</th>
-                  <th className="p-3 text-left text-sm font-medium">Description</th>
-                  <th className="p-3 text-left text-sm font-medium">Type</th>
-                  <th className="p-3 text-left text-sm font-medium">Created</th>
-                  <th className="p-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b bg-muted">
+                  <TableHead className="p-3 text-left text-sm font-medium">Role</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Description</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Type</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Created</TableHead>
+                  <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredRoles.map((role) => (
-                    <tr key={role.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
+                    <TableRow key={role.id} className="border-b hover:bg-muted">
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
                             <Shield className="h-5 w-5 text-purple-700" />
@@ -311,19 +309,19 @@ export function RolesPage() {
                             <p className="font-medium capitalize">{role.name}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="p-3 text-gray-600">
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground">
                         {role.description || '-'}
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant={role.is_composite ? 'default' : 'secondary'}>
                           {role.is_composite ? 'Composite' : 'Simple'}
                         </Badge>
-                      </td>
-                      <td className="p-3 text-gray-500">
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground">
                         {new Date(role.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="p-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
@@ -354,19 +352,19 @@ export function RolesPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))
                 }
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}
 
           {/* Pagination Controls */}
           {totalCount > PAGE_SIZE && (
             <div className="flex items-center justify-between pt-4 px-1">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount} roles
               </p>
               <div className="flex items-center gap-2">
@@ -379,7 +377,7 @@ export function RolesPage() {
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Previous
                 </Button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
                   Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
                 </span>
                 <Button
@@ -545,7 +543,7 @@ export function RolesPage() {
                           <Label htmlFor={`perm-${perm.id}`} className="text-sm font-normal">
                             {perm.name}
                             {perm.description && (
-                              <span className="text-gray-500 ml-1">- {perm.description}</span>
+                              <span className="text-muted-foreground ml-1">- {perm.description}</span>
                             )}
                           </Label>
                         </div>

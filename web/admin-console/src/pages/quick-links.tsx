@@ -106,7 +106,7 @@ export function QuickLinksPage() {
                     <CardContent className="p-4">
                       <div className="flex items-start gap-3">
                         <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                          <Icon className="h-5 w-5 text-blue-600" />
+                          <Icon className="h-5 w-5 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -118,7 +118,7 @@ export function QuickLinksPage() {
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{link.description || '\u00a0'}</p>
-                          <div className="mt-2 text-sm text-blue-600 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="mt-2 text-sm text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {link.type === 'pam' ? <><Play className="h-3.5 w-3.5" /> Launch</> : <><ExternalLink className="h-3.5 w-3.5" /> Open</>}
                           </div>
                         </div>

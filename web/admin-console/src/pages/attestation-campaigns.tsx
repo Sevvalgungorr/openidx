@@ -53,7 +53,7 @@ const typeLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
+  draft: 'bg-muted text-foreground',
   active: 'bg-blue-100 text-blue-800',
   completed: 'bg-green-100 text-green-800',
   expired: 'bg-red-100 text-red-800',
@@ -216,7 +216,7 @@ export function AttestationCampaignsPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">{c.description}</p>
                       {c.total_items > 0 && (
                         <div className="flex items-center gap-3 mt-2">
-                          <div className="flex-1 h-2 bg-gray-200 rounded-full max-w-xs">
+                          <div className="flex-1 h-2 bg-muted rounded-full max-w-xs">
                             <div className="h-2 bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
                           </div>
                           <span className="text-xs text-muted-foreground">{pct.toFixed(0)}% complete</span>

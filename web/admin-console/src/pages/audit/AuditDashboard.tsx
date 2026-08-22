@@ -156,7 +156,7 @@ export function AuditDashboard() {
               {isConnected ? (
                 <Wifi className="h-4 w-4 text-green-600" />
               ) : (
-                <WifiOff className="h-4 w-4 text-gray-400" />
+                <WifiOff className="h-4 w-4 text-muted-foreground" />
               )}
               Connection Status
             </CardTitle>
@@ -232,7 +232,7 @@ export function AuditDashboard() {
               ) : connectionState === 'origin_rejected' ? (
                 <AlertCircle className="h-4 w-4 text-red-600" />
               ) : (
-                <Shield className="h-4 w-4 text-gray-400" />
+                <Shield className="h-4 w-4 text-muted-foreground" />
               )}
               <span className="text-sm font-medium">
                 {connectionState === 'origin_rejected' ? 'Not Allowed' : isConnected ? 'Validated' : 'Pending'}
@@ -340,7 +340,7 @@ export function AuditDashboard() {
                         <span className="truncate mr-2" title={action}>{action}</span>
                         <span className="text-muted-foreground whitespace-nowrap">{count}</span>
                       </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-blue-500 rounded-full"
                           style={{ width: `${percentage}%` }}
@@ -377,7 +377,7 @@ export function AuditDashboard() {
                         </div>
                         <span className="text-muted-foreground whitespace-nowrap">{count}</span>
                       </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-purple-500 rounded-full"
                           style={{ width: `${percentage}%` }}
@@ -453,7 +453,7 @@ export function AuditDashboard() {
       <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
-            <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+            <Shield className="h-5 w-5 text-primary dark:text-blue-400 mt-0.5 shrink-0" />
             <div className="space-y-1">
               <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
                 WebSocket Origin Validation

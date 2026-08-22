@@ -133,7 +133,7 @@ export function AuditArchivalPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4">
         <Card><CardContent className="pt-4 text-center">
-          <Database className="h-5 w-5 mx-auto mb-1 text-blue-600" />
+          <Database className="h-5 w-5 mx-auto mb-1 text-primary" />
           <p className="text-2xl font-bold">{retentionPolicies.length}</p>
           <p className="text-xs text-muted-foreground">Retention Policies</p>
         </CardContent></Card>
@@ -151,9 +151,9 @@ export function AuditArchivalPage() {
 
       {/* Tab Navigation */}
       <div className="flex gap-2 border-b">
-        <button className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === 'retention' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground'}`}
+        <button className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === 'retention' ? 'border-blue-500 text-primary' : 'border-transparent text-muted-foreground'}`}
           onClick={() => setActiveTab('retention')}>Retention Policies</button>
-        <button className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === 'archives' ? 'border-blue-500 text-blue-600' : 'border-transparent text-muted-foreground'}`}
+        <button className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === 'archives' ? 'border-blue-500 text-primary' : 'border-transparent text-muted-foreground'}`}
           onClick={() => setActiveTab('archives')}>Archives</button>
       </div>
 

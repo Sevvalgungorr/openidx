@@ -201,7 +201,7 @@ const SEVERITY_BADGE: Record<string, string> = {
 }
 
 function severityClass(severity: string): string {
-  return SEVERITY_BADGE[severity?.toLowerCase()] || 'bg-gray-100 text-gray-700 border-gray-200'
+  return SEVERITY_BADGE[severity?.toLowerCase()] || 'bg-muted text-foreground border-border'
 }
 
 // ---------------------------------------------------------------------------

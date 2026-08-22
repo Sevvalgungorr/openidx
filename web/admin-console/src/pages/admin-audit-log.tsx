@@ -85,7 +85,7 @@ const ACTION_BADGE_COLORS: Record<string, string> = {
   update: 'bg-blue-100 text-blue-800',
   delete: 'bg-red-100 text-red-800',
   enable: 'bg-emerald-100 text-emerald-800',
-  disable: 'bg-gray-100 text-gray-800',
+  disable: 'bg-muted text-foreground',
   assign: 'bg-purple-100 text-purple-800',
   revoke: 'bg-orange-100 text-orange-800',
   login: 'bg-cyan-100 text-cyan-800',
@@ -131,7 +131,7 @@ function renderJsonDiff(
               return (
                 <div
                   key={key}
-                  className={changed ? 'text-red-700 font-semibold' : 'text-gray-600'}
+                  className={changed ? 'text-red-700 font-semibold' : 'text-muted-foreground'}
                 >
                   {`"${key}": ${JSON.stringify(val, null, 2)}`}
                 </div>
@@ -152,7 +152,7 @@ function renderJsonDiff(
               return (
                 <div
                   key={key}
-                  className={changed ? 'text-green-700 font-semibold' : 'text-gray-600'}
+                  className={changed ? 'text-green-700 font-semibold' : 'text-muted-foreground'}
                 >
                   {`"${key}": ${JSON.stringify(val, null, 2)}`}
                 </div>
@@ -403,7 +403,7 @@ export function AdminAuditLogPage() {
                 {entries.map((entry) => {
                   const isExpanded = expandedRows.has(entry.id)
                   const actionColor =
-                    ACTION_BADGE_COLORS[entry.action] || 'bg-gray-100 text-gray-800'
+                    ACTION_BADGE_COLORS[entry.action] || 'bg-muted text-foreground'
 
                   return (
                     <>

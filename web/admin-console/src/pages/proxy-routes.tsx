@@ -377,7 +377,7 @@ export function ProxyRoutesPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${route.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
+                    <div className={`p-2 rounded-lg ${route.enabled ? 'bg-green-100' : 'bg-muted'}`}>
                       {route.enabled ? (
                         route.route_type && route.route_type !== 'http' ? (
                           <span className="text-green-700">{routeTypeIcon(route.route_type)}</span>
@@ -385,7 +385,7 @@ export function ProxyRoutesPage() {
                           <Shield className="h-5 w-5 text-green-700" />
                         )
                       ) : (
-                        <PowerOff className="h-5 w-5 text-gray-500" />
+                        <PowerOff className="h-5 w-5 text-muted-foreground" />
                       )}
                     </div>
                     <div>
@@ -395,7 +395,7 @@ export function ProxyRoutesPage() {
                           {route.enabled ? 'Active' : 'Disabled'}
                         </Badge>
                         {route.route_type && route.route_type !== 'http' && (
-                          <Badge variant="default" className="bg-blue-600">{route.route_type.toUpperCase()}</Badge>
+                          <Badge variant="default" className="bg-primary">{route.route_type.toUpperCase()}</Badge>
                         )}
                         {route.require_auth && (
                           <Badge variant="outline">Auth Required</Badge>

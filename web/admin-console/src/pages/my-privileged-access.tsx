@@ -55,10 +55,10 @@ const statusBadge = (status: string) => {
     approved: 'bg-green-100 text-green-800',
     fulfilled: 'bg-green-100 text-green-800',
     denied: 'bg-red-100 text-red-800',
-    consumed: 'bg-gray-100 text-gray-800',
+    consumed: 'bg-muted text-foreground',
     expired: 'bg-orange-100 text-orange-800',
   }
-  return map[status] || 'bg-gray-100 text-gray-800'
+  return map[status] || 'bg-muted text-foreground'
 }
 
 const formatDate = (d: string) =>
@@ -330,7 +330,7 @@ export function MyPrivilegedAccessPage() {
               <CardTitle>My Credential Checkouts</CardTitle>
               <CardDescription>
                 Time-boxed vault credentials granted through access requests. Need a new credential?{' '}
-                <Link to="/access-requests" className="text-blue-600 hover:underline">
+                <Link to="/access-requests" className="text-primary hover:underline">
                   Submit an access request
                 </Link>
                 .

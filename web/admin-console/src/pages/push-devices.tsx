@@ -164,7 +164,7 @@ export function PushDevicesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
-            <div className="rounded-lg bg-white p-4">
+            <div className="rounded-lg bg-background p-4">
               <QRCodeSVG value={qrPayload} size={200} />
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -288,7 +288,7 @@ export function PushDevicesPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="font-medium">{device.device_name}</p>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                           {getPlatformLabel(device.platform)}
                         </span>
                         {device.enabled ? (

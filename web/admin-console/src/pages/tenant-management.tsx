@@ -258,14 +258,14 @@ export function TenantManagementPage() {
                     <div className="p-6 flex flex-col items-center gap-4">
                       {branding.logo_url && <img src={branding.logo_url} alt="Logo" className="h-10 object-contain" />}
                       <h3 className="font-semibold text-sm" style={{ color: branding.primary_color }}>{branding.login_page_title || 'Sign In'}</h3>
-                      <p className="text-xs text-center text-gray-600">{branding.login_page_message}</p>
+                      <p className="text-xs text-center text-muted-foreground">{branding.login_page_message}</p>
                       <div className="w-full space-y-2">
-                        <div className="h-8 w-full bg-white border rounded px-2 flex items-center text-xs text-gray-400">username</div>
-                        <div className="h-8 w-full bg-white border rounded px-2 flex items-center text-xs text-gray-400">password</div>
+                        <div className="h-8 w-full bg-background border rounded px-2 flex items-center text-xs text-muted-foreground">username</div>
+                        <div className="h-8 w-full bg-background border rounded px-2 flex items-center text-xs text-muted-foreground">password</div>
                         <div className="h-8 w-full rounded text-white text-xs flex items-center justify-center font-medium" style={{ backgroundColor: branding.primary_color }}>Sign In</div>
                       </div>
-                      {branding.custom_footer && <p className="text-[10px] text-gray-500 text-center">{branding.custom_footer}</p>}
-                      {branding.powered_by_visible && <p className="text-[10px] text-gray-400">Powered by OpenIDX</p>}
+                      {branding.custom_footer && <p className="text-[10px] text-muted-foreground text-center">{branding.custom_footer}</p>}
+                      {branding.powered_by_visible && <p className="text-[10px] text-muted-foreground">Powered by OpenIDX</p>}
                     </div>
                   </div>
                 </CardContent>
@@ -334,7 +334,7 @@ export function TenantManagementPage() {
                             <Badge variant={d.verified ? 'default' : 'secondary'}>{d.verified ? 'Verified' : 'Pending'}</Badge>
                             {!d.verified && d.verification_token && (
                               <button
-                                className="ml-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                className="ml-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
                                 onClick={() => {
                                   navigator.clipboard.writeText(d.verification_token || '')
                                   toast({ title: 'Token copied' })

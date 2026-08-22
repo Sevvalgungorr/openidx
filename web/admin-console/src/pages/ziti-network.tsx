@@ -565,7 +565,7 @@ function ConnectionTab() {
           <CardTitle className="flex items-center gap-2">
             <Network className="h-5 w-5" />
             Controller Connection
-            <Badge className={`ml-auto ${reachable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+            <Badge className={`ml-auto ${reachable ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
               {!status?.enabled ? 'not configured' : reachable ? 'connected' : 'unreachable'}
             </Badge>
           </CardTitle>
@@ -696,7 +696,7 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
       value: routersTotal,
       description: `${routersOnline} online, ${Math.max(0, routersTotal - routersOnline)} offline`,
       icon: Router,
-      color: 'text-blue-600',
+      color: 'text-primary',
     },
     {
       title: 'Services',
@@ -1301,7 +1301,7 @@ function IdentitiesTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <RefreshCw className={`h-4 w-4 ${syncAllMutation.isPending || syncGroupsMutation.isPending ? 'animate-spin' : ''} text-blue-600`} />
+                <RefreshCw className={`h-4 w-4 ${syncAllMutation.isPending || syncGroupsMutation.isPending ? 'animate-spin' : ''} text-primary`} />
                 <span className="text-sm font-medium">Identity Sync</span>
               </div>
               {syncStatus && (
@@ -1340,7 +1340,7 @@ function IdentitiesTab() {
               <p className="text-xs font-medium text-muted-foreground mb-2">Users without Ziti identities:</p>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {unsyncedUsers.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between bg-white rounded px-3 py-1.5 text-sm">
+                  <div key={user.id} className="flex items-center justify-between bg-background rounded px-3 py-1.5 text-sm">
                     <div className="flex items-center gap-2">
                       <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="font-medium">{user.first_name || user.username} {user.last_name || ''}</span>
@@ -2290,12 +2290,12 @@ function ServicePoliciesSection() {
               <div className="space-y-2">
                 <Label>Service Roles</Label>
                 <Input value={form.service_roles} onChange={(e) => setForm({ ...form, service_roles: e.target.value })} placeholder="#gitlab, #internal-apps" required />
-                <p className="text-xs text-muted-foreground">Comma-separated. <span className="text-purple-600 font-medium">#attribute</span> matches services by role, <span className="text-blue-600 font-medium">@id</span> targets a specific service.</p>
+                <p className="text-xs text-muted-foreground">Comma-separated. <span className="text-purple-600 font-medium">#attribute</span> matches services by role, <span className="text-primary font-medium">@id</span> targets a specific service.</p>
               </div>
               <div className="space-y-2">
                 <Label>Identity Roles</Label>
                 <Input value={form.identity_roles} onChange={(e) => setForm({ ...form, identity_roles: e.target.value })} placeholder="#engineering, #vpn-users" required />
-                <p className="text-xs text-muted-foreground">Comma-separated. <span className="text-orange-600 font-medium">#attribute</span> matches identities by role (e.g., group names), <span className="text-blue-600 font-medium">@id</span> targets a specific identity.</p>
+                <p className="text-xs text-muted-foreground">Comma-separated. <span className="text-orange-600 font-medium">#attribute</span> matches identities by role (e.g., group names), <span className="text-primary font-medium">@id</span> targets a specific identity.</p>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => dlg.onOpenChange(false)}>Cancel</Button>
@@ -3388,7 +3388,7 @@ function RemoteAccessTab() {
   const protocolColor = (protocol: string) => {
     switch (protocol.toLowerCase()) {
       case 'ssh': return 'bg-green-600'
-      case 'rdp': return 'bg-blue-600'
+      case 'rdp': return 'bg-primary'
       case 'vnc': return 'bg-purple-600'
       default: return 'bg-gray-600'
     }
@@ -3742,7 +3742,7 @@ function TempAccessLinksSection() {
   const protocolColor = (protocol: string) => {
     switch (protocol) {
       case 'ssh': return 'bg-green-600'
-      case 'rdp': return 'bg-blue-600'
+      case 'rdp': return 'bg-primary'
       case 'vnc': return 'bg-purple-600'
       default: return 'bg-gray-600'
     }

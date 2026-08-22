@@ -163,7 +163,7 @@ export function DevicesPage() {
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-blue-600">{riskStats.new_devices_today ?? 0}</div>
+              <div className="text-2xl font-bold text-primary">{riskStats.new_devices_today ?? 0}</div>
               <p className="text-xs text-muted-foreground">New Devices Today</p>
             </CardContent>
           </Card>

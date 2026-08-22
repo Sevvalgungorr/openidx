@@ -463,7 +463,7 @@ export function DirectoriesPage() {
   const statusBadge = (status: string) => {
     switch (status) {
       case 'synced': return <Badge variant="default" className="bg-green-600">Synced</Badge>
-      case 'syncing': return <Badge variant="default" className="bg-blue-600">Syncing</Badge>
+      case 'syncing': return <Badge variant="default" className="bg-primary">Syncing</Badge>
       case 'failed': return <Badge variant="destructive">Failed</Badge>
       default: return <Badge variant="secondary">Never</Badge>
     }

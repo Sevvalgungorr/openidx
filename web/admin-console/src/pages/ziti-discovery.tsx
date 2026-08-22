@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Checkbox } from '../components/ui/checkbox'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -172,7 +173,7 @@ export function ZitiDiscoveryPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Available to Import</CardDescription>
-            <CardTitle className="text-2xl text-blue-600">{data?.available_for_import || 0}</CardTitle>
+            <CardTitle className="text-2xl text-primary">{data?.available_for_import || 0}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -213,44 +214,43 @@ export function ZitiDiscoveryPage() {
           ) : isError ? (
             <QueryError error={error} resource="discovered Ziti services" />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="w-12 p-4">
+            <Table>
+                <TableHeader className="bg-muted">
+                  <TableRow>
+                    <TableHead className="w-12 p-4">
                       <Checkbox
                         checked={selected.size === importableServices.length && importableServices.length > 0}
                         onCheckedChange={selectAll}
                       />
-                    </th>
-                    <th className="text-left p-4 font-medium">Service Name</th>
-                    <th className="text-left p-4 font-medium">Protocol</th>
-                    <th className="text-left p-4 font-medium">Host:Port</th>
-                    <th className="text-left p-4 font-medium">Status</th>
-                    <th className="text-left p-4 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+                    </TableHead>
+                    <TableHead className="text-left p-4 font-medium">Service Name</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Protocol</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Host:Port</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Status</TableHead>
+                    <TableHead className="text-left p-4 font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y">
                   {filteredServices.map((service) => (
-                    <tr key={service.ziti_id} className="hover:bg-muted/50">
-                      <td className="p-4">
+                    <TableRow key={service.ziti_id} className="hover:bg-muted/50">
+                      <TableCell className="p-4">
                         <Checkbox
                           checked={selected.has(service.ziti_id)}
                           onCheckedChange={() => toggleService(service.ziti_id)}
                           disabled={!service.can_import}
                         />
-                      </td>
-                      <td className="p-4">
+                      </TableCell>
+                      <TableCell className="p-4">
                         <div className="font-medium">{service.name}</div>
                         <div className="text-xs text-muted-foreground font-mono">{service.ziti_id}</div>
-                      </td>
-                      <td className="p-4">
+                      </TableCell>
+                      <TableCell className="p-4">
                         <Badge variant="secondary">{service.protocol || 'tcp'}</Badge>
-                      </td>
-                      <td className="p-4 text-sm font-mono">
+                      </TableCell>
+                      <TableCell className="p-4 text-sm font-mono">
                         {service.host && service.port ? `${service.host}:${service.port}` : '-'}
-                      </td>
-                      <td className="p-4">
+                      </TableCell>
+                      <TableCell className="p-4">
                         {service.managed_by_openidx ? (
                           <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -261,8 +261,8 @@ export function ZitiDiscoveryPage() {
                             Available
                           </Badge>
                         )}
-                      </td>
-                      <td className="p-4">
+                      </TableCell>
+                      <TableCell className="p-4">
                         {service.can_import && (
                           <Button
                             size="sm"
@@ -280,19 +280,18 @@ export function ZitiDiscoveryPage() {
                             Import
                           </Button>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
                   {filteredServices.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    <TableRow>
+                      <TableCell colSpan={6} className="p-8 text-center text-muted-foreground">
                         No services found
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>

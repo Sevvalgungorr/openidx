@@ -205,7 +205,7 @@ export function PasswordlessSettingsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Link2 className="h-5 w-5 text-blue-600" />
+                <Link2 className="h-5 w-5 text-primary" />
                 <CardTitle>Magic Links</CardTitle>
               </div>
               <Switch
@@ -333,7 +333,7 @@ export function PasswordlessSettingsPage() {
         <CardContent>
           <div className="grid gap-6 md:grid-cols-3">
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-blue-600">
+              <div className="flex items-center gap-2 text-primary">
                 <Link2 className="h-5 w-5" />
                 <h4 className="font-medium">Magic Links</h4>
               </div>

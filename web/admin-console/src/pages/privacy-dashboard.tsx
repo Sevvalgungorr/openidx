@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useNavigate } from 'react-router-dom'
@@ -53,7 +54,7 @@ function SummaryCard({
           </div>
           <div>
             <p className="text-2xl font-bold">{value}</p>
-            <p className="text-sm text-gray-500">{title}</p>
+            <p className="text-sm text-muted-foreground">{title}</p>
           </div>
         </div>
       </CardContent>
@@ -77,7 +78,7 @@ function getStatusBadge(status: string) {
   }
 
   return (
-    <Badge className={styles[status] || 'bg-gray-100 text-gray-800'}>
+    <Badge className={styles[status] || 'bg-muted text-foreground'}>
       {labels[status] || status}
     </Badge>
   )
@@ -226,54 +227,52 @@ export function PrivacyDashboardPage() {
               No consent data available
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">
+            <Table className="text-sm">
+                <TableHeader>
+                  <TableRow className="border-b">
+                    <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">
                       Consent Type
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">
+                    </TableHead>
+                    <TableHead className="text-right py-3 px-4 font-medium text-muted-foreground">
                       Granted
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">
+                    </TableHead>
+                    <TableHead className="text-right py-3 px-4 font-medium text-muted-foreground">
                       Revoked
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">
+                    </TableHead>
+                    <TableHead className="text-right py-3 px-4 font-medium text-muted-foreground">
                       Rate
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {d.consent_breakdown.map((item) => {
                     const total = item.granted + item.revoked
                     const rate = total > 0 ? Math.round((item.granted / total) * 100) : 0
                     return (
-                      <tr key={item.consent_type} className="border-b last:border-0">
-                        <td className="py-3 px-4 font-medium capitalize">
+                      <TableRow key={item.consent_type} className="border-b last:border-0">
+                        <TableCell className="py-3 px-4 font-medium capitalize">
                           {item.consent_type.replace(/_/g, ' ')}
-                        </td>
-                        <td className="py-3 px-4 text-right">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-right">
                           <Badge className="bg-green-100 text-green-800">
                             {item.granted}
                           </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-right">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-right">
                           <Badge className="bg-red-100 text-red-800">
                             {item.revoked}
                           </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-right">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-right">
                           <span className={rate >= 80 ? 'text-green-600' : rate >= 50 ? 'text-yellow-600' : 'text-red-600'}>
                             {rate}%
                           </span>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>
@@ -301,32 +300,30 @@ export function PrivacyDashboardPage() {
               No recent DSARs
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Type</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">User</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Created</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table className="text-sm">
+                <TableHeader>
+                  <TableRow className="border-b">
+                    <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Type</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">User</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-medium text-muted-foreground">Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {d.recent_dsars.map((dsar) => (
-                    <tr key={dsar.id} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium">
+                    <TableRow key={dsar.id} className="border-b last:border-0 hover:bg-muted">
+                      <TableCell className="py-3 px-4 font-medium">
                         {formatRequestType(dsar.request_type)}
-                      </td>
-                      <td className="py-3 px-4 text-gray-600">{dsar.username}</td>
-                      <td className="py-3 px-4">{getStatusBadge(dsar.status)}</td>
-                      <td className="py-3 px-4 text-gray-500">
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-muted-foreground">{dsar.username}</TableCell>
+                      <TableCell className="py-3 px-4">{getStatusBadge(dsar.status)}</TableCell>
+                      <TableCell className="py-3 px-4 text-muted-foreground">
                         {formatDate(dsar.created_at)}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>

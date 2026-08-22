@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
@@ -55,7 +56,7 @@ const statusColors: Record<string, string> = {
   in_progress: 'bg-blue-100 text-blue-800',
   completed: 'bg-green-100 text-green-800',
   expired: 'bg-red-100 text-red-800',
-  canceled: 'bg-gray-100 text-gray-800',
+  canceled: 'bg-muted text-foreground',
 }
 
 const typeLabels: Record<string, string> = {
@@ -277,7 +278,7 @@ export function AccessReviewsPage() {
                 <p className="text-2xl font-bold">
                   {reviews?.filter(r => r.status === 'pending').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">Pending (this page)</p>
+                <p className="text-sm text-muted-foreground">Pending (this page)</p>
               </div>
             </div>
           </CardContent>
@@ -292,7 +293,7 @@ export function AccessReviewsPage() {
                 <p className="text-2xl font-bold">
                   {reviews?.filter(r => r.status === 'in_progress').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">In Progress (this page)</p>
+                <p className="text-sm text-muted-foreground">In Progress (this page)</p>
               </div>
             </div>
           </CardContent>
@@ -307,7 +308,7 @@ export function AccessReviewsPage() {
                 <p className="text-2xl font-bold">
                   {reviews?.filter(r => r.status === 'completed').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">Completed (this page)</p>
+                <p className="text-sm text-muted-foreground">Completed (this page)</p>
               </div>
             </div>
           </CardContent>
@@ -315,14 +316,14 @@ export function AccessReviewsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center">
-                <XCircle className="h-6 w-6 text-gray-700" />
+              <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                <XCircle className="h-6 w-6 text-foreground" />
               </div>
               <div>
                 <p className="text-2xl font-bold">
                   {reviews?.filter(r => r.status === 'expired' || r.status === 'canceled').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">Expired/Canceled (this page)</p>
+                <p className="text-sm text-muted-foreground">Expired/Canceled (this page)</p>
               </div>
             </div>
           </CardContent>
@@ -333,7 +334,7 @@ export function AccessReviewsPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search reviews..."
                 value={search}
@@ -372,64 +373,64 @@ export function AccessReviewsPage() {
           ) : (
           <>
           <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="p-3 text-left text-sm font-medium">Review</th>
-                  <th className="p-3 text-left text-sm font-medium">Type</th>
-                  <th className="p-3 text-left text-sm font-medium">Status</th>
-                  <th className="p-3 text-left text-sm font-medium">Period</th>
-                  <th className="p-3 text-left text-sm font-medium">Progress</th>
-                  <th className="p-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b bg-muted">
+                  <TableHead className="p-3 text-left text-sm font-medium">Review</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Type</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Status</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Period</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Progress</TableHead>
+                  <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {
                   filteredReviews?.map((review) => (
-                    <tr key={review.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
+                    <TableRow key={review.id} className="border-b hover:bg-muted">
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-lg bg-indigo-100 flex items-center justify-center">
                             <ClipboardCheck className="h-5 w-5 text-indigo-700" />
                           </div>
                           <div>
                             <p className="font-medium">{review.name}</p>
-                            <p className="text-sm text-gray-500 max-w-xs truncate">{review.description || '-'}</p>
+                            <p className="text-sm text-muted-foreground max-w-xs truncate">{review.description || '-'}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant="outline">
                           {typeLabels[review.type] || review.type}
                         </Badge>
-                      </td>
-                      <td className="p-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusColors[review.status] || 'bg-gray-100 text-gray-800'}`}>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusColors[review.status] || 'bg-muted text-foreground'}`}>
                           {statusIcons[review.status]}
                           {review.status.replace('_', ' ')}
                         </span>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="text-sm">
                           <p>{formatDate(review.start_date)}</p>
-                          <p className="text-gray-500">to {formatDate(review.end_date)}</p>
+                          <p className="text-muted-foreground">to {formatDate(review.end_date)}</p>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="w-32">
                           <div className="flex items-center justify-between text-sm mb-1">
                             <span>{review.reviewed_items || 0}/{review.total_items || 0}</span>
-                            <span className="text-gray-500">{getProgress(review)}%</span>
+                            <span className="text-muted-foreground">{getProgress(review)}%</span>
                           </div>
-                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div
                               className="h-full bg-indigo-600 rounded-full transition-all"
                               style={{ width: `${getProgress(review)}%` }}
                             />
                           </div>
                         </div>
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="p-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -461,17 +462,17 @@ export function AccessReviewsPage() {
                               )}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           {/* Pagination Controls */}
           {totalCount > PAGE_SIZE && (
             <div className="flex items-center justify-between pt-4 px-1">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount} reviews
               </p>
               <div className="flex items-center gap-2">
@@ -484,7 +485,7 @@ export function AccessReviewsPage() {
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Previous
                 </Button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
                   Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
                 </span>
                 <Button

@@ -80,12 +80,12 @@ const reportTypeColors: Record<string, string> = {
   gdpr: 'bg-green-100 text-green-800',
   hipaa: 'bg-red-100 text-red-800',
   pci_dss: 'bg-orange-100 text-orange-800',
-  custom: 'bg-gray-100 text-gray-800',
+  custom: 'bg-muted text-foreground',
 }
 
 const statusIcons: Record<string, React.ReactNode> = {
   completed: <CheckCircle className="h-4 w-4 text-green-600" />,
-  generating: <RefreshCw className="h-4 w-4 text-blue-600 animate-spin" />,
+  generating: <RefreshCw className="h-4 w-4 text-primary animate-spin" />,
   pending: <Clock className="h-4 w-4 text-yellow-600" />,
   failed: <XCircle className="h-4 w-4 text-red-600" />,
 }
@@ -227,7 +227,7 @@ export function ComplianceReportsPage() {
                 <p className="text-2xl font-bold">
                   {reports?.filter(r => r.type === 'soc2').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">SOC 2 Reports</p>
+                <p className="text-sm text-muted-foreground">SOC 2 Reports</p>
               </div>
             </div>
           </CardContent>
@@ -242,7 +242,7 @@ export function ComplianceReportsPage() {
                 <p className="text-2xl font-bold">
                   {reports?.filter(r => r.type === 'iso27001').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">ISO 27001 Reports</p>
+                <p className="text-sm text-muted-foreground">ISO 27001 Reports</p>
               </div>
             </div>
           </CardContent>
@@ -257,7 +257,7 @@ export function ComplianceReportsPage() {
                 <p className="text-2xl font-bold">
                   {reports?.filter(r => r.status === 'completed').length || 0}
                 </p>
-                <p className="text-sm text-gray-500">Completed</p>
+                <p className="text-sm text-muted-foreground">Completed</p>
               </div>
             </div>
           </CardContent>
@@ -265,12 +265,12 @@ export function ComplianceReportsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center">
-                <FileText className="h-6 w-6 text-gray-700" />
+              <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                <FileText className="h-6 w-6 text-foreground" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{reports?.length || 0}</p>
-                <p className="text-sm text-gray-500">Total Reports</p>
+                <p className="text-sm text-muted-foreground">Total Reports</p>
               </div>
             </div>
           </CardContent>
@@ -290,8 +290,8 @@ export function ComplianceReportsPage() {
               <p className="mt-4 text-sm text-muted-foreground">Loading reports...</p>
             </div>
           ) : reports?.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <FileText className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p>No compliance reports yet</p>
               <Button onClick={() => setGenerateModal(true)} className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
@@ -318,7 +318,7 @@ export function ComplianceReportsPage() {
                       <TableRow key={report.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className={`h-10 w-10 rounded-lg ${reportTypeColors[report.type]?.split(' ')[0] || 'bg-gray-100'} flex items-center justify-center`}>
+                            <div className={`h-10 w-10 rounded-lg ${reportTypeColors[report.type]?.split(' ')[0] || 'bg-muted'} flex items-center justify-center`}>
                               <Shield className="h-5 w-5" />
                             </div>
                             <div>
@@ -412,7 +412,7 @@ export function ComplianceReportsPage() {
                 name="type"
                 value={formData.type}
                 onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
                 <option value="soc2">SOC 2 Type II</option>
@@ -426,7 +426,7 @@ export function ComplianceReportsPage() {
               <div className="space-y-2">
                 <Label htmlFor="start_date">Start Date *</Label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="start_date"
                     name="start_date"
@@ -441,7 +441,7 @@ export function ComplianceReportsPage() {
               <div className="space-y-2">
                 <Label htmlFor="end_date">End Date *</Label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="end_date"
                     name="end_date"
@@ -498,31 +498,31 @@ export function ComplianceReportsPage() {
                 <Card>
                   <CardContent className="pt-4 pb-4 text-center">
                     <p className="text-3xl font-bold">{selectedReport.summary.total_controls}</p>
-                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-xs text-muted-foreground">Total</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-4 text-center">
                     <p className="text-3xl font-bold text-green-600">{selectedReport.summary.passed_controls}</p>
-                    <p className="text-xs text-gray-500">Passed</p>
+                    <p className="text-xs text-muted-foreground">Passed</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-4 text-center">
                     <p className="text-3xl font-bold text-red-600">{selectedReport.summary.failed_controls}</p>
-                    <p className="text-xs text-gray-500">Failed</p>
+                    <p className="text-xs text-muted-foreground">Failed</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-4 text-center">
                     <p className="text-3xl font-bold text-yellow-600">{selectedReport.summary.partial_controls}</p>
-                    <p className="text-xs text-gray-500">Partial</p>
+                    <p className="text-xs text-muted-foreground">Partial</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-4 text-center">
-                    <p className="text-3xl font-bold text-gray-400">{selectedReport.summary.not_applicable}</p>
-                    <p className="text-xs text-gray-500">N/A</p>
+                    <p className="text-3xl font-bold text-muted-foreground">{selectedReport.summary.not_applicable}</p>
+                    <p className="text-xs text-muted-foreground">N/A</p>
                   </CardContent>
                 </Card>
               </div>
@@ -532,7 +532,7 @@ export function ComplianceReportsPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-500">Compliance Score</p>
+                      <p className="text-sm text-muted-foreground">Compliance Score</p>
                       <p className={`text-4xl font-bold ${getScoreColor(calculateComplianceScore(selectedReport.summary))}`}>
                         {calculateComplianceScore(selectedReport.summary)}%
                       </p>
@@ -579,13 +579,13 @@ export function ComplianceReportsPage() {
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm bg-gray-100 px-2 py-0.5 rounded">
+                            <span className="font-mono text-sm bg-muted px-2 py-0.5 rounded">
                               {finding.control_id}
                             </span>
                             <span className="font-medium">{finding.control_name}</span>
                           </div>
                           {finding.evidence && (
-                            <p className="text-sm text-gray-600 mt-1">{finding.evidence}</p>
+                            <p className="text-sm text-muted-foreground mt-1">{finding.evidence}</p>
                           )}
                           {finding.remediation && finding.status !== 'passed' && (
                             <p className="text-sm text-orange-600 mt-1">

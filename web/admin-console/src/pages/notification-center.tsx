@@ -266,7 +266,7 @@ export function NotificationCenterPage() {
                     {/* Unread indicator */}
                     <div className="flex-shrink-0 mt-1">
                       {!notification.read && (
-                        <div className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
                       )}
                       {notification.read && <div className="h-2.5 w-2.5" />}
                     </div>
@@ -392,11 +392,11 @@ export function NotificationCenterPage() {
                   <button
                     onClick={() => handleDigestToggle('daily_digest')}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      currentDigest.daily_digest ? 'bg-blue-600' : 'bg-gray-200'
+                      currentDigest.daily_digest ? 'bg-primary' : 'bg-muted'
                     }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                         currentDigest.daily_digest ? 'translate-x-6' : 'translate-x-1'
                       }`}
                     />
@@ -414,11 +414,11 @@ export function NotificationCenterPage() {
                   <button
                     onClick={() => handleDigestToggle('weekly_digest')}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      currentDigest.weekly_digest ? 'bg-blue-600' : 'bg-gray-200'
+                      currentDigest.weekly_digest ? 'bg-primary' : 'bg-muted'
                     }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                         currentDigest.weekly_digest ? 'translate-x-6' : 'translate-x-1'
                       }`}
                     />

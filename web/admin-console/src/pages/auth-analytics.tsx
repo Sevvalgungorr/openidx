@@ -148,7 +148,7 @@ export function AuthAnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{successRate}%</div>
-            <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
                   parseFloat(successRate) >= 95
@@ -214,7 +214,7 @@ export function AuthAnalyticsPage() {
                         {method.count.toLocaleString()} ({method.percentage.toFixed(1)}%)
                       </span>
                     </div>
-                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-3 bg-muted rounded-full overflow-hidden">
                       <div
                         className="h-full bg-blue-500 rounded-full transition-all"
                         style={{ width: `${maxMethodCount > 0 ? (method.count / maxMethodCount) * 100 : 0}%` }}
@@ -297,7 +297,7 @@ export function AuthAnalyticsPage() {
                     title={`${hour.hour}:00 - ${hour.count} logins`}
                   >
                     <div
-                      className="w-full bg-blue-500 rounded-t transition-all hover:bg-blue-600"
+                      className="w-full bg-blue-500 rounded-t transition-all hover:bg-primary"
                       style={{
                         height: `${height}%`,
                         minHeight: hour.count > 0 ? '4px' : '0',

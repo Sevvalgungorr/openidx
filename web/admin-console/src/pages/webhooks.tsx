@@ -261,7 +261,7 @@ export function WebhooksPage() {
                       type="checkbox"
                       checked={selectedEvents.includes(event)}
                       onChange={() => toggleEvent(event)}
-                      className="rounded border-gray-300"
+                      className="rounded border-border"
                     />
                     {event}
                   </label>

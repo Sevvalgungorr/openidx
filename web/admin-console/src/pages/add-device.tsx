@@ -170,7 +170,7 @@ export function AddDevicePage() {
             <QueryError error={error} resource="enrollment status" />
           ) : (
             <div className="flex flex-col items-center gap-4">
-              <div className="rounded-lg border bg-white p-4">
+              <div className="rounded-lg border bg-background p-4">
                 <QRCodeCanvas value={session.deep_link} size={180} includeMargin />
               </div>
               <p className="text-sm text-muted-foreground">

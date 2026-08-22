@@ -53,7 +53,7 @@ const typeIcon = (t: string) => {
 const kindBadge: Record<string, string> = {
   session: 'bg-blue-100 text-blue-800',
   credential: 'bg-purple-100 text-purple-800',
-  info: 'bg-gray-100 text-gray-800',
+  info: 'bg-muted text-foreground',
 }
 
 // Common RemoteApp publications; picking one pre-fills the alias/args so

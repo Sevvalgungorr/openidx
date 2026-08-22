@@ -20,7 +20,8 @@ import {
 } from '../components/ui/dialog'
 import { Label } from '../components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { TableSkeleton } from '../components/ui/skeleton'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import {
@@ -385,7 +386,7 @@ export function ApplicationsPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search applications..."
                 value={search}
@@ -397,10 +398,7 @@ export function ApplicationsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <LoadingSpinner size="lg" />
-              <p className="mt-4 text-sm text-muted-foreground">Loading applications...</p>
-            </div>
+            <TableSkeleton rows={8} cols={6} />
           ) : isError ? (
             <QueryError error={error} resource="applications" />
           ) : !filteredApps || filteredApps.length === 0 ? (
@@ -411,48 +409,48 @@ export function ApplicationsPage() {
             </div>
           ) : (
           <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="p-3 text-left text-sm font-medium">Application</th>
-                  <th className="p-3 text-left text-sm font-medium">Client ID</th>
-                  <th className="p-3 text-left text-sm font-medium">Type</th>
-                  <th className="p-3 text-left text-sm font-medium">Protocol</th>
-                  <th className="p-3 text-left text-sm font-medium">Status</th>
-                  <th className="p-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b bg-muted">
+                  <TableHead className="p-3 text-left text-sm font-medium">Application</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Client ID</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Type</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Protocol</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Status</TableHead>
+                  <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredApps.map((app) => (
-                    <tr key={app.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
+                    <TableRow key={app.id} className="border-b hover:bg-muted">
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-3">
-                          <div className={`h-10 w-10 rounded-lg ${typeColors[app.type] || 'bg-gray-100'} flex items-center justify-center`}>
-                            {typeIcons[app.type] || <Globe className="h-5 w-5 text-gray-700" />}
+                          <div className={`h-10 w-10 rounded-lg ${typeColors[app.type] || 'bg-muted'} flex items-center justify-center`}>
+                            {typeIcons[app.type] || <Globe className="h-5 w-5 text-foreground" />}
                           </div>
                           <div>
                             <p className="font-medium">{app.name}</p>
-                            <p className="text-sm text-gray-500 max-w-xs truncate">{app.description || '-'}</p>
+                            <p className="text-sm text-muted-foreground max-w-xs truncate">{app.description || '-'}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="p-3">
-                        <code className="text-sm bg-gray-100 px-2 py-1 rounded">{app.client_id}</code>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <code className="text-sm bg-muted px-2 py-1 rounded">{app.client_id}</code>
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant="outline" className="capitalize">
                           {app.type}
                         </Badge>
-                      </td>
-                      <td className="p-3">
-                        <span className="text-sm text-gray-600 uppercase">{app.protocol}</span>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <span className="text-sm text-muted-foreground uppercase">{app.protocol}</span>
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge variant={app.enabled ? 'default' : 'secondary'}>
                           {app.enabled ? 'Active' : 'Disabled'}
                         </Badge>
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {app.base_url && (
                             <Button variant="ghost" size="icon" asChild>
@@ -500,19 +498,19 @@ export function ApplicationsPage() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))
                 }
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}
 
           {/* Pagination Controls */}
           {totalCount > PAGE_SIZE && (
             <div className="flex items-center justify-between pt-4 px-1">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount} applications
               </p>
               <div className="flex items-center gap-2">
@@ -525,7 +523,7 @@ export function ApplicationsPage() {
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Previous
                 </Button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
                   Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
                 </span>
                 <Button
@@ -583,7 +581,7 @@ export function ApplicationsPage() {
                   <SelectItem value="service">Service/Machine-to-Machine</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 {formData.type === 'web' && 'Server-side web applications (confidential client)'}
                 {formData.type === 'native' && 'Mobile or desktop applications (public client with PKCE)'}
                 {formData.type === 'service' && 'Backend services using client credentials'}
@@ -597,11 +595,11 @@ export function ApplicationsPage() {
                 value={formData.redirect_uris}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="https://myapp.com/callback&#10;https://myapp.com/auth/callback"
                 required
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Valid OAuth 2.0 redirect URIs for your application
               </p>
             </div>
@@ -614,7 +612,7 @@ export function ApplicationsPage() {
                 onChange={handleInputChange}
                 placeholder="openid,profile,email,offline_access"
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 OAuth/OIDC scopes this client can request
               </p>
             </div>
@@ -699,7 +697,7 @@ export function ApplicationsPage() {
                 value={formData.redirect_uris}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="https://example.com/callback&#10;https://example.com/redirect"
               />
             </div>
@@ -826,7 +824,7 @@ export function ApplicationsPage() {
               <div className="space-y-2">
                 <Label>New Client Secret</Label>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 p-2 bg-gray-100 rounded text-sm break-all">{newSecret}</code>
+                  <code className="flex-1 p-2 bg-muted rounded text-sm break-all">{newSecret}</code>
                   <Button variant="outline" size="sm" onClick={() => {
                     navigator.clipboard.writeText(newSecret)
                     toast({ title: 'Copied', description: 'Secret copied to clipboard!', variant: 'success' })
@@ -843,7 +841,7 @@ export function ApplicationsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Are you sure you want to regenerate the client secret for <strong>{regenerateApp?.name}</strong>?
                 This will invalidate the current secret and any integrations using it will stop working.
               </p>

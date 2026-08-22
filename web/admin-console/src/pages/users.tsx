@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +33,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { TableSkeleton } from '../components/ui/skeleton'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
@@ -432,7 +434,7 @@ export function UsersPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search users..."
                 value={search}
@@ -444,10 +446,7 @@ export function UsersPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <LoadingSpinner size="lg" />
-              <p className="mt-4 text-sm text-muted-foreground">Loading users...</p>
-            </div>
+            <TableSkeleton rows={8} cols={6} />
           ) : isError ? (
             <QueryError error={error} resource="users" />
           ) : filteredUsers.length === 0 ? (
@@ -458,21 +457,21 @@ export function UsersPage() {
             </div>
           ) : (
           <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="p-3 text-left text-sm font-medium">User</th>
-                  <th className="p-3 text-left text-sm font-medium">Email</th>
-                  <th className="p-3 text-left text-sm font-medium">Status</th>
-                  <th className="p-3 text-left text-sm font-medium">Ziti</th>
-                  <th className="p-3 text-left text-sm font-medium">Created</th>
-                  <th className="p-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b bg-muted">
+                  <TableHead className="p-3 text-left text-sm font-medium">User</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Email</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Status</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Ziti</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Created</TableHead>
+                  <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
+                    <TableRow key={user.id} className="border-b hover:bg-muted">
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
                             <span className="text-blue-700 font-medium">
@@ -486,25 +485,25 @@ export function UsersPage() {
                                 ? `${user.first_name} ${user.last_name}`
                                 : user.username}
                             </p>
-                            <p className="text-sm text-gray-500">@{user.username}</p>
+                            <p className="text-sm text-muted-foreground">@{user.username}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-gray-400" />
+                          <Mail className="h-4 w-4 text-muted-foreground" />
                           {user.email}
                           {user.email_verified && (
                             <Badge variant="outline" className="ml-2">Verified</Badge>
                           )}
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge className={user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                           {user.enabled ? 'Active' : 'Disabled'}
                         </Badge>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         {zitiMap && zitiMap[user.id] ? (
                           <div className="flex items-center gap-1.5" title={`Ziti: ${zitiMap[user.id].name}\nRoles: ${zitiMap[user.id].attributes.join(', ') || 'none'}`}>
                             <Network className="h-3.5 w-3.5 text-green-600" />
@@ -515,11 +514,11 @@ export function UsersPage() {
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
-                      </td>
-                      <td className="p-3 text-gray-500">
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground">
                         {new Date(user.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="p-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
@@ -555,18 +554,18 @@ export function UsersPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}
 
           {/* Pagination Controls */}
           {totalCount > PAGE_SIZE && (
             <div className="flex items-center justify-between pt-4 px-1">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount} users
               </p>
               <div className="flex items-center gap-2">
@@ -579,7 +578,7 @@ export function UsersPage() {
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Previous
                 </Button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted-foreground">
                   Page {page + 1} of {Math.ceil(totalCount / PAGE_SIZE)}
                 </span>
                 <Button
@@ -750,7 +749,7 @@ export function UsersPage() {
                 onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                 required
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 CSV file with headers: username, email, first_name, last_name, enabled
               </p>
             </div>
@@ -794,7 +793,7 @@ export function UsersPage() {
                       <Label htmlFor={`role-${role.id}`} className="capitalize">
                         {role.name}
                         {role.description && (
-                          <span className="text-sm text-gray-500 ml-2">
+                          <span className="text-sm text-muted-foreground ml-2">
                             - {role.description}
                           </span>
                         )}

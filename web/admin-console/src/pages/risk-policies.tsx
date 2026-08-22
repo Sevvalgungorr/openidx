@@ -325,7 +325,7 @@ export function RiskPoliciesPage() {
       <Card className="border-blue-200 bg-blue-50">
         <CardContent className="pt-4">
           <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+            <Info className="h-5 w-5 text-primary mt-0.5" />
             <div>
               <p className="font-medium text-blue-900">How Risk-Based MFA Works</p>
               <p className="text-sm text-blue-800">
@@ -356,12 +356,12 @@ export function RiskPoliciesPage() {
                 <div
                   key={policy.id}
                   className={`flex items-center justify-between p-4 border rounded-lg ${
-                    policy.enabled ? 'bg-white' : 'bg-gray-50 opacity-60'
+                    policy.enabled ? 'bg-background' : 'bg-muted opacity-60'
                   }`}
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                      <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
                         #{policy.priority}
                       </span>
                       <h3 className="font-medium">{policy.name}</h3>

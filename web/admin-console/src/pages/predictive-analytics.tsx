@@ -59,15 +59,15 @@ interface PredictionSummary {
 const trendIcons: Record<string, React.ReactNode> = {
   increasing: <TrendingUp className="h-4 w-4 text-green-600" />,
   decreasing: <TrendingDown className="h-4 w-4 text-red-600" />,
-  stable: <Minus className="h-4 w-4 text-gray-600" />,
-  insufficient_data: <Minus className="h-4 w-4 text-gray-400" />,
+  stable: <Minus className="h-4 w-4 text-muted-foreground" />,
+  insufficient_data: <Minus className="h-4 w-4 text-muted-foreground" />,
 }
 
 const trendColors: Record<string, string> = {
   increasing: 'text-green-600',
   decreasing: 'text-red-600',
-  stable: 'text-gray-600',
-  insufficient_data: 'text-gray-400',
+  stable: 'text-muted-foreground',
+  insufficient_data: 'text-muted-foreground',
 }
 
 function MiniChart({ data, color = 'bg-blue-500', height = 64 }: { data: { value: number }[]; color?: string; height?: number }) {
@@ -138,7 +138,7 @@ export function PredictiveAnalyticsPage() {
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center justify-between mb-2">
-              <Activity className="h-5 w-5 text-blue-600" />
+              <Activity className="h-5 w-5 text-primary" />
               {lf?.trend && trendIcons[lf.trend]}
             </div>
             <p className="text-2xl font-bold">{lf?.avg_daily?.toFixed(0) || 0}</p>
@@ -288,7 +288,7 @@ export function PredictiveAnalyticsPage() {
                 <p className="text-xs text-muted-foreground">Current</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{ag.projected_30d.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-primary">{ag.projected_30d.toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">30-Day Projected</p>
               </div>
               <div className="text-center">

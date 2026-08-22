@@ -188,7 +188,7 @@ export function EmailTemplatesPage() {
                 <div className="space-y-1">
                   {tmpls.map(t => (
                     <div key={t.id}
-                      className={`p-2 rounded cursor-pointer text-sm ${selectedId === t.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
+                      className={`p-2 rounded cursor-pointer text-sm ${selectedId === t.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-muted'}`}
                       onClick={() => handleSelectTemplate(t)}>
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{t.name}</span>
@@ -258,13 +258,13 @@ export function EmailTemplatesPage() {
                 {previewHtml && (
                   <div>
                     <label className="text-sm font-medium">Preview</label>
-                    <div className="border rounded p-4 mt-1 bg-white" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                    <div className="border rounded p-4 mt-1 bg-background" dangerouslySetInnerHTML={{ __html: previewHtml }} />
                   </div>
                 )}
               </div>
             ) : (
               <div className="py-12 text-center text-muted-foreground">
-                <Mail className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <Mail className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
                 <p>Select a template from the left to edit</p>
               </div>
             )}

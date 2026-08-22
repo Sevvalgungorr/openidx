@@ -112,7 +112,7 @@ function StepHeader({
         {completed ? (
           <CheckCircle2 className="h-6 w-6 text-green-600" />
         ) : active ? (
-          <Icon className="h-6 w-6 text-blue-600" />
+          <Icon className="h-6 w-6 text-primary" />
         ) : (
           <Circle className="h-6 w-6 text-muted-foreground" />
         )}

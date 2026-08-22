@@ -182,7 +182,7 @@ export function SecurityKeysPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-blue-100 rounded-lg">
-                      <KeyRound className="h-5 w-5 text-blue-600" />
+                      <KeyRound className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <p className="font-medium">{cred.name || 'Security Key'}</p>

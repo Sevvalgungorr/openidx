@@ -245,7 +245,7 @@ export function MyDevicesPage() {
         <Card className={zitiIdentity.linked ? 'border-green-200 bg-green-50/30' : 'border-amber-200 bg-amber-50/30'}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Network className="h-5 w-5 text-blue-600" />
+              <Network className="h-5 w-5 text-primary" />
               Direct network access
             </CardTitle>
             <CardDescription>
@@ -397,7 +397,7 @@ export function MyDevicesPage() {
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-lg ${device.trusted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                    <div className={`p-3 rounded-lg ${device.trusted ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
                       {getDeviceIcon(device.device_type)}
                     </div>
                     <div>

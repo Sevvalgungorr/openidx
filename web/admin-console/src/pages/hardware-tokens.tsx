@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -142,7 +143,7 @@ export function HardwareTokensPage() {
       revoked: 'bg-red-100 text-red-800',
       lost: 'bg-amber-100 text-amber-800'
     }
-    return <Badge className={styles[status] || 'bg-gray-100'}>{status}</Badge>
+    return <Badge className={styles[status] || 'bg-muted'}>{status}</Badge>
   }
 
   const filteredTokens = tokens.filter(t =>
@@ -191,10 +192,10 @@ export function HardwareTokensPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Assigned</CardTitle>
-            <Key className="h-4 w-4 text-blue-600" />
+            <Key className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{assigned}</div>
+            <div className="text-2xl font-bold text-primary">{assigned}</div>
           </CardContent>
         </Card>
         <Card>
@@ -252,31 +253,30 @@ export function HardwareTokensPage() {
               <p>No hardware tokens found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-2 font-medium">Serial Number</th>
-                    <th className="text-left py-3 px-2 font-medium">Name</th>
-                    <th className="text-left py-3 px-2 font-medium">Type</th>
-                    <th className="text-left py-3 px-2 font-medium">Status</th>
-                    <th className="text-left py-3 px-2 font-medium">Use Count</th>
-                    <th className="text-left py-3 px-2 font-medium">Last Used</th>
-                    <th className="text-left py-3 px-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table className="text-sm">
+                <TableHeader>
+                  <TableRow className="border-b">
+                    <TableHead className="text-left py-3 px-2 font-medium">Serial Number</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Name</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Type</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Status</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Use Count</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Last Used</TableHead>
+                    <TableHead className="text-left py-3 px-2 font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {filteredTokens.map((token) => (
-                    <tr key={token.id} className="border-b hover:bg-muted/50">
-                      <td className="py-3 px-2 font-mono">{token.serial_number}</td>
-                      <td className="py-3 px-2">{token.name || '-'}</td>
-                      <td className="py-3 px-2">{token.token_type}</td>
-                      <td className="py-3 px-2">{getStatusBadge(token.status)}</td>
-                      <td className="py-3 px-2">{token.use_count}</td>
-                      <td className="py-3 px-2">
+                    <TableRow key={token.id} className="border-b hover:bg-muted/50">
+                      <TableCell className="py-3 px-2 font-mono">{token.serial_number}</TableCell>
+                      <TableCell className="py-3 px-2">{token.name || '-'}</TableCell>
+                      <TableCell className="py-3 px-2">{token.token_type}</TableCell>
+                      <TableCell className="py-3 px-2">{getStatusBadge(token.status)}</TableCell>
+                      <TableCell className="py-3 px-2">{token.use_count}</TableCell>
+                      <TableCell className="py-3 px-2">
                         {token.last_used_at ? new Date(token.last_used_at).toLocaleDateString() : 'Never'}
-                      </td>
-                      <td className="py-3 px-2">
+                      </TableCell>
+                      <TableCell className="py-3 px-2">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -342,12 +342,11 @@ export function HardwareTokensPage() {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>

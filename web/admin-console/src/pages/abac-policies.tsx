@@ -28,6 +28,7 @@ import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Switch } from '../components/ui/switch'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { LoadingSpinner } from '../components/ui/loading-spinner'
 import {
   DropdownMenu,
@@ -395,60 +396,60 @@ export function ABACPoliciesPage() {
           </CardHeader>
           <CardContent>
             <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left text-sm font-medium">Name</th>
-                    <th className="p-3 text-left text-sm font-medium">Resource Type</th>
-                    <th className="p-3 text-left text-sm font-medium">Conditions</th>
-                    <th className="p-3 text-left text-sm font-medium">Effect</th>
-                    <th className="p-3 text-left text-sm font-medium">Priority</th>
-                    <th className="p-3 text-left text-sm font-medium">Enabled</th>
-                    <th className="p-3 text-right text-sm font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b bg-muted/50">
+                    <TableHead className="p-3 text-left text-sm font-medium">Name</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Resource Type</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Conditions</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Effect</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Priority</TableHead>
+                    <TableHead className="p-3 text-left text-sm font-medium">Enabled</TableHead>
+                    <TableHead className="p-3 text-right text-sm font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {filtered.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                    <TableRow>
+                      <TableCell colSpan={7} className="p-8 text-center text-muted-foreground">
                         <Filter className="mx-auto mb-2 h-8 w-8 opacity-50" />
                         <p>No ABAC policies found</p>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     filtered.map(policy => (
-                      <tr key={policy.id} className="border-b last:border-b-0 hover:bg-muted/25">
-                        <td className="p-3">
+                      <TableRow key={policy.id} className="border-b last:border-b-0 hover:bg-muted/25">
+                        <TableCell className="p-3">
                           <div>
                             <p className="font-medium">{policy.name}</p>
                             {policy.description && (
                               <p className="text-sm text-muted-foreground truncate max-w-[250px]">{policy.description}</p>
                             )}
                           </div>
-                        </td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3">
                           <Badge variant="outline">{policy.resource_type}</Badge>
                           {policy.resource_id && (
                             <span className="ml-1 text-xs text-muted-foreground">({policy.resource_id})</span>
                           )}
-                        </td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3">
                           <Badge variant="secondary">{policy.conditions?.length || 0} condition{(policy.conditions?.length || 0) !== 1 ? 's' : ''}</Badge>
-                        </td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3">
                           <Badge className={policy.effect === 'allow' ? 'bg-green-100 text-green-800 hover:bg-green-100' : 'bg-red-100 text-red-800 hover:bg-red-100'}>
                             {policy.effect === 'allow' ? <Shield className="mr-1 h-3 w-3" /> : <ShieldOff className="mr-1 h-3 w-3" />}
                             {policy.effect}
                           </Badge>
-                        </td>
-                        <td className="p-3 text-sm">{policy.priority}</td>
-                        <td className="p-3">
+                        </TableCell>
+                        <TableCell className="p-3 text-sm">{policy.priority}</TableCell>
+                        <TableCell className="p-3">
                           <Switch
                             checked={policy.enabled}
                             onCheckedChange={() => toggleMutation.mutate(policy)}
                           />
-                        </td>
-                        <td className="p-3 text-right">
+                        </TableCell>
+                        <TableCell className="p-3 text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm">
@@ -465,12 +466,12 @@ export function ABACPoliciesPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             {/* Pagination */}

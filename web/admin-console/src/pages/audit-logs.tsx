@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { LoadingSpinner } from '../components/ui/loading-spinner'
+import { TableSkeleton } from '../components/ui/skeleton'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { api } from '../lib/api'
 import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
@@ -59,7 +60,7 @@ const eventTypeColors: Record<string, string> = {
   role_management: 'bg-cyan-100 text-cyan-800',
   configuration: 'bg-orange-100 text-orange-800',
   data_access: 'bg-yellow-100 text-yellow-800',
-  system: 'bg-gray-100 text-gray-800',
+  system: 'bg-muted text-foreground',
 }
 
 const outcomeIcons: Record<string, React.ReactNode> = {
@@ -205,7 +206,7 @@ export function AuditLogsPage() {
         <CardContent className="pt-6">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-gray-500" />
+              <Calendar className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Date Range:</span>
             </div>
             <div className="flex items-center gap-2">
@@ -215,7 +216,7 @@ export function AuditLogsPage() {
                 onChange={(e) => { setStartDate(e.target.value); setPage(0) }}
                 className="w-40"
               />
-              <span className="text-gray-500">to</span>
+              <span className="text-muted-foreground">to</span>
               <Input
                 type="date"
                 value={endDate}
@@ -274,7 +275,7 @@ export function AuditLogsPage() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{statistics.total_events}</p>
-                    <p className="text-sm text-gray-500">Total Events</p>
+                    <p className="text-sm text-muted-foreground">Total Events</p>
                   </div>
                 </div>
               </CardContent>
@@ -287,7 +288,7 @@ export function AuditLogsPage() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{statistics.success_rate.toFixed(1)}%</p>
-                    <p className="text-sm text-gray-500">Success Rate</p>
+                    <p className="text-sm text-muted-foreground">Success Rate</p>
                   </div>
                 </div>
               </CardContent>
@@ -300,7 +301,7 @@ export function AuditLogsPage() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{statistics.failed_auth_count}</p>
-                    <p className="text-sm text-gray-500">Failed Auth</p>
+                    <p className="text-sm text-muted-foreground">Failed Auth</p>
                   </div>
                 </div>
               </CardContent>
@@ -313,7 +314,7 @@ export function AuditLogsPage() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{statistics.by_type?.authentication || 0}</p>
-                    <p className="text-sm text-gray-500">Auth Events</p>
+                    <p className="text-sm text-muted-foreground">Auth Events</p>
                   </div>
                 </div>
               </CardContent>
@@ -333,21 +334,21 @@ export function AuditLogsPage() {
                     {statistics.events_per_day.map((day, i) => (
                       <div key={i} className="flex-1 flex flex-col items-center">
                         <div
-                          className="w-full bg-blue-500 rounded-t transition-all hover:bg-blue-600"
+                          className="w-full bg-blue-500 rounded-t transition-all hover:bg-primary"
                           style={{
                             height: `${(day.count / maxDailyEvents) * 100}%`,
                             minHeight: day.count > 0 ? '4px' : '0',
                           }}
                           title={`${day.date}: ${day.count} events`}
                         />
-                        <span className="text-[10px] text-gray-400 mt-1 rotate-45 origin-left">
+                        <span className="text-[10px] text-muted-foreground mt-1 rotate-45 origin-left">
                           {new Date(day.date).getDate()}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="h-40 flex items-center justify-center text-gray-400">
+                  <div className="h-40 flex items-center justify-center text-muted-foreground">
                     No data for selected period
                   </div>
                 )}
@@ -368,9 +369,9 @@ export function AuditLogsPage() {
                       <div key={type}>
                         <div className="flex items-center justify-between text-sm mb-1">
                           <span className="capitalize">{type.replace('_', ' ')}</span>
-                          <span className="text-gray-500">{count}</span>
+                          <span className="text-muted-foreground">{count}</span>
                         </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full ${
                               type === 'authentication' ? 'bg-blue-500' :
@@ -409,7 +410,7 @@ export function AuditLogsPage() {
                       }`} />
                       <div>
                         <p className="font-medium capitalize">{outcome}</p>
-                        <p className="text-sm text-gray-500">{count} ({percentage}%)</p>
+                        <p className="text-sm text-muted-foreground">{count} ({percentage}%)</p>
                       </div>
                     </div>
                   )
@@ -424,7 +425,7 @@ export function AuditLogsPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search by action, actor, IP address..."
                 value={search}
@@ -433,7 +434,7 @@ export function AuditLogsPage() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-500" />
+              <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={eventTypeFilter || 'all'} onValueChange={(val) => { setEventTypeFilter(val === 'all' ? '' : val); setPage(0) }}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="All Event Types" />
@@ -461,10 +462,7 @@ export function AuditLogsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <LoadingSpinner size="lg" />
-              <p className="mt-4 text-sm text-muted-foreground">Loading audit logs...</p>
-            </div>
+            <TableSkeleton rows={8} cols={6} />
           ) : isError ? (
             <QueryError error={error} resource="audit logs" />
           ) : !filteredEvents || filteredEvents.length === 0 ? (
@@ -475,69 +473,69 @@ export function AuditLogsPage() {
             </div>
           ) : (
           <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="p-3 text-left text-sm font-medium">Timestamp</th>
-                  <th className="p-3 text-left text-sm font-medium">Event Type</th>
-                  <th className="p-3 text-left text-sm font-medium">Action</th>
-                  <th className="p-3 text-left text-sm font-medium">Actor</th>
-                  <th className="p-3 text-left text-sm font-medium">Target</th>
-                  <th className="p-3 text-left text-sm font-medium">Outcome</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b bg-muted">
+                  <TableHead className="p-3 text-left text-sm font-medium">Timestamp</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Event Type</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Action</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Actor</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Target</TableHead>
+                  <TableHead className="p-3 text-left text-sm font-medium">Outcome</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredEvents.map((event) => (
-                    <tr key={event.id} onClick={() => setSelectedEvent(event)} className="border-b hover:bg-gray-50 cursor-pointer">
-                      <td className="p-3">
-                        <span className="text-sm text-gray-600">
+                    <TableRow key={event.id} onClick={() => setSelectedEvent(event)} className="border-b hover:bg-muted cursor-pointer">
+                      <TableCell className="p-3">
+                        <span className="text-sm text-muted-foreground">
                           {formatTimestamp(event.timestamp)}
                         </span>
-                      </td>
-                      <td className="p-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${eventTypeColors[event.event_type] || 'bg-gray-100 text-gray-800'}`}>
+                      </TableCell>
+                      <TableCell className="p-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${eventTypeColors[event.event_type] || 'bg-muted text-foreground'}`}>
                           {eventTypeIcons[event.event_type]}
                           {event.event_type.replace('_', ' ')}
                         </span>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <p className="font-medium text-sm">{event.action}</p>
-                        <p className="text-xs text-gray-500">{event.category}</p>
-                      </td>
-                      <td className="p-3">
+                        <p className="text-xs text-muted-foreground">{event.category}</p>
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="text-sm">
                           <p className="truncate max-w-[150px]" title={event.actor_id}>
                             {event.actor_id ? event.actor_id.substring(0, 8) + '...' : '-'}
                           </p>
-                          <p className="text-xs text-gray-500">{event.actor_ip || '-'}</p>
+                          <p className="text-xs text-muted-foreground">{event.actor_ip || '-'}</p>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="text-sm">
                           <p className="truncate max-w-[150px]" title={event.target_id}>
                             {event.target_id ? event.target_id.substring(0, 8) + '...' : '-'}
                           </p>
-                          <p className="text-xs text-gray-500">{event.target_type || '-'}</p>
+                          <p className="text-xs text-muted-foreground">{event.target_type || '-'}</p>
                         </div>
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <div className="flex items-center gap-1">
                           {outcomeIcons[event.outcome]}
                           <Badge variant={event.outcome === 'success' ? 'default' : event.outcome === 'failure' ? 'destructive' : 'secondary'}>
                             {event.outcome}
                           </Badge>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           )}
 
           {/* Pagination Controls */}
           <div className="flex items-center justify-between pt-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               {totalCount > 0
                 ? `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, totalCount)} of ${totalCount} events`
                 : 'No events'}
@@ -552,7 +550,7 @@ export function AuditLogsPage() {
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Previous
               </Button>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-muted-foreground">
                 Page {page + 1}{totalPages > 0 ? ` of ${totalPages}` : ''}
               </span>
               <Button
@@ -580,26 +578,26 @@ export function AuditLogsPage() {
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Timestamp</p>
+                  <p className="text-sm font-medium text-muted-foreground">Timestamp</p>
                   <p className="text-sm">{formatTimestamp(selectedEvent.timestamp)}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Event Type</p>
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${eventTypeColors[selectedEvent.event_type] || 'bg-gray-100 text-gray-800'}`}>
+                  <p className="text-sm font-medium text-muted-foreground">Event Type</p>
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${eventTypeColors[selectedEvent.event_type] || 'bg-muted text-foreground'}`}>
                     {eventTypeIcons[selectedEvent.event_type]}
                     {selectedEvent.event_type.replace('_', ' ')}
                   </span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Category</p>
+                  <p className="text-sm font-medium text-muted-foreground">Category</p>
                   <p className="text-sm capitalize">{selectedEvent.category}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Action</p>
+                  <p className="text-sm font-medium text-muted-foreground">Action</p>
                   <p className="text-sm">{selectedEvent.action}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Outcome</p>
+                  <p className="text-sm font-medium text-muted-foreground">Outcome</p>
                   <div className="flex items-center gap-1">
                     {outcomeIcons[selectedEvent.outcome]}
                     <Badge variant={selectedEvent.outcome === 'success' ? 'default' : selectedEvent.outcome === 'failure' ? 'destructive' : 'secondary'}>
@@ -612,17 +610,17 @@ export function AuditLogsPage() {
               {/* Actor Section */}
               <div>
                 <h3 className="text-sm font-semibold mb-2">Actor</h3>
-                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded">
+                <div className="grid grid-cols-2 gap-4 bg-muted p-3 rounded">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">ID</p>
+                    <p className="text-sm font-medium text-muted-foreground">ID</p>
                     <p className="text-sm break-all">{selectedEvent.actor_id || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Type</p>
+                    <p className="text-sm font-medium text-muted-foreground">Type</p>
                     <p className="text-sm">{selectedEvent.actor_type || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">IP Address</p>
+                    <p className="text-sm font-medium text-muted-foreground">IP Address</p>
                     <p className="text-sm">{selectedEvent.actor_ip || '-'}</p>
                   </div>
                 </div>
@@ -631,13 +629,13 @@ export function AuditLogsPage() {
               {/* Target Section */}
               <div>
                 <h3 className="text-sm font-semibold mb-2">Target</h3>
-                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded">
+                <div className="grid grid-cols-2 gap-4 bg-muted p-3 rounded">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">ID</p>
+                    <p className="text-sm font-medium text-muted-foreground">ID</p>
                     <p className="text-sm break-all">{selectedEvent.target_id || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Type</p>
+                    <p className="text-sm font-medium text-muted-foreground">Type</p>
                     <p className="text-sm">{selectedEvent.target_type || '-'}</p>
                   </div>
                 </div>
@@ -646,17 +644,17 @@ export function AuditLogsPage() {
               {/* IDs Section */}
               <div>
                 <h3 className="text-sm font-semibold mb-2">IDs</h3>
-                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded">
+                <div className="grid grid-cols-2 gap-4 bg-muted p-3 rounded">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Resource ID</p>
+                    <p className="text-sm font-medium text-muted-foreground">Resource ID</p>
                     <p className="text-sm break-all">{selectedEvent.resource_id || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Session ID</p>
+                    <p className="text-sm font-medium text-muted-foreground">Session ID</p>
                     <p className="text-sm break-all">{selectedEvent.session_id || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Request ID</p>
+                    <p className="text-sm font-medium text-muted-foreground">Request ID</p>
                     <p className="text-sm break-all">{selectedEvent.request_id || '-'}</p>
                   </div>
                 </div>
@@ -666,7 +664,7 @@ export function AuditLogsPage() {
               {selectedEvent.details && Object.keys(selectedEvent.details).length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold mb-2">Details</h3>
-                  <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-60">
+                  <pre className="bg-muted p-3 rounded text-xs overflow-auto max-h-60">
                     {JSON.stringify(selectedEvent.details, null, 2)}
                   </pre>
                 </div>

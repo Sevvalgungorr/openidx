@@ -57,9 +57,9 @@ function ScoreGauge({ score }: { score: number }) {
   return (
     <div className="flex flex-col items-center justify-center py-6">
       <div className={`relative w-40 h-40 rounded-full ${getBgColor(score)} flex items-center justify-center`}>
-        <div className="bg-white rounded-full w-28 h-28 flex flex-col items-center justify-center shadow-inner">
+        <div className="bg-background rounded-full w-28 h-28 flex flex-col items-center justify-center shadow-inner">
           <span className={`text-4xl font-bold ${getColor(score)}`}>{score}</span>
-          <span className="text-xs text-gray-500 mt-1">/ 100</span>
+          <span className="text-xs text-muted-foreground mt-1">/ 100</span>
         </div>
       </div>
       <Badge className={`mt-4 ${getBgColor(score)} ${getColor(score)} border-0`}>
@@ -93,8 +93,8 @@ function MetricCard({
     red: 'bg-red-100',
     blue: 'bg-blue-100',
     purple: 'bg-purple-100',
-    gray: 'bg-gray-100',
-  }[color] || 'bg-gray-100'
+    gray: 'bg-muted',
+  }[color] || 'bg-muted'
 
   const iconColor = {
     green: 'text-green-700',
@@ -103,8 +103,8 @@ function MetricCard({
     red: 'text-red-700',
     blue: 'text-blue-700',
     purple: 'text-purple-700',
-    gray: 'text-gray-700',
-  }[color] || 'text-gray-700'
+    gray: 'text-foreground',
+  }[color] || 'text-foreground'
 
   return (
     <Card>
@@ -116,8 +116,8 @@ function MetricCard({
             </div>
             <div>
               <p className="text-2xl font-bold">{typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(1) + '%') : value}</p>
-              <p className="text-sm text-gray-500">{title}</p>
-              {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+              <p className="text-sm text-muted-foreground">{title}</p>
+              {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
           </div>
           {action && onAction && (
@@ -187,7 +187,7 @@ export function ComplianceDashboardPage() {
           </CardHeader>
           <CardContent>
             <ScoreGauge score={p.overall_score} />
-            <div className="mt-4 space-y-2 text-sm text-gray-600">
+            <div className="mt-4 space-y-2 text-sm text-muted-foreground">
               <p>This score is a weighted composite of:</p>
               <ul className="space-y-1 ml-4 list-disc">
                 <li>MFA adoption (25%)</li>
@@ -289,7 +289,7 @@ export function ComplianceDashboardPage() {
             </div>
             <div className="flex-1">
               <p className="text-2xl font-bold">{p.policy_violations_count}</p>
-              <p className="text-sm text-gray-500">Policy Violations (last 30 days)</p>
+              <p className="text-sm text-muted-foreground">Policy Violations (last 30 days)</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => navigate('/policies')}>
               View Policies <ExternalLink className="h-3 w-3 ml-1" />

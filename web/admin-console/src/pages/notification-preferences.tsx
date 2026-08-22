@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bell, Mail } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
 import { Button } from '../components/ui/button'
 import { QueryError } from '../components/query-error'
 import { api } from '../lib/api'
@@ -111,47 +112,45 @@ export function NotificationPreferencesPage() {
           {isError ? (
             <QueryError error={error} resource="notification preferences" />
           ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 pr-4 font-medium text-sm">Event Type</th>
+          <Table>
+              <TableHeader>
+                <TableRow className="border-b">
+                  <TableHead className="text-left py-3 pr-4 font-medium text-sm">Event Type</TableHead>
                   {CHANNELS.map(ch => (
-                    <th key={ch.key} className="text-center py-3 px-4 font-medium text-sm">
+                    <TableHead key={ch.key} className="text-center py-3 px-4 font-medium text-sm">
                       <div className="flex items-center justify-center gap-1">
                         <ch.icon className="h-4 w-4" />
                         {ch.label}
                       </div>
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {EVENT_TYPES.map(et => (
-                  <tr key={et.key} className="border-b last:border-0">
-                    <td className="py-4 pr-4">
+                  <TableRow key={et.key} className="border-b last:border-0">
+                    <TableCell className="py-4 pr-4">
                       <p className="font-medium text-sm">{et.label}</p>
                       <p className="text-xs text-muted-foreground">{et.description}</p>
-                    </td>
+                    </TableCell>
                     {CHANNELS.map(ch => (
-                      <td key={ch.key} className="text-center py-4 px-4">
+                      <TableCell key={ch.key} className="text-center py-4 px-4">
                         <button
                           onClick={() => toggle(et.key, ch.key)}
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            isEnabled(et.key, ch.key) ? 'bg-blue-600' : 'bg-gray-200'
+                            isEnabled(et.key, ch.key) ? 'bg-primary' : 'bg-muted'
                           }`}
                         >
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                             isEnabled(et.key, ch.key) ? 'translate-x-6' : 'translate-x-1'
                           }`} />
                         </button>
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
