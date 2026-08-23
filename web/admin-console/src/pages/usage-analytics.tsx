@@ -81,18 +81,62 @@ export function UsageAnalyticsPage() {
     error: usageErrorObj,
   } = useQuery<{ usage: UsageData }>({
     queryKey: ['usage-analytics'],
-    queryFn: () => api.get<{ usage: UsageData }>('/api/v1/analytics/usage'),
+    // Normalize: the analytics endpoints can omit numeric fields per row (a Go
+    // zero/absent value serializes to null or is dropped), and the cards call
+    // .toLocaleString()/.toFixed() on them, which crashed the page with "Cannot
+    // read properties of undefined (reading 'toLocaleString')". Default every
+    // rendered field so the typed shape holds at runtime, not just in TS.
+    queryFn: async () => {
+      const res = await api.get<{ usage: UsageData }>('/api/v1/analytics/usage')
+      const u = res.usage
+      return {
+        usage: {
+          ...u,
+          new_registrations: (u?.new_registrations ?? []).map((r) => ({
+            date: r.date ?? '',
+            count: r.count ?? 0,
+          })),
+        },
+      }
+    },
   })
 
   const { data: adoptionData, isLoading: adoptionLoading } = useQuery<{ adoption: FeatureAdoption }>({
     queryKey: ['feature-adoption'],
-    queryFn: () =>
-      api.get<{ adoption: FeatureAdoption }>('/api/v1/analytics/feature-adoption'),
+    queryFn: async () => {
+      const res = await api.get<{ adoption: FeatureAdoption }>(
+        '/api/v1/analytics/feature-adoption'
+      )
+      return {
+        adoption: {
+          features: (res.adoption?.features ?? []).map((f) => ({
+            name: f.name ?? '',
+            category: f.category ?? '',
+            total_users: f.total_users ?? 0,
+            adopted_users: f.adopted_users ?? 0,
+            adoption_percentage: f.adoption_percentage ?? 0,
+          })),
+        },
+      }
+    },
   })
 
   const { data: apiData, isLoading: apiLoading } = useQuery<{ api_usage: APIUsage }>({
     queryKey: ['api-usage'],
-    queryFn: () => api.get<{ api_usage: APIUsage }>('/api/v1/analytics/api-usage'),
+    queryFn: async () => {
+      const res = await api.get<{ api_usage: APIUsage }>('/api/v1/analytics/api-usage')
+      return {
+        api_usage: {
+          endpoints: (res.api_usage?.endpoints ?? []).map((e) => ({
+            method: e.method ?? '',
+            path: e.path ?? '',
+            request_count: e.request_count ?? 0,
+            avg_latency_ms: e.avg_latency_ms ?? 0,
+            error_rate: e.error_rate ?? 0,
+          })),
+        },
+      }
+    },
   })
 
   const usage = usageData?.usage

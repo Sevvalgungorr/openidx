@@ -108,6 +108,22 @@ describe('AttestationCampaignsPage', () => {
     // CampaignB has total_items=0 — its progress bar is suppressed
   })
 
+  it('renders without crashing when campaign numeric/string fields are omitted', async () => {
+    // Backend may return rows with numeric/string fields absent — must not blow up
+    // (e.g. c.total_items feeding pct.toFixed, or c.name/status rendering).
+    const sparse = { id: 'cmp-sparse' } as Record<string, unknown>
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/attestation-campaigns') && !url.includes('/items') && !url.includes('/progress')) {
+        return Promise.resolve({ data: [sparse] }) as ReturnType<typeof api.get>
+      }
+      return routeGet(url) as ReturnType<typeof api.get>
+    })
+    render(<AttestationCampaignsPage />, { wrapper: createWrapper() })
+    // Heading + section render, no error boundary
+    expect(await screen.findByText('Attestation Campaigns')).toBeInTheDocument()
+    expect(await screen.findByText('Campaigns (1)')).toBeInTheDocument()
+  })
+
   it('shows the campaign count in the section header', async () => {
     render(<AttestationCampaignsPage />, { wrapper: createWrapper() })
     expect(await screen.findByText('Campaigns (2)')).toBeInTheDocument()

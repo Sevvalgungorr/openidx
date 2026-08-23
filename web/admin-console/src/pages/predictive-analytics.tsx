@@ -106,7 +106,48 @@ function ForecastChart({ historical, predicted }: { historical: DailyMetric[]; p
 export function PredictiveAnalyticsPage() {
   const { data: predictions, isLoading, isError, error } = useQuery<PredictionSummary>({
     queryKey: ['predictions-summary'],
-    queryFn: () => api.get<PredictionSummary>('/api/v1/analytics/predictions'),
+    queryFn: async () => {
+      const res = await api.get<PredictionSummary>('/api/v1/analytics/predictions')
+      const normDaily = (arr: DailyMetric[] | null | undefined): DailyMetric[] =>
+        (arr ?? []).map((d) => ({ date: d?.date ?? '', value: d?.value ?? 0 }))
+      return {
+        login_forecast: {
+          historical: normDaily(res.login_forecast?.historical),
+          predicted: normDaily(res.login_forecast?.predicted),
+          trend: res.login_forecast?.trend ?? '',
+          avg_daily: res.login_forecast?.avg_daily ?? 0,
+        },
+        risk_forecast: {
+          historical: normDaily(res.risk_forecast?.historical),
+          predicted: normDaily(res.risk_forecast?.predicted),
+          trend: res.risk_forecast?.trend ?? '',
+          current_avg: res.risk_forecast?.current_avg ?? 0,
+        },
+        capacity_forecast: {
+          peak_concurrent_sessions: res.capacity_forecast?.peak_concurrent_sessions ?? 0,
+          avg_concurrent_sessions: res.capacity_forecast?.avg_concurrent_sessions ?? 0,
+          peak_hour: res.capacity_forecast?.peak_hour ?? 0,
+          peak_day_of_week: res.capacity_forecast?.peak_day_of_week ?? '',
+          session_growth_rate_pct: res.capacity_forecast?.session_growth_rate_pct ?? 0,
+          recommended_capacity: res.capacity_forecast?.recommended_capacity ?? 0,
+          license_utilization_pct: res.capacity_forecast?.license_utilization_pct ?? 0,
+        },
+        account_growth: {
+          current_users: res.account_growth?.current_users ?? 0,
+          growth_rate_monthly_pct: res.account_growth?.growth_rate_monthly_pct ?? 0,
+          projected_30d: res.account_growth?.projected_30d ?? 0,
+          projected_90d: res.account_growth?.projected_90d ?? 0,
+          historical: normDaily(res.account_growth?.historical),
+        },
+        churn_risk_users: (res.churn_risk_users ?? []).map((u) => ({
+          user_id: u?.user_id ?? '',
+          username: u?.username ?? '',
+          last_login: u?.last_login ?? '',
+          login_freq_change_pct: u?.login_freq_change_pct ?? 0,
+          risk_score: u?.risk_score ?? 0,
+        })),
+      }
+    },
   })
 
   if (isLoading) {

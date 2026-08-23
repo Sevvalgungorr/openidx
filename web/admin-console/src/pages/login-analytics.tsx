@@ -92,11 +92,75 @@ const periodLabels: Record<string, string> = {
 export function LoginAnalyticsPage() {
   const [period, setPeriod] = useState('7d')
 
-  const { data, isLoading, isError, error } = useQuery<{ analytics: LoginAnalytics }>({
+  const { data, isLoading, isError, error } = useQuery<{ analytics?: LoginAnalytics }>({
     queryKey: ['login-analytics', period],
     queryFn: async () => {
-      return api.get<{ analytics: LoginAnalytics }>(`/api/v1/identity/analytics/logins?period=${period}`)
-    }
+      const res = await api.get<{ analytics?: LoginAnalytics }>(
+        `/api/v1/identity/analytics/logins?period=${period}`,
+      )
+      // The backend can serialize Go zero-values / nil slices as null or omit
+      // them entirely. Normalize every rendered field so the typed shape holds
+      // at runtime and the page never dereferences undefined.
+      if (!res.analytics) return {}
+      const a = res.analytics
+      const s = a.summary ?? ({} as LoginAnalytics['summary'])
+      const analytics: LoginAnalytics = {
+        period: a.period ?? '',
+        start_date: a.start_date ?? '',
+        end_date: a.end_date ?? '',
+        summary: {
+          total_logins: s.total_logins ?? 0,
+          successful_logins: s.successful_logins ?? 0,
+          failed_logins: s.failed_logins ?? 0,
+          unique_users: s.unique_users ?? 0,
+          new_devices: s.new_devices ?? 0,
+          high_risk_logins: s.high_risk_logins ?? 0,
+          mfa_challenges: s.mfa_challenges ?? 0,
+          average_risk_score: s.average_risk_score ?? 0,
+          trusted_browser_logins: s.trusted_browser_logins ?? 0,
+        },
+        daily_trends: (a.daily_trends ?? []).map((d) => ({
+          date: d.date ?? '',
+          successful: d.successful ?? 0,
+          failed: d.failed ?? 0,
+          high_risk: d.high_risk ?? 0,
+        })),
+        hourly_pattern: (a.hourly_pattern ?? []).map((h) => ({
+          hour: h.hour ?? 0,
+          successful: h.successful ?? 0,
+          failed: h.failed ?? 0,
+        })),
+        geo_distribution: (a.geo_distribution ?? []).map((g) => ({
+          country: g.country ?? '',
+          city: g.city ?? '',
+          count: g.count ?? 0,
+          failed: g.failed ?? 0,
+          avg_risk: g.avg_risk ?? 0,
+        })),
+        risk_distribution: (a.risk_distribution ?? []).map((r) => ({
+          bucket: r.bucket ?? '',
+          min: r.min ?? 0,
+          max: r.max ?? 0,
+          count: r.count ?? 0,
+        })),
+        auth_methods: (a.auth_methods ?? []).map((m) => ({
+          method: m.method ?? '',
+          count: m.count ?? 0,
+        })),
+        top_failed_users: (a.top_failed_users ?? []).map((u) => ({
+          user_id: u.user_id ?? '',
+          email: u.email ?? '',
+          failed_count: u.failed_count ?? 0,
+          last_attempt: u.last_attempt ?? '',
+        })),
+        device_types: (a.device_types ?? []).map((dt) => ({
+          device_type: dt.device_type ?? '',
+          browser: dt.browser ?? '',
+          count: dt.count ?? 0,
+        })),
+      }
+      return { analytics }
+    },
   })
 
   const analytics = data?.analytics

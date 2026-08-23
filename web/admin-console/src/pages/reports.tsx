@@ -55,14 +55,39 @@ export function ReportsPage() {
 
   const { data: exportsData, isLoading: exportsLoading, isError: exportsError, error: exportsErrorObj } = useQuery({
     queryKey: ['report-exports'],
-    queryFn: () => api.get<{ exports: ReportExport[]; total: number }>('/api/v1/audit/reports/exports'),
+    queryFn: async () => {
+      const res = await api.get<{ exports: ReportExport[]; total: number }>('/api/v1/audit/reports/exports')
+      // Normalize so rendered fields never throw when the backend omits them
+      // (Go zero-values / nil slices serialize to null or are dropped).
+      const exports = (res?.exports ?? []).map(exp => ({
+        ...exp,
+        name: exp.name ?? '',
+        report_type: exp.report_type ?? '',
+        format: exp.format ?? '',
+        status: exp.status ?? '',
+        file_size: exp.file_size ?? 0,
+        row_count: exp.row_count ?? 0,
+        created_at: exp.created_at ?? '',
+      }))
+      return { exports, total: res?.total ?? 0 }
+    },
     refetchInterval: 5000,
   })
   const exports = exportsData?.exports || []
 
   const { data: scheduledData, isLoading: scheduledLoading, isError: scheduledError, error: scheduledErrorObj } = useQuery({
     queryKey: ['scheduled-reports'],
-    queryFn: () => api.get<{ reports: ScheduledReport[] }>('/api/v1/audit/reports/scheduled'),
+    queryFn: async () => {
+      const res = await api.get<{ reports: ScheduledReport[] }>('/api/v1/audit/reports/scheduled')
+      const reports = (res?.reports ?? []).map(s => ({
+        ...s,
+        name: s.name ?? '',
+        report_type: s.report_type ?? '',
+        schedule: s.schedule ?? '',
+        format: s.format ?? '',
+      }))
+      return { reports }
+    },
   })
   const scheduled = scheduledData?.reports || []
 

@@ -119,6 +119,25 @@ describe('PredictiveAnalyticsPage', () => {
     expect(link).toHaveAttribute('href', '/users/u-1/access-360')
   })
 
+  it('renders without hitting the error boundary when numeric fields are omitted', async () => {
+    // Backend Go zero-values / nil slices can serialize to null or be dropped
+    // entirely — the page must still render its heading, not blank out.
+    vi.mocked(api.get).mockResolvedValue({
+      login_forecast: { historical: [{ date: '2026-06-01' }], predicted: null },
+      risk_forecast: { historical: [{ date: '2026-06-01' }], predicted: null },
+      capacity_forecast: {},
+      account_growth: { historical: null },
+      churn_risk_users: [{ user_id: 'u-9', username: 'bob', last_login: '2026-04-01T00:00:00Z' }],
+    })
+
+    render(<PredictiveAnalyticsPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('Predictive Analytics')).toBeInTheDocument()
+    expect(screen.getByText('Avg Daily Logins')).toBeInTheDocument()
+    expect(screen.getByText(/account growth projection/i)).toBeInTheDocument()
+    expect(screen.getByText('bob')).toBeInTheDocument()
+  })
+
   it('surfaces a read error when the fetch fails', async () => {
     vi.mocked(api.get).mockRejectedValue({ response: { status: 403 } })
 

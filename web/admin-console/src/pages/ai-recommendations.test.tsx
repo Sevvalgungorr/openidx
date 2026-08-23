@@ -114,4 +114,27 @@ describe('AIRecommendationsPage', () => {
       screen.getByText(/admin accounts without mfa are a high-impact compromise vector/i),
     ).toBeInTheDocument()
   })
+
+  it('renders without crashing when recommendation + stats fields are omitted', async () => {
+    // Backend can return rows/objects with numeric/string/array fields absent.
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/recommendations/stats')) {
+        return Promise.resolve({}) as ReturnType<typeof api.get>
+      }
+      if (url.includes('/recommendations')) {
+        return Promise.resolve({ data: [{ id: 'rec-bare' }] }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve({ data: [] }) as ReturnType<typeof api.get>
+    })
+
+    render(<AIRecommendationsPage />, { wrapper: createWrapper() })
+
+    // Heading renders (no error boundary blanking the page) even though the
+    // recommendation lacks recommendation_type/affected_entities and the stats
+    // object is entirely empty.
+    expect(await screen.findByText('AI Recommendations')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /generate recommendations/i }),
+    ).toBeInTheDocument()
+  })
 })

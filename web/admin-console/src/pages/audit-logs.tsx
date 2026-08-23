@@ -102,13 +102,44 @@ export function AuditLogsPage() {
       const result = await api.getWithHeaders<AuditEvent[]>(`/api/v1/audit/events?${params.toString()}`)
       const total = parseInt(result.headers['x-total-count'] || '0', 10)
       if (!isNaN(total)) setTotalCount(total)
-      return result.data
+      // Normalize each row so fields the UI accesses (e.g. event_type.replace)
+      // are never null/undefined even if the backend drops them.
+      return (result.data ?? []).map((e) => ({
+        ...e,
+        event_type: e.event_type ?? '',
+        category: e.category ?? '',
+        action: e.action ?? '',
+        outcome: e.outcome ?? '',
+        actor_id: e.actor_id ?? '',
+        actor_type: e.actor_type ?? '',
+        actor_ip: e.actor_ip ?? '',
+        target_id: e.target_id ?? '',
+        target_type: e.target_type ?? '',
+        resource_id: e.resource_id ?? '',
+        session_id: e.session_id ?? '',
+        request_id: e.request_id ?? '',
+        details: e.details ?? {},
+      }))
     },
   })
 
   const { data: statistics } = useQuery({
     queryKey: ['audit-statistics', startDate, endDate],
-    queryFn: () => api.get<AuditStatistics>(`/api/v1/audit/statistics?start=${startDate}&end=${endDate}`),
+    queryFn: async () => {
+      const s = await api.get<AuditStatistics>(`/api/v1/audit/statistics?start=${startDate}&end=${endDate}`)
+      // Normalize so numeric/array/map fields the UI reads (.toFixed, .map,
+      // Object.entries) never explode on null/undefined from the backend.
+      return {
+        ...s,
+        total_events: s?.total_events ?? 0,
+        by_type: s?.by_type ?? {},
+        by_outcome: s?.by_outcome ?? {},
+        by_category: s?.by_category ?? {},
+        events_per_day: s?.events_per_day ?? [],
+        failed_auth_count: s?.failed_auth_count ?? 0,
+        success_rate: s?.success_rate ?? 0,
+      } as AuditStatistics
+    },
   })
 
   const exportMutation = useMutation({

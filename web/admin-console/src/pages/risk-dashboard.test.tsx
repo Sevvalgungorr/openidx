@@ -146,6 +146,37 @@ describe('RiskDashboardPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('renders without hitting the error boundary when numeric fields are omitted from the API response', async () => {
+    // Simulate a Go backend nil/zero-value response: nested rows arrive with
+    // their numeric fields absent (would throw on .toFixed()/.toLocaleString()).
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/analytics/risk-timeline')) {
+        return Promise.resolve({
+          timeline: { days: [{ date: '2026-06-01' }] },
+        }) as ReturnType<typeof api.get>
+      }
+      if (url.includes('/analytics/risk')) {
+        return Promise.resolve({
+          risk: {
+            risk_distribution: [{ bucket: '0-20' }],
+            top_risky_users: [{ user_id: 'u-x', email: 'x@example.com', username: 'x' }],
+          },
+        }) as ReturnType<typeof api.get>
+      }
+      if (url.includes('/security-alerts')) {
+        return Promise.resolve({ alerts: [{ id: 'a-x', title: 'partial alert' }] }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve({}) as ReturnType<typeof api.get>
+    })
+
+    render(<RiskDashboardPage />, { wrapper: createWrapper() })
+
+    // Page renders its heading + a nested section instead of blanking out.
+    expect(await screen.findByText('Risk Dashboard')).toBeInTheDocument()
+    expect(screen.getByText('Risk Score Distribution')).toBeInTheDocument()
+    expect(screen.getByText('x@example.com')).toBeInTheDocument()
+  })
+
   it('renders the "No risk data available" empty state when the risk query returns empty', async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.includes('/analytics/risk-timeline')) return Promise.resolve({ timeline }) as ReturnType<typeof api.get>

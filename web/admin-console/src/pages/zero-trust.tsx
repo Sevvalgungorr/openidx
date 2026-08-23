@@ -155,16 +155,89 @@ export function ZeroTrustPage() {
 
   const overviewQuery = useQuery({
     queryKey: ['access-overview'],
-    queryFn: () => api.get<OverviewResponse>('/api/v1/access/overview'),
+    queryFn: async () => {
+      const d = await api.get<OverviewResponse>('/api/v1/access/overview')
+      const rawSummary = (d?.summary ?? {}) as Partial<OverviewResponse['summary']>
+      const summary: OverviewResponse['summary'] = {
+        total_routes: rawSummary.total_routes ?? 0,
+        enabled_routes: rawSummary.enabled_routes ?? 0,
+        via_http_proxy: rawSummary.via_http_proxy ?? 0,
+        via_ziti: rawSummary.via_ziti ?? 0,
+        via_browzer: rawSummary.via_browzer ?? 0,
+        via_guacamole: rawSummary.via_guacamole ?? 0,
+        missing_auth: rawSummary.missing_auth ?? 0,
+        missing_device_trust: rawSummary.missing_device_trust ?? 0,
+        missing_posture: rawSummary.missing_posture ?? 0,
+        missing_risk_cap: rawSummary.missing_risk_cap ?? 0,
+        active_sessions: rawSummary.active_sessions ?? 0,
+      }
+      const routes: OverviewRoute[] = (d?.routes ?? []).map((r) => ({
+        id: r?.id ?? '',
+        name: r?.name ?? '',
+        from_url: r?.from_url ?? '',
+        to_url: r?.to_url ?? '',
+        enabled: r?.enabled ?? false,
+        route_type: r?.route_type ?? '',
+        ziti_enabled: r?.ziti_enabled ?? false,
+        ziti_service_name: r?.ziti_service_name,
+        browzer_enabled: r?.browzer_enabled ?? false,
+        guacamole_enabled: r?.guacamole_enabled ?? false,
+        require_auth: r?.require_auth ?? false,
+        allowed_roles_count: r?.allowed_roles_count ?? 0,
+        allowed_groups_count: r?.allowed_groups_count ?? 0,
+        require_device_trust: r?.require_device_trust ?? false,
+        posture_check_count: r?.posture_check_count ?? 0,
+        max_risk_score: r?.max_risk_score ?? 0,
+        allowed_countries_count: r?.allowed_countries_count ?? 0,
+        has_inline_policy: r?.has_inline_policy ?? false,
+        active_sessions: r?.active_sessions ?? 0,
+        features: (r?.features ?? []).map((f) => ({
+          feature_name: f?.feature_name ?? '',
+          enabled: f?.enabled ?? false,
+          status: f?.status ?? '',
+          health_status: f?.health_status ?? '',
+        })),
+      }))
+      return {
+        summary,
+        routes,
+        ziti: {
+          configured: d?.ziti?.configured ?? false,
+          controller_reachable: d?.ziti?.controller_reachable ?? false,
+        },
+      } satisfies OverviewResponse
+    },
   })
   const sessionsQuery = useQuery({
     queryKey: ['access-sessions'],
-    queryFn: () => api.get<{ sessions: ProxySession[] }>('/api/v1/access/sessions'),
+    queryFn: async () => {
+      const d = await api.get<{ sessions: ProxySession[] }>('/api/v1/access/sessions')
+      const sessions: ProxySession[] = (d?.sessions ?? []).map((sess) => ({
+        id: sess?.id ?? '',
+        user_id: sess?.user_id ?? '',
+        route_id: sess?.route_id ?? '',
+        ip_address: sess?.ip_address ?? '',
+        user_agent: sess?.user_agent ?? '',
+        last_active_at: sess?.last_active_at ?? '',
+      }))
+      return { sessions }
+    },
     enabled: tab === 'live',
   })
   const auditQuery = useQuery({
     queryKey: ['access-audit-recent'],
-    queryFn: () => api.get<{ events: AuditEvent[] }>('/api/v1/access/audit/unified?limit=50'),
+    queryFn: async () => {
+      const d = await api.get<{ events: AuditEvent[] }>('/api/v1/access/audit/unified?limit=50')
+      const events: AuditEvent[] = (d?.events ?? []).map((e) => ({
+        source: e?.source ?? '',
+        event_type: e?.event_type ?? '',
+        user_email: e?.user_email ?? '',
+        actor_ip: e?.actor_ip ?? '',
+        route_id: e?.route_id ?? '',
+        created_at: e?.created_at ?? '',
+      }))
+      return { events }
+    },
     enabled: tab === 'live',
   })
 

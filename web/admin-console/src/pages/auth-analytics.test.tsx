@@ -121,6 +121,31 @@ describe('AuthAnalyticsPage', () => {
     expect(screen.getByText(/recent failed logins/i)).toBeInTheDocument()
   })
 
+  it('renders without hitting the error boundary when numeric fields are omitted (null/absent from backend)', async () => {
+    // Simulate a Go zero-value / nil-slice response: scalars absent, array items
+    // missing their numeric fields. Should NOT throw on .toLocaleString()/.toFixed().
+    vi.mocked(api.get).mockResolvedValue({
+      dashboard: {
+        period: '7d',
+        // total_logins / successful_logins / failed_logins / mfa_usage_count /
+        // active_users all OMITTED
+        login_methods: [{ method: 'password' }], // count / percentage OMITTED
+        geo_top_countries: [{ country: 'US' }], // count / failed OMITTED
+        hourly_activity: [{ hour: 9 }], // count OMITTED
+        recent_failed_logins: [
+          { email: 'alice@example.com', source_ip: '203.0.113.42', reason: 'bad' },
+        ], // timestamp / user_id OMITTED
+      },
+    } as unknown as { dashboard: typeof dashboard })
+
+    render(<AuthAnalyticsPage />, { wrapper: createWrapper() })
+
+    // Heading + a section render => page did not blank out via the error boundary.
+    expect(await screen.findByText('Authentication Analytics')).toBeInTheDocument()
+    expect(screen.getByText(/login method breakdown/i)).toBeInTheDocument()
+    expect(screen.getByText('Total Logins')).toBeInTheDocument()
+  })
+
   it('shows the no-data state when the API returns no dashboard', async () => {
     vi.mocked(api.get).mockResolvedValue({} as unknown as { dashboard: typeof dashboard })
     render(<AuthAnalyticsPage />, { wrapper: createWrapper() })

@@ -81,7 +81,21 @@ export function RemoteSupportPage() {
 
   const { data: sessions = [], isLoading, isError, error } = useQuery({
     queryKey: ['remote-support-sessions'],
-    queryFn: () => api.get<RemoteSession[]>('/api/v1/access/remote-support/sessions'),
+    queryFn: async () => {
+      // Normalize every rendered field so a nil/absent value from the backend
+      // (Go zero-value / dropped JSON key) can't blow up the row render — e.g.
+      // `id` feeds `.slice(0,8)` and numeric byte/chunk counts feed formatting.
+      const raw = await api.get<RemoteSession[]>('/api/v1/access/remote-support/sessions')
+      return (raw ?? []).map((s) => ({
+        ...s,
+        id: s.id ?? '',
+        agent_id: s.agent_id ?? '',
+        recording_size_bytes: s.recording_size_bytes ?? 0,
+        recording_chunk_count: s.recording_chunk_count ?? 0,
+        recording_enabled: s.recording_enabled ?? false,
+        is_on_legal_hold: s.is_on_legal_hold ?? false,
+      }))
+    },
     refetchInterval: 5000,
   })
 
@@ -615,7 +629,10 @@ function StartSessionDialog({ onClose, onStarted }: StartSessionDialogProps) {
   // pasting an opaque agent id. Online devices (seen recently) float to the top.
   const { data: agents = [] } = useQuery<AgentSummary[]>({
     queryKey: ['agents-for-support'],
-    queryFn: () => api.get<AgentSummary[]>('/api/v1/access/agents'),
+    queryFn: async () => {
+      const raw = await api.get<AgentSummary[]>('/api/v1/access/agents')
+      return (raw ?? []).map((a) => ({ ...a, agent_id: a.agent_id ?? '' }))
+    },
     refetchInterval: 10000,
   })
   const [showAll, setShowAll] = useState(false)

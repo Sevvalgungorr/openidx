@@ -140,6 +140,36 @@ describe('AuditLogsPage', () => {
     expect(screen.queryByText(/events over time/i)).not.toBeInTheDocument()
   })
 
+  it('renders without crashing when numeric/typed fields are omitted from the API response', async () => {
+    // Simulate a Go zero-value / nil-slice backend response where numeric
+    // stats fields (success_rate, failed_auth_count) and an event's
+    // event_type are absent. The page must still render its heading rather
+    // than blanking via the error boundary.
+    vi.mocked(api.get).mockResolvedValue({
+      // total_events, success_rate, failed_auth_count, by_type, by_outcome,
+      // events_per_day all OMITTED
+    } as unknown as typeof mockStatistics)
+    vi.mocked(api.getWithHeaders).mockResolvedValue({
+      data: [
+        {
+          id: '1',
+          // event_type, category, action, outcome, actor_id, etc. OMITTED
+          timestamp: '2024-03-27T10:00:00Z',
+        },
+      ] as unknown as typeof mockAuditEvents,
+      headers: { 'x-total-count': '1' },
+    })
+
+    const wrapper = createWrapper()
+    render(<AuditLogsPage />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Audit Logs/i })).toBeInTheDocument()
+    })
+    // Success-rate stat card falls back to 0.0% instead of throwing on .toFixed
+    expect(await screen.findByText(/0\.0%/)).toBeInTheDocument()
+  })
+
   it('renders the audit event row with event_type and category info', async () => {
     const wrapper = createWrapper()
     render(<AuditLogsPage />, { wrapper })

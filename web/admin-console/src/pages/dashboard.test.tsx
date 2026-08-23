@@ -278,6 +278,40 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Recent Activity')).toBeInTheDocument()
   })
 
+  it('renders without crashing when dashboard fields are omitted', async () => {
+    // Regression: the backend can return the dashboard object with its numeric
+    // counts, arrays and nested items entirely absent. Rendering
+    // undefined.toLocaleString() (or mapping over undefined) crashed the page
+    // via the error boundary. The queryFn normalizes each field so the page
+    // still renders its sections.
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/api/v1/dashboard') {
+        // No total_users / active_sessions / etc., and a recent_events row with
+        // its string fields omitted.
+        return Promise.resolve({ recent_events: [{ id: 'x' }] })
+      }
+      if (url.includes('/analytics/logins')) return Promise.resolve({})
+      if (url.includes('/analytics/risk')) return Promise.resolve({})
+      if (url.includes('/analytics/events')) return Promise.resolve({})
+      if (url.includes('/access/ziti/status')) {
+        return Promise.resolve({ enabled: true, sdk_ready: true })
+      }
+      if (url.includes('/access/ziti/sync/status')) return Promise.resolve({})
+      return Promise.resolve(null)
+    })
+
+    const wrapper = createWrapper()
+    await act(async () => {
+      render(<DashboardPage />, { wrapper })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Dashboard')).toBeInTheDocument()
+      expect(screen.getByText('Security Alerts')).toBeInTheDocument()
+      expect(screen.getByText('Recent Activity')).toBeInTheDocument()
+    })
+  })
+
   it('has Ziti network placeholder in DOM', () => {
     const wrapper = createWrapper()
     render(<DashboardPage />, { wrapper })

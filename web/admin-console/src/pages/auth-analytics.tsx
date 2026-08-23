@@ -58,10 +58,44 @@ export function AuthAnalyticsPage() {
 
   const { data, isLoading, isError, error } = useQuery<{ dashboard: AuthDashboard }>({
     queryKey: ['auth-analytics', period],
-    queryFn: () =>
-      api.get<{ dashboard: AuthDashboard }>(
+    queryFn: async () => {
+      const res = await api.get<{ dashboard: AuthDashboard }>(
         `/api/v1/analytics/auth-dashboard?period=${period}`
-      ),
+      )
+      const d = res.dashboard
+      if (!d) return { dashboard: d }
+      return {
+        dashboard: {
+          period: d.period ?? '',
+          total_logins: d.total_logins ?? 0,
+          successful_logins: d.successful_logins ?? 0,
+          failed_logins: d.failed_logins ?? 0,
+          mfa_usage_count: d.mfa_usage_count ?? 0,
+          active_users: d.active_users ?? 0,
+          login_methods: (d.login_methods ?? []).map((m) => ({
+            method: m.method ?? '',
+            count: m.count ?? 0,
+            percentage: m.percentage ?? 0,
+          })),
+          geo_top_countries: (d.geo_top_countries ?? []).map((g) => ({
+            country: g.country ?? '',
+            count: g.count ?? 0,
+            failed: g.failed ?? 0,
+          })),
+          hourly_activity: (d.hourly_activity ?? []).map((h) => ({
+            hour: h.hour ?? 0,
+            count: h.count ?? 0,
+          })),
+          recent_failed_logins: (d.recent_failed_logins ?? []).map((l) => ({
+            user_id: l.user_id ?? '',
+            email: l.email ?? '',
+            source_ip: l.source_ip ?? '',
+            reason: l.reason ?? '',
+            timestamp: l.timestamp ?? '',
+          })),
+        },
+      }
+    },
   })
 
   const dashboard = data?.dashboard

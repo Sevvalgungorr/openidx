@@ -82,19 +82,56 @@ export function AttestationCampaignsPage() {
 
   const { data: campaignsData, isLoading, isError, error } = useQuery({
     queryKey: ['attestation-campaigns'],
-    queryFn: () => api.get<{ data: AttestationCampaign[] }>('/api/v1/attestation-campaigns'),
+    queryFn: async () => {
+      const res = await api.get<{ data: AttestationCampaign[] }>('/api/v1/attestation-campaigns')
+      return {
+        data: (res?.data ?? []).map((c): AttestationCampaign => ({
+          ...c,
+          name: c?.name ?? '',
+          description: c?.description ?? '',
+          campaign_type: c?.campaign_type ?? '',
+          status: c?.status ?? '',
+          total_items: c?.total_items ?? 0,
+          certified_count: c?.certified_count ?? 0,
+          revoked_count: c?.revoked_count ?? 0,
+          pending_count: c?.pending_count ?? 0,
+        })),
+      }
+    },
   })
 
   const { data: itemsData } = useQuery({
     queryKey: ['attestation-items', selectedCampaign],
-    queryFn: () => api.get<{ data: AttestationItem[] }>(`/api/v1/attestation-campaigns/${selectedCampaign}/items`),
+    queryFn: async () => {
+      const res = await api.get<{ data: AttestationItem[] }>(`/api/v1/attestation-campaigns/${selectedCampaign}/items`)
+      return {
+        data: (res?.data ?? []).map((item): AttestationItem => ({
+          ...item,
+          user_name: item?.user_name ?? '',
+          resource_type: item?.resource_type ?? '',
+          resource_name: item?.resource_name ?? '',
+          reviewer_name: item?.reviewer_name ?? '',
+          decision: item?.decision ?? '',
+        })),
+      }
+    },
     enabled: !!selectedCampaign,
   })
 
   const { data: progressData } = useQuery({
     queryKey: ['attestation-progress', selectedCampaign],
-    queryFn: () => api.get<{ total: number; certified: number; revoked: number; pending: number; delegated: number; completion_pct: number }>(
-      `/api/v1/attestation-campaigns/${selectedCampaign}/progress`),
+    queryFn: async () => {
+      const res = await api.get<{ total: number; certified: number; revoked: number; pending: number; delegated: number; completion_pct: number }>(
+        `/api/v1/attestation-campaigns/${selectedCampaign}/progress`)
+      return {
+        total: res?.total ?? 0,
+        certified: res?.certified ?? 0,
+        revoked: res?.revoked ?? 0,
+        pending: res?.pending ?? 0,
+        delegated: res?.delegated ?? 0,
+        completion_pct: res?.completion_pct ?? 0,
+      }
+    },
     enabled: !!selectedCampaign,
     refetchInterval: 5000,
   })

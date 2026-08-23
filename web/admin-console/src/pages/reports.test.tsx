@@ -109,6 +109,27 @@ describe('ReportsPage', () => {
     expect(screen.getByText('0 0 1 * *')).toBeInTheDocument()
   })
 
+  it('renders without crashing when numeric/string fields are omitted from the response', async () => {
+    // Backend Go zero-values / nil slices can serialize to null or be dropped
+    // from JSON — the row must still render (no error boundary blanking the page).
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/reports/exports')) {
+        return Promise.resolve({
+          exports: [{ id: 'r-omit', status: 'completed', created_at: '2026-04-01T00:00:00Z' }],
+        }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve({
+        reports: [{ id: 's-omit', name: 'Sparse Schedule', enabled: true }],
+      }) as ReturnType<typeof api.get>
+    })
+
+    render(<ReportsPage />, { wrapper: createWrapper() })
+
+    // Heading + card section render, proving no error boundary tripped.
+    expect(await screen.findByText('Reports & Exports')).toBeInTheDocument()
+    expect(await screen.findByText('Generated Reports')).toBeInTheDocument()
+  })
+
   it('shows the empty state on the History tab when nothing has been generated', async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.includes('/reports/exports')) {

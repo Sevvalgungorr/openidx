@@ -120,4 +120,34 @@ describe('UsageAnalyticsPage', () => {
       screen.getByText(/security and authentication feature usage across your user base/i),
     ).toBeInTheDocument()
   })
+
+  it('renders without crashing when analytics rows omit numeric fields', async () => {
+    // Regression: rows can arrive with numeric fields absent/null (a Go zero
+    // value dropped in JSON). The cards call .toLocaleString()/.toFixed() on
+    // them, which crashed the page with "Cannot read properties of undefined
+    // (reading 'toLocaleString')". The queryFns now default every field.
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/feature-adoption')) {
+        // name/category only — the three numeric fields omitted.
+        return Promise.resolve({ adoption: { features: [{ name: 'mfa', category: 'security' }] } }) as ReturnType<typeof api.get>
+      }
+      if (url.includes('/api-usage')) {
+        // method/path only — request_count/avg_latency_ms/error_rate omitted.
+        return Promise.resolve({ api_usage: { endpoints: [{ method: 'GET', path: '/x' }] } }) as ReturnType<typeof api.get>
+      }
+      if (url.includes('/usage')) {
+        // registration row without count; top-line metrics omitted.
+        return Promise.resolve({ usage: { new_registrations: [{ date: '2026-06-01' }] } }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve({}) as ReturnType<typeof api.get>
+    })
+
+    render(<UsageAnalyticsPage />, { wrapper: createWrapper() })
+
+    // Page renders its sections rather than the error boundary.
+    expect(await screen.findByText('Usage Analytics')).toBeInTheDocument()
+    expect(screen.getByText('Feature Adoption')).toBeInTheDocument()
+    // The undefined numerics render as a defaulted 0 via toLocaleString.
+    expect(screen.getAllByText(/\b0\b/).length).toBeGreaterThan(0)
+  })
 })

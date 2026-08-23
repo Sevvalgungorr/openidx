@@ -184,38 +184,79 @@ export function DashboardPage() {
 
   const { data: stats, isLoading, isError, error } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: () => api.get<DashboardStats>('/api/v1/dashboard'),
+    // Normalize so every rendered field has a safe default at runtime — the
+    // backend can omit numeric counts / arrays entirely, and rendering
+    // undefined.toLocaleString() (or mapping over undefined) crashes the page.
+    queryFn: async () => {
+      const raw = (await api.get<DashboardStats>('/api/v1/dashboard')) ?? ({} as DashboardStats)
+      return {
+        ...raw,
+        total_users: raw.total_users ?? 0,
+        active_users: raw.active_users ?? 0,
+        active_sessions: raw.active_sessions ?? 0,
+        pending_reviews: raw.pending_reviews ?? 0,
+        total_applications: raw.total_applications ?? 0,
+        recent_events: raw.recent_events ?? [],
+        recent_activity: raw.recent_activity ?? [],
+      } as DashboardStats
+    },
     enabled: isStaff,
   })
 
   const { data: loginAnalytics } = useQuery({
     queryKey: ['analytics-logins', period],
-    queryFn: () => api.get<{ data: { date: string; successful: number; failed: number }[] }>(`/api/v1/analytics/logins?period=${period}`),
+    queryFn: async () => {
+      const raw = await api.get<{ data?: { date: string; successful: number; failed: number }[] }>(`/api/v1/analytics/logins?period=${period}`)
+      return { data: raw?.data ?? [] }
+    },
     enabled: isStaff,
   })
 
   const { data: riskAnalytics } = useQuery({
     queryKey: ['analytics-risk', period],
-    queryFn: () => api.get<{ data: { level: string; count: number }[] }>(`/api/v1/analytics/risk?period=${period}`),
+    queryFn: async () => {
+      const raw = await api.get<{ data?: { level: string; count: number }[] }>(`/api/v1/analytics/risk?period=${period}`)
+      return { data: raw?.data ?? [] }
+    },
     enabled: isStaff,
   })
 
   const { data: eventAnalytics } = useQuery({
     queryKey: ['analytics-events', period],
-    queryFn: () => api.get<{ data: { event_type: string; count: number }[] }>(`/api/v1/analytics/events?period=${period}`),
+    queryFn: async () => {
+      const raw = await api.get<{ data?: { event_type: string; count: number }[] }>(`/api/v1/analytics/events?period=${period}`)
+      return { data: raw?.data ?? [] }
+    },
     enabled: isStaff,
   })
 
   const { data: zitiStatus } = useQuery({
     queryKey: ['ziti-status'],
-    queryFn: () => api.get<ZitiStatus>('/api/v1/access/ziti/status'),
+    queryFn: async () => {
+      const raw = await api.get<ZitiStatus>('/api/v1/access/ziti/status')
+      if (!raw) return raw
+      return {
+        ...raw,
+        services_count: raw.services_count ?? 0,
+        identities_count: raw.identities_count ?? 0,
+      }
+    },
     refetchInterval: 15000,
     enabled: isStaff,
   })
 
   const { data: zitiSync } = useQuery({
     queryKey: ['ziti-sync-status'],
-    queryFn: () => api.get<ZitiSyncStatus>('/api/v1/access/ziti/sync/status'),
+    queryFn: async () => {
+      const raw = await api.get<ZitiSyncStatus>('/api/v1/access/ziti/sync/status')
+      if (!raw) return raw
+      return {
+        ...raw,
+        unsynced_users: raw.unsynced_users ?? 0,
+        total_users: raw.total_users ?? 0,
+        total_identities: raw.total_identities ?? 0,
+      }
+    },
     enabled: isStaff && !!zitiStatus?.enabled,
     refetchInterval: 15000,
   })

@@ -91,21 +91,70 @@ function riskScoreColor(score: number): string {
 }
 
 export function RiskDashboardPage() {
-  const { data: riskData, isLoading: riskLoading, isError: riskError, error: riskErrorObj } = useQuery<{ risk: RiskOverview }>({
+  const { data: riskData, isLoading: riskLoading, isError: riskError, error: riskErrorObj } = useQuery<{ risk: RiskOverview } | { risk: null }>({
     queryKey: ['risk-overview'],
-    queryFn: () => api.get<{ risk: RiskOverview }>('/api/v1/analytics/risk'),
+    queryFn: async () => {
+      const res = await api.get<{ risk: RiskOverview }>('/api/v1/analytics/risk')
+      if (!res.risk) return { risk: null }
+      return {
+        risk: {
+          avg_risk_score: res.risk.avg_risk_score ?? 0,
+          high_risk_logins_24h: res.risk.high_risk_logins_24h ?? 0,
+          active_alerts: res.risk.active_alerts ?? 0,
+          impossible_travel_events: res.risk.impossible_travel_events ?? 0,
+          risk_distribution: (res.risk.risk_distribution ?? []).map((b) => ({
+            bucket: b.bucket ?? '',
+            min: b.min ?? 0,
+            max: b.max ?? 0,
+            count: b.count ?? 0,
+          })),
+          top_risky_users: (res.risk.top_risky_users ?? []).map((u) => ({
+            user_id: u.user_id ?? '',
+            email: u.email ?? '',
+            username: u.username ?? '',
+            avg_risk_score: u.avg_risk_score ?? 0,
+            last_login: u.last_login ?? '',
+            anomaly_count: u.anomaly_count ?? 0,
+          })),
+        },
+      }
+    },
   })
 
   const { data: timelineData, isLoading: timelineLoading } = useQuery<{ timeline: RiskTimeline }>({
     queryKey: ['risk-timeline'],
-    queryFn: () =>
-      api.get<{ timeline: RiskTimeline }>('/api/v1/analytics/risk-timeline?days=30'),
+    queryFn: async () => {
+      const res = await api.get<{ timeline: RiskTimeline }>('/api/v1/analytics/risk-timeline?days=30')
+      return {
+        timeline: {
+          days: (res.timeline?.days ?? []).map((d) => ({
+            date: d.date ?? '',
+            avg_score: d.avg_score ?? 0,
+            max_score: d.max_score ?? 0,
+            login_count: d.login_count ?? 0,
+          })),
+        },
+      }
+    },
   })
 
   const { data: alertsData, isLoading: alertsLoading } = useQuery<{ alerts: SecurityAlert[] }>({
     queryKey: ['security-alerts-recent'],
-    queryFn: () =>
-      api.get<{ alerts: SecurityAlert[] }>('/api/v1/security-alerts?limit=10'),
+    queryFn: async () => {
+      const res = await api.get<{ alerts: SecurityAlert[] }>('/api/v1/security-alerts?limit=10')
+      return {
+        alerts: (res.alerts ?? []).map((a) => ({
+          id: a.id ?? '',
+          alert_type: a.alert_type ?? '',
+          severity: a.severity ?? '',
+          status: a.status ?? '',
+          title: a.title ?? '',
+          description: a.description ?? '',
+          source_ip: a.source_ip ?? '',
+          created_at: a.created_at ?? '',
+        })),
+      }
+    },
   })
 
   const risk = riskData?.risk

@@ -162,4 +162,22 @@ describe('ZeroTrustPage', () => {
     // route-2 is a gap (no auth) -> the tab shows a (1)
     expect(screen.getByText(/Coverage Gaps/)).toBeInTheDocument()
   })
+
+  it('renders without crashing when the backend omits summary/route fields', async () => {
+    // Simulate a Go zero-value/nil-slice response: numeric fields dropped,
+    // features nil, summary and ziti absent.
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/access/overview')) {
+        return Promise.resolve({
+          routes: [{ id: 'route-x', name: 'Sparse Route' }],
+        }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve({}) as ReturnType<typeof api.get>
+    })
+    render(<ZeroTrustPage />, { wrapper: createWrapper() })
+    // Heading and section still render (no error boundary), and the sparse route
+    // shows despite its omitted numeric/array fields.
+    expect(await screen.findByText('Zero Trust Access')).toBeInTheDocument()
+    expect(await screen.findByText('Sparse Route')).toBeInTheDocument()
+  })
 })

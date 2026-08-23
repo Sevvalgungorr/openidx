@@ -134,6 +134,50 @@ describe('AuditArchivalPage', () => {
     expect(screen.getByRole('button', { name: /restore/i })).toBeInTheDocument()
   })
 
+  it('renders without crashing when numeric fields are omitted from the API response', async () => {
+    const user = userEvent.setup()
+    // Backend may drop/nullify numeric fields (Go zero-values / nil serialize
+    // to null or are absent). The page must not blank out via the error boundary.
+    const bareArchive = {
+      id: 'arc-bare',
+      name: 'archive with missing numbers',
+      date_range_start: null,
+      date_range_end: null,
+      // event_count and file_size intentionally OMITTED
+      file_path: '/var/openidx/archives/bare.tar.gz',
+      format: 'gzip',
+      status: 'completed',
+      created_by: null,
+      created_at: '2026-01-15T00:00:00Z',
+    }
+    const barePolicy = {
+      id: 'rp-bare',
+      name: 'policy with missing retention_days',
+      event_category: 'all',
+      // retention_days intentionally OMITTED
+      archive_enabled: true,
+      archive_format: 'gzip',
+      enabled: true,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/audit-archives')) return Promise.resolve({ data: [bareArchive] }) as ReturnType<typeof api.get>
+      if (url.includes('/audit-retention')) return Promise.resolve({ data: [barePolicy] }) as ReturnType<typeof api.get>
+      return Promise.resolve({ data: [] }) as ReturnType<typeof api.get>
+    })
+    render(<AuditArchivalPage />, { wrapper: createWrapper() })
+    // Heading + summary sections still render (no error boundary).
+    expect(await screen.findByText('Audit Archival & Retention')).toBeInTheDocument()
+    expect(screen.getByText('Archived Events')).toBeInTheDocument()
+    expect(screen.getByText('Archive Storage')).toBeInTheDocument()
+
+    // The archives tab renders the bare row without throwing on toLocaleString.
+    await user.click(screen.getByRole('button', { name: /^archives$/i }))
+    expect(await screen.findByText('archive with missing numbers')).toBeInTheDocument()
+    expect(screen.getByText(/0 events/i)).toBeInTheDocument()
+  })
+
   it('shows the empty-archives state when no archives exist', async () => {
     const user = userEvent.setup()
     vi.mocked(api.get).mockImplementation((url: string) => {

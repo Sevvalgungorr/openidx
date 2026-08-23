@@ -160,6 +160,20 @@ describe('ComplianceDashboardPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/policies')
   })
 
+  it('renders without crashing when the API omits numeric posture fields', async () => {
+    // Regression: a partial backend response (fields absent) must not blow
+    // up MetricCard's toFixed / numeric comparisons and blank the page.
+    vi.mocked(api.get).mockResolvedValue(
+      { overall_score: 55 } as unknown as typeof healthyPosture,
+    )
+    render(<ComplianceDashboardPage />, { wrapper: createWrapper() })
+    expect(await screen.findByText('Compliance Posture')).toBeInTheDocument()
+    // Present field renders; omitted fields normalize to 0 (no error boundary).
+    expect(screen.getByText('55')).toBeInTheDocument()
+    expect(screen.getByText('MFA Adoption')).toBeInTheDocument()
+    expect(screen.getByText('Policy Violations (last 30 days)')).toBeInTheDocument()
+  })
+
   it('falls back to a zeroed posture when the API returns null', async () => {
     // null response (e.g., transient failure) — the page falls back to
     // its zeroed-defaults literal and should still render the heading

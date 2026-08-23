@@ -73,22 +73,46 @@ export default function LoginAnomalies() {
 
   const { data: anomaliesData, isLoading: anomaliesLoading, isError: anomaliesError, error: anomaliesErrorObj } = useQuery({
     queryKey: ['risk-anomalies', days, minScore],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams()
       params.set('days', days)
       params.set('min_score', minScore)
       params.set('page', '1')
       params.set('page_size', '20')
-      return api.get<{ anomalies: LoginAnomaly[]; total: number; page: number; page_size: number }>(
+      const raw = await api.get<{ anomalies: LoginAnomaly[]; total: number; page: number; page_size: number }>(
         `/api/v1/risk/anomalies?${params.toString()}`
       )
+      return {
+        ...raw,
+        anomalies: (raw?.anomalies ?? []).map(a => ({
+          ...a,
+          risk_score: a?.risk_score ?? 0,
+          auth_methods: a?.auth_methods ?? [],
+        })),
+      }
     },
   })
   const anomalies = anomaliesData?.anomalies || []
 
   const { data: userProfile, isLoading: profileLoading } = useQuery({
     queryKey: ['risk-user-profile', selectedUserId],
-    queryFn: () => api.get<UserRiskProfile>(`/api/v1/risk/user-profile/${selectedUserId}`),
+    queryFn: async () => {
+      const raw = await api.get<UserRiskProfile>(`/api/v1/risk/user-profile/${selectedUserId}`)
+      return {
+        ...raw,
+        baseline: {
+          typical_login_hours: raw?.baseline?.typical_login_hours ?? [],
+          typical_countries: raw?.baseline?.typical_countries ?? [],
+          typical_ips: raw?.baseline?.typical_ips ?? [],
+          avg_risk_score: raw?.baseline?.avg_risk_score ?? 0,
+          login_count: raw?.baseline?.login_count ?? 0,
+        },
+        recent_logins: (raw?.recent_logins ?? []).map(l => ({
+          ...l,
+          risk_score: l?.risk_score ?? 0,
+        })),
+      }
+    },
     enabled: !!selectedUserId,
   })
 

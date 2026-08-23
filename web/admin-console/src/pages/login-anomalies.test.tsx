@@ -109,6 +109,35 @@ describe('LoginAnomaliesPage', () => {
     expect(screen.getByText('New York, US')).toBeInTheDocument()
   })
 
+  it('renders an anomaly row whose numeric/array fields are omitted without crashing', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('/risk/overview')) return Promise.resolve({}) as ReturnType<typeof api.get>
+      if (url.includes('/risk/anomalies')) {
+        return Promise.resolve({
+          anomalies: [
+            {
+              id: 'an-omit',
+              user_id: 'u-omit',
+              username: 'bob',
+              ip_address: '198.51.100.5',
+              location: 'Berlin, DE',
+              // risk_score, auth_methods, success, created_at omitted
+            },
+          ],
+          // total/page/page_size omitted
+        }) as ReturnType<typeof api.get>
+      }
+      return Promise.resolve({}) as ReturnType<typeof api.get>
+    })
+
+    render(<LoginAnomalies />, { wrapper: createWrapper() })
+
+    // Heading + row render, no error boundary blank-out.
+    expect(await screen.findByText('Login Anomalies')).toBeInTheDocument()
+    expect(await screen.findByText('bob')).toBeInTheDocument()
+    expect(screen.getByText('198.51.100.5')).toBeInTheDocument()
+  })
+
   it('shows the empty state when no anomalies match the filters', async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.includes('/risk/overview')) return Promise.resolve(overview) as ReturnType<typeof api.get>

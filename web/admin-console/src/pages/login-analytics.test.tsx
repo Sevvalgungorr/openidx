@@ -98,6 +98,29 @@ describe('LoginAnalyticsPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('renders without hitting the error boundary when numeric fields are omitted (Go zero-values / nil slices)', async () => {
+    // Backend can drop numeric fields and serialize nil slices as null/absent.
+    // The page must default them and still render, not crash on
+    // .toLocaleString()/.toFixed()/.map()/.slice().
+    vi.mocked(api.get).mockResolvedValue({
+      analytics: {
+        summary: {
+          // total_logins, average_risk_score, etc. all omitted
+          successful_logins: 3,
+        },
+        daily_trends: [{ date: null, successful: null, failed: null }],
+        geo_distribution: [{ country: 'US', count: 2 }], // avg_risk omitted
+        // hourly_pattern / risk_distribution / auth_methods / device_types / top_failed_users all absent
+      },
+    })
+
+    render(<LoginAnalyticsPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('Login Analytics')).toBeInTheDocument()
+    expect(screen.getByText('Total Logins')).toBeInTheDocument()
+    expect(screen.getByText('Daily Login Trend')).toBeInTheDocument()
+  })
+
   it('shows the "No analytics data available" empty branch when the payload has no analytics', async () => {
     // A defined-but-empty response (no `analytics` key) exercises the empty
     // branch. Note: a rejected/undefined read now surfaces via QueryError

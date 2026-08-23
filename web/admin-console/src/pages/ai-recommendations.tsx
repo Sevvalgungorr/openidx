@@ -58,17 +58,44 @@ export function AIRecommendationsPage() {
 
   const { data: recsData, isLoading, isError, error } = useQuery({
     queryKey: ['ai-recommendations', categoryFilter, statusFilter],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (categoryFilter) params.set('category', categoryFilter)
       if (statusFilter) params.set('status', statusFilter)
-      return api.get<{ data: Recommendation[] }>(`/api/v1/recommendations?${params}`)
+      const res = await api.get<{ data: Recommendation[] }>(`/api/v1/recommendations?${params}`)
+      return {
+        data: (res?.data ?? []).map((r) => ({
+          ...r,
+          id: r?.id ?? '',
+          recommendation_type: r?.recommendation_type ?? '',
+          category: r?.category ?? '',
+          title: r?.title ?? '',
+          description: r?.description ?? '',
+          impact: r?.impact ?? '',
+          effort: r?.effort ?? '',
+          affected_entities: r?.affected_entities ?? [],
+          suggested_action: r?.suggested_action ?? {},
+          status: r?.status ?? '',
+          dismissed_reason: r?.dismissed_reason ?? '',
+          applied_at: r?.applied_at ?? null,
+          created_at: r?.created_at ?? '',
+        })),
+      }
     },
   })
 
   const { data: stats } = useQuery<RecommendationStats>({
     queryKey: ['ai-recommendations-stats'],
-    queryFn: () => api.get<RecommendationStats>('/api/v1/recommendations/stats'),
+    queryFn: async () => {
+      const res = await api.get<RecommendationStats>('/api/v1/recommendations/stats')
+      return {
+        by_status: res?.by_status ?? {},
+        pending_by_category: res?.pending_by_category ?? {},
+        acceptance_rate: res?.acceptance_rate ?? 0,
+        total_resolved: res?.total_resolved ?? 0,
+        total_accepted: res?.total_accepted ?? 0,
+      }
+    },
   })
 
   const generateMutation = useMutation({

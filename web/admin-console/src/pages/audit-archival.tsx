@@ -68,12 +68,29 @@ export function AuditArchivalPage() {
 
   const { data: retentionData, isLoading: retLoading } = useQuery({
     queryKey: ['audit-retention'],
-    queryFn: () => api.get<{ data: RetentionPolicy[] }>('/api/v1/audit-retention'),
+    queryFn: async () => {
+      const res = await api.get<{ data: RetentionPolicy[] }>('/api/v1/audit-retention')
+      return {
+        data: (res.data ?? []).map(p => ({
+          ...p,
+          retention_days: p.retention_days ?? 0,
+        })),
+      }
+    },
   })
 
   const { data: archivesData, isLoading: arcLoading, isError: arcError, error: arcErrorObj } = useQuery({
     queryKey: ['audit-archives'],
-    queryFn: () => api.get<{ data: AuditArchive[] }>('/api/v1/audit-archives'),
+    queryFn: async () => {
+      const res = await api.get<{ data: AuditArchive[] }>('/api/v1/audit-archives')
+      return {
+        data: (res.data ?? []).map(a => ({
+          ...a,
+          event_count: a.event_count ?? 0,
+          file_size: a.file_size ?? 0,
+        })),
+      }
+    },
     refetchInterval: 5000,
   })
 

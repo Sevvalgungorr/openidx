@@ -136,7 +136,26 @@ export function ComplianceDashboardPage() {
 
   const { data: posture, isLoading, isError, error } = useQuery({
     queryKey: ['compliance-posture'],
-    queryFn: () => api.get<CompliancePosture>('/api/v1/compliance-posture'),
+    queryFn: async () => {
+      const raw = await api.get<Partial<CompliancePosture>>('/api/v1/compliance-posture')
+      // Normalize every field to a number so rendering (comparisons,
+      // toFixed) never sees null/undefined from an incomplete backend
+      // response and blanks the page via the error boundary.
+      const r = raw ?? {}
+      const normalized: CompliancePosture = {
+        mfa_adoption_rate: r.mfa_adoption_rate ?? 0,
+        password_compliance_rate: r.password_compliance_rate ?? 0,
+        open_reviews_count: r.open_reviews_count ?? 0,
+        overdue_reviews_count: r.overdue_reviews_count ?? 0,
+        dormant_accounts_count: r.dormant_accounts_count ?? 0,
+        disabled_accounts_count: r.disabled_accounts_count ?? 0,
+        active_campaigns_count: r.active_campaigns_count ?? 0,
+        campaign_completion_rate: r.campaign_completion_rate ?? 0,
+        policy_violations_count: r.policy_violations_count ?? 0,
+        overall_score: r.overall_score ?? 0,
+      }
+      return normalized
+    },
     refetchInterval: 60000,
   })
 
