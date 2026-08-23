@@ -741,8 +741,17 @@ func PermissionResolver(db *pgxpool.Pool, redisClient *redis.Client) gin.Handler
 			}
 		}
 
-		// Cache miss: query DB
-		rows, err := db.Query(c.Request.Context(), `
+		// Cache miss: query DB.
+		//
+		// role_permissions is RLS-FORCE'd and the pool derives app.org_id from the
+		// acquire context's orgctx marker at checkout. This middleware runs before
+		// the tenant GUC is established, so a bare-context query sets no app.org_id
+		// and RLS hides EVERY row — perms resolve to null and RequirePermission then
+		// 403s every caller. This read is already scoped to the caller's org by the
+		// explicit r.org_id = $2 predicate, so WithBypassRLS (a legitimately
+		// org-scoped/install-wide read) is the correct, leak-free fix.
+		resolveCtx := orgctx.WithBypassRLS(c.Request.Context())
+		rows, err := db.Query(resolveCtx, `
 			SELECT DISTINCT p.resource, p.action
 			FROM permissions p
 			JOIN role_permissions rp ON p.id = rp.permission_id
@@ -767,7 +776,9 @@ func PermissionResolver(db *pgxpool.Pool, redisClient *redis.Client) gin.Handler
 		userIDRaw, _ := c.Get("user_id")
 		userID, _ := userIDRaw.(string)
 		if userID != "" {
-			delegRows, err := db.Query(c.Request.Context(), `
+			// Same RLS reasoning as the role_permissions read above: scoped by the
+			// explicit delegate_id = $1 predicate, so bypass is safe and necessary.
+			delegRows, err := db.Query(resolveCtx, `
 				SELECT permissions, scope_type, scope_id::text
 				FROM admin_delegations
 				WHERE delegate_id = $1 AND enabled = true
