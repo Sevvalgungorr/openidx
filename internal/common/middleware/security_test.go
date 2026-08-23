@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -270,5 +271,77 @@ func TestSecurityHeaders_AllHeadersPresent(t *testing.T) {
 
 	for _, header := range requiredHeaders {
 		assert.NotEmpty(t, w.Header().Get(header), "Header %s should be set", header)
+	}
+}
+
+// TestGuacamoleCSPOverride pins the fix for the field report of 2026-08-14:
+// the PAM console rendered a blank page because our own CSP refused the
+// AngularJS expression compiler.
+//
+// Measured in headless Chrome against the live broker before writing this:
+// under the shipped policy the page produced 4 EvalErrors and an empty body;
+// adding 'unsafe-eval' produced 0 and a rendered page.
+func TestGuacamoleCSPOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(SecurityHeadersProduction())
+	r.GET("/*any", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+
+	get := func(path string) string {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w.Header().Get("Content-Security-Policy")
+	}
+
+	// The console needs eval; both brokers are served under their own prefix.
+	for _, p := range []string{"/guacamole/", "/guacamole/index.html", "/guacamole-ziti/"} {
+		if !strings.Contains(get(p), "'unsafe-eval'") {
+			t.Errorf("%s: AngularJS needs 'unsafe-eval'; without it the console renders blank. got %q", p, get(p))
+		}
+	}
+
+	// ...and nothing else may inherit it. Relaxing the whole application to
+	// fix one embedded console would trade a UI bug for an XSS mitigation.
+	for _, p := range []string{"/", "/api/v1/users", "/admin", "/guacamole-lookalike/x"} {
+		if strings.Contains(get(p), "unsafe-eval") {
+			t.Errorf("%s: main policy must not gain eval, got %q", p, get(p))
+		}
+	}
+
+	// The override is deliberately narrow: it grants eval and nothing more.
+	// If someone widens it later, this catches the parts that matter for XSS.
+	// Check the script-src directive specifically: style-src legitimately
+	// carries 'unsafe-inline', so a whole-string search would misread it.
+	// (The first version of this test did exactly that and failed for the
+	// wrong reason.)
+	for _, d := range strings.Split(GuacamoleCSP, ";") {
+		d = strings.TrimSpace(d)
+		if !strings.HasPrefix(d, "script-src ") {
+			continue
+		}
+		if strings.Contains(d, "'unsafe-inline'") {
+			t.Errorf("script-src must not gain 'unsafe-inline' (measured unnecessary): %q", d)
+		}
+	}
+	if !strings.Contains(GuacamoleCSP, "frame-ancestors 'none'") {
+		t.Error("console is opened with window.open, not embedded; keep frame-ancestors 'none'")
+	}
+}
+
+// TestCSPCustomFromEnv covers the dead-knob half of the defect: the custom
+// policy field existed but nothing outside the tests could set it.
+func TestCSPCustomFromEnv(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const policy = "default-src 'none'"
+	t.Setenv(CSPCustomEnvVar, "  "+policy+"  ")
+
+	r := gin.New()
+	r.Use(SecurityHeadersProduction())
+	r.GET("/", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if got := w.Header().Get("Content-Security-Policy"); got != policy {
+		t.Errorf("operator policy not applied: got %q want %q", got, policy)
 	}
 }
