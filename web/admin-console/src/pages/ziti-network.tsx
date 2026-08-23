@@ -323,6 +323,14 @@ interface AppZitiService {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Render a possibly-missing/invalid timestamp without printing "Invalid Date"
+// (some Ziti entities arrive with an empty or unparseable created_at).
+function safeDate(v?: string | null): string {
+  if (!v) return '—'
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString()
+}
+
 function TruncatedId({ value, label }: { value: string; label?: string }) {
   const { toast } = useToast()
   if (!value) return <span className="text-xs text-muted-foreground">—</span>
@@ -946,7 +954,7 @@ function ServicesTab() {
                   </TableCell>
                   <TableCell><TruncatedId value={svc.ziti_id} label="Ziti ID" /></TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(svc.created_at).toLocaleDateString()}
+                    {safeDate(svc.created_at)}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -1422,7 +1430,7 @@ function IdentitiesTab() {
                   </TableCell>
                   <TableCell><TruncatedId value={ident.ziti_id} label="Ziti ID" /></TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(ident.created_at).toLocaleDateString()}
+                    {safeDate(ident.created_at)}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -2677,7 +2685,7 @@ function PostureSection() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(check.created_at).toLocaleDateString()}
+                    {safeDate(check.created_at)}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -3502,7 +3510,7 @@ function RemoteAccessTab() {
                     </TableCell>
                     <TableCell><TruncatedId value={conn.guacamole_connection_id} label="Guacamole ID" /></TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(conn.created_at).toLocaleDateString()}
+                      {safeDate(conn.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" onClick={() => connectMutation.mutate(conn.route_id)} disabled={connectMutation.isPending}>
