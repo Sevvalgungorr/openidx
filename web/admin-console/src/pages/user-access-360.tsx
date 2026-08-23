@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { complianceTooltip, formatCompliancePercent } from '../lib/compliance'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -598,7 +599,7 @@ export function UserAccess360Page() {
                         {d.ziti?.platform && <span>{d.ziti.platform}</span>}
                         {d.ziti?.management_mode && <span>{d.ziti.management_mode}</span>}
                         {d.iam?.ip_address && <span>{d.iam.ip_address}</span>}
-                        {d.ziti && <span>score {Math.round(d.ziti.compliance_score)}</span>}
+                        {d.ziti && <span title={complianceTooltip(d.ziti.compliance_status)}>score {formatCompliancePercent(d.ziti.compliance_status, d.ziti.compliance_score)}</span>}
                         {d.ziti?.status && d.ziti.status !== 'active' && (
                           <span className="text-red-600">agent {d.ziti.status}</span>
                         )}

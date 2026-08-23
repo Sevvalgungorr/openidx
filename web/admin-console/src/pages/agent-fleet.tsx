@@ -5,6 +5,7 @@ import {
   ShieldCheck, Trash2, QrCode, Copy, MoreHorizontal, Download,
 } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
+import { complianceTooltip, formatCompliancePercent } from '../lib/compliance'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -256,7 +257,7 @@ export function AgentFleetPage() {
                       <StatusBadge status={agent.status} />
                     </TableCell>
                     <TableCell>
-                      <ComplianceBadge status={agent.compliance_status} score={agent.compliance_score} />
+                      <ComplianceBadge status={agent.compliance_status} score={agent.compliance_score} lastReportAt={agent.last_seen_at} />
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {agent.last_seen_at ? new Date(agent.last_seen_at).toLocaleString() : '—'}
@@ -499,15 +500,14 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={variant as any}>{status}</Badge>
 }
 
-function ComplianceBadge({ status, score }: { status: string; score: number }) {
-  const pct = Math.round((score || 0) * 100)
+function ComplianceBadge({ status, score, lastReportAt }: { status: string; score: number; lastReportAt?: string | null }) {
   const variant = status === 'compliant' ? 'success'
     : status === 'grace_period' ? 'warning'
     : status === 'non_compliant' ? 'destructive' : 'secondary'
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" title={complianceTooltip(status, lastReportAt)}>
       <Badge variant={variant as any}>{status}</Badge>
-      <span className="text-xs text-muted-foreground">{pct}%</span>
+      <span className="text-xs text-muted-foreground">{formatCompliancePercent(status, score)}</span>
     </div>
   )
 }

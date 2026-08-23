@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { complianceTooltip, formatCompliancePercent } from '../lib/compliance'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Smartphone, Monitor, Tablet, Shield, ShieldCheck, ShieldX, Trash2, Edit, Plus, MoreHorizontal, Network, Download, Wifi, WifiOff } from 'lucide-react'
@@ -328,7 +329,7 @@ export function MyDevicesPage() {
                       </div>
                     )}
                   </div>
-                  <span className="text-sm font-semibold shrink-0">{Math.round(z.compliance_score)}%</span>
+                  <span className="text-sm font-semibold shrink-0" title={complianceTooltip(z.compliance_status)}>{formatCompliancePercent(z.compliance_status, z.compliance_score)}</span>
                 </div>
               )
             })}
