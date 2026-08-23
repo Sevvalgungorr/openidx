@@ -1,11 +1,12 @@
 import { Stack } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { registerDevice } from '@/features/mfa/push';
 import { useNtfyPush } from '@/features/notifications/push';
 import { getSettings, lockTimeoutMs } from '@/features/settings/store';
+import { checkDeviceIntegrity, integrityWarning } from '@/features/security/integrity';
 
 // Grace period: don't re-prompt for a brief app-switch (notification shade, a
 // quick jump to another app to copy a code, an OAuth round-trip). Banking apps
@@ -105,6 +106,26 @@ export default function AppLayout() {
   // idempotent). Previously lived on the home screen, which is now a tab.
   useEffect(() => {
     if (!locked) registerDevice().catch(() => {});
+  }, [locked]);
+
+  // Best-effort device-integrity warning, shown once after the first unlock. A
+  // rooted/jailbroken device is materially less safe for an authenticator; we
+  // warn (never hard-block on a best-effort signal — the backend enforces
+  // high-risk decisions from the posture report). See features/security/integrity.
+  const warnedIntegrity = useRef(false);
+  useEffect(() => {
+    if (locked || warnedIntegrity.current) return;
+    warnedIntegrity.current = true;
+    checkDeviceIntegrity()
+      .then((status) => {
+        const msg = integrityWarning(status);
+        // Only surface a genuine compromise to the user; the emulator note is
+        // dev-only noise, so limit the alert to a rooted/jailbroken device.
+        if (status.compromised && msg) {
+          Alert.alert('Security warning', msg);
+        }
+      })
+      .catch(() => {});
   }, [locked]);
 
   if (locked) {

@@ -15,8 +15,16 @@ import type { OtpAccount } from './otp';
 const INDEX_KEY = 'oidx.authenticator.index';
 const ACCT_PREFIX = 'oidx.authenticator.acct.';
 
+// TOTP secrets are the most sensitive data in the app — treat them like tokens:
+// readable only while unlocked, and never synced to iCloud Keychain / device
+// migration / encrypted backups. (Cross-device transfer is intentionally done
+// via the explicit encrypted-backup flow, not silent OS sync.)
+const STORE_OPTS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
+
 async function readIndex(): Promise<string[]> {
-  const raw = await SecureStore.getItemAsync(INDEX_KEY);
+  const raw = await SecureStore.getItemAsync(INDEX_KEY, STORE_OPTS);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -27,7 +35,7 @@ async function readIndex(): Promise<string[]> {
 }
 
 async function writeIndex(ids: string[]): Promise<void> {
-  await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify(ids));
+  await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify(ids), STORE_OPTS);
 }
 
 /** All stored accounts, newest first. Corrupt/missing entries are skipped. */
@@ -35,7 +43,7 @@ export async function listAccounts(): Promise<OtpAccount[]> {
   const ids = await readIndex();
   const accounts: OtpAccount[] = [];
   for (const id of ids) {
-    const raw = await SecureStore.getItemAsync(ACCT_PREFIX + id);
+    const raw = await SecureStore.getItemAsync(ACCT_PREFIX + id, STORE_OPTS);
     if (!raw) continue;
     try {
       accounts.push(JSON.parse(raw) as OtpAccount);
@@ -64,7 +72,7 @@ export async function addAccount(
 ): Promise<OtpAccount> {
   const id = Crypto.randomUUID();
   const account: OtpAccount = { ...input, id, createdAt: Date.now() };
-  await SecureStore.setItemAsync(ACCT_PREFIX + id, JSON.stringify(account));
+  await SecureStore.setItemAsync(ACCT_PREFIX + id, JSON.stringify(account), STORE_OPTS);
   const ids = await readIndex();
   ids.push(id);
   await writeIndex(ids);
@@ -80,5 +88,5 @@ export async function deleteAccount(id: string): Promise<void> {
 
 /** Persist a mutated account (used to advance an HOTP counter). */
 export async function updateAccount(account: OtpAccount): Promise<void> {
-  await SecureStore.setItemAsync(ACCT_PREFIX + account.id, JSON.stringify(account));
+  await SecureStore.setItemAsync(ACCT_PREFIX + account.id, JSON.stringify(account), STORE_OPTS);
 }
