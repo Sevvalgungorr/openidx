@@ -46,7 +46,7 @@
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.1.1",
     "recharts": "^3.7.0",
-    "swagger-ui-react": "^5.31.2",
+    "swagger-ui-react": "^5.32.11",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
     "zustand": "^5.0.2"
