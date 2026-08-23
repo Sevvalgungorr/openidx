@@ -18,7 +18,7 @@ require (
 	github.com/elastic/go-elasticsearch/v8 v8.19.7
 	github.com/fatih/color v1.19.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-ldap/ldap/v3 v3.4.12
+	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-webauthn/webauthn v0.17.4
@@ -59,7 +59,7 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
+	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/Jeffail/gabs v1.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
@@ -98,7 +98,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gin-contrib/sse v1.1.1 // indirect
-	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667 // indirect
+	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
