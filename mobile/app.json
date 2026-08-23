@@ -37,7 +37,11 @@
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
-      ]
+      ],
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "package": "com.anonymous.openidxmobile"
     },
     "web": {
       "output": "static",
@@ -60,7 +64,8 @@
           "cameraPermission": "OpenIDX uses the camera to scan authenticator QR codes.",
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "./plugins/withCertPinning.js"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -70,6 +75,14 @@
       "apiBaseUrl": "https://openidx.tdv.org",
       "oauthClientId": "openidx-mobile",
       "oauthScopes": "openid profile email offline_access",
+      "certPinning": {
+        "host": "openidx.tdv.org",
+        "expiration": "2027-01-01",
+        "pins": [
+          "sha256/pcThjmVDuiW/+iCA4QbfaMz0t+We+JcD98PAaL1d744=",
+          "sha256/cGuxAXyFXFkWm61cF4HPWX8S0srS9j0aSqN0k4AP+4A="
+        ]
+      },
       "eas": {
         "projectId": "00000000-0000-0000-0000-000000000000"
       }
