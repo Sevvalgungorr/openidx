@@ -783,7 +783,7 @@ jobs:
           find coverage -name "*.out" -type f | xargs gocovmerge > coverage.out
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           file: ./coverage.out
           fail_ci_if_error: false
@@ -826,7 +826,7 @@ jobs:
         run: npm test -- run --coverage
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./web/admin-console/coverage/lcov.info
           flags: frontend
