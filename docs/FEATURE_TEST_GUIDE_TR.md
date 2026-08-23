@@ -120,7 +120,7 @@ Bu, senin yaptığın testin doğrulanmış hali. `securetask` = OIDC web uygula
 | 7.2 | **Vault Secrets** (`/vault-secrets`) → gizli bilgi ekle | Şifreli secret kaydedilir | [ ] |
 | 7.3 | **Connections** (`/pam-connections`) → RDP/SSH/VNC bağlantısı tanımla | Bağlantı kartı | [ ] |
 | 7.4 | **My Privileged Access** (`/my-privileged-access`) → checkout | Secret checkout + süreli erişim | [ ] |
-| 7.5 | **Rotation Policies** (`/rotation-policies`) → parola rotasyon kuralı | 6 connector tipi seçilebilir | [ ] |
+| 7.5 | **Rotation Policies** (`/rotation-policies`) → parola rotasyon kuralı | 8 connector tipi seçilebilir (directory, generate-only, SSH, SSH key, PostgreSQL, MySQL, AWS IAM, GCP SA) | [ ] |
 | 7.6 | **Privileged Sessions** (`/guacamole-sessions`) → oturum kaydı | Kayıtlı/aktif oturumlar | [ ] |
 
 ---
