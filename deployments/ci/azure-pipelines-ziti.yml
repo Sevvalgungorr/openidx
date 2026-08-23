@@ -19,6 +19,42 @@
 # the controller's version is a guaranteed break: v1.1.15 does not exist and
 # the download 404s.
 
+parameters:
+  # These six were changed from baked-in literals to $(...) macros so a run
+  # could switch them. That alone was not enough: an undefined macro is NOT
+  # empty in Azure, it survives as the literal text "$(UPLOAD_SBOM)", which
+  # is not "true", so the step printed "SBOM upload disabled" and exited 0.
+  # A green step that uploaded nothing is exactly the silent shape this
+  # pipeline keeps being bitten by, and it is why a run was seen with
+  # `UPLOAD_SBOM=true` hardcoded into the step body -- the documented switch
+  # did not work, so someone bypassed it.
+  # Declaring them here gives every macro a value AND makes each one
+  # selectable when the pipeline is queued.
+  - name: UPLOAD_SBOM
+    displayName: "Upload SBOM to OpenSecOps"
+    type: boolean
+    default: true
+  - name: SLIM_REPORT
+    displayName: "Strip diagnostic sections from the Semgrep report"
+    type: boolean
+    default: false
+  - name: FAIL_ON_ZERO_FINDINGS
+    displayName: "Fail if the scan parsed to 0 findings"
+    type: boolean
+    default: false
+  - name: FAIL_ON_FINDINGS_MISMATCH
+    displayName: "Fail if the API stored fewer findings than were sent"
+    type: boolean
+    default: false
+  - name: FAIL_ON_EMPTY_SBOM
+    displayName: "Fail if the SBOM lists no components"
+    type: boolean
+    default: false
+  - name: FAIL_ON_SBOM_MISMATCH
+    displayName: "Fail if the API stored fewer components than were sent"
+    type: boolean
+    default: false
+
 variables:
   # A variable group is referenced with LIST syntax. Mixing the mapping form
   # (KEY: value) with a group in the same block is a schema error, so once a
@@ -355,7 +391,7 @@ steps:
       # it keeps only version/results/errors/paths. Macro, not a literal: a
       # baked-in "false" silently shadows the pipeline variable, so the
       # documented switch would do nothing. Undefined stays falsy.
-      SLIM_REPORT: "$(SLIM_REPORT)"
+      SLIM_REPORT: "${{ lower(parameters.SLIM_REPORT) }}"
 
   - script: |
       set -euo pipefail
@@ -497,7 +533,10 @@ steps:
       # parses to nothing fails the build instead of passing quietly.
       # Macro, not a literal, for the same reason as UPLOAD_SBOM: a baked-in
       # "false" cannot be overridden by the pipeline variable it documents.
-      FAIL_ON_ZERO_FINDINGS: "$(FAIL_ON_ZERO_FINDINGS)"
+      FAIL_ON_ZERO_FINDINGS: "${{ lower(parameters.FAIL_ON_ZERO_FINDINGS) }}"
+      # Read by the step but absent from every env block until now, so the
+      # documented switch could not be turned on by any means at all.
+      FAIL_ON_FINDINGS_MISMATCH: "${{ lower(parameters.FAIL_ON_FINDINGS_MISMATCH) }}"
       # Fallback only: the enum is normally discovered from /api/imports/parsers.
       SCAN_TYPE: "semgrep"
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
@@ -631,10 +670,16 @@ steps:
       # literal shadowed it: the feature could not be turned on at all.
       # Measured: with the literal, UPLOAD_SBOM=true still printed
       # "SBOM upload disabled" and exited 0, so it looked deliberate.
-      # As a macro, an undefined variable stays falsy, so the default is
-      # still off -- turning it on without a working key must not make every
-      # build red for a feature nobody asked for yet.
-      UPLOAD_SBOM: "$(UPLOAD_SBOM)"
+      # A bare macro did not fix it either: an UNDEFINED $(...) is not empty
+      # in Azure, it arrives as the literal text "$(UPLOAD_SBOM)", which is
+      # not "true", so the step stayed green and uploaded nothing. It is now
+      # a declared parameter, so it always has a value and can be chosen when
+      # the pipeline is queued. lower() is required because a boolean
+      # parameter renders as "True"/"False" and the step compares to "true".
+      UPLOAD_SBOM: "${{ lower(parameters.UPLOAD_SBOM) }}"
+      # Same omission as FAIL_ON_FINDINGS_MISMATCH: read by the step, never set.
+      FAIL_ON_EMPTY_SBOM: "${{ lower(parameters.FAIL_ON_EMPTY_SBOM) }}"
+      FAIL_ON_SBOM_MISMATCH: "${{ lower(parameters.FAIL_ON_SBOM_MISMATCH) }}"
       SCAN_PATH: "."
       SECOPS_PRODUCT_ID: "$(SECOPS_PRODUCT_ID)"
       OPENSECOPS_API_KEY: $(OPENSECOPS_API_KEY)   # SECRET, from the variable group
