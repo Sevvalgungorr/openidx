@@ -111,7 +111,20 @@ export function ApiExplorerPage() {
       const res = await api.get<{ endpoints: Record<string, ApiEndpoint[]> }>(
         '/api/v1/developer/api-catalog'
       )
-      return Object.values(res.endpoints ?? {}).flat()
+      // Normalize: the catalog may omit array fields for an endpoint (a Go nil
+      // slice serializes to null, or the field is absent), and the detail pane
+      // reads scopes/path_params/query_params.length unconditionally — an
+      // undefined there crashed the page with "Cannot read properties of
+      // undefined (reading 'length')". Default them to empty arrays here so the
+      // ApiEndpoint[] invariant holds at runtime, not just in the type.
+      return Object.values(res.endpoints ?? {})
+        .flat()
+        .map((e) => ({
+          ...e,
+          scopes: e.scopes ?? [],
+          path_params: e.path_params ?? [],
+          query_params: e.query_params ?? [],
+        }))
     },
   })
 

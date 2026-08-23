@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -90,6 +91,34 @@ describe('ApiExplorerPage', () => {
     render(<ApiExplorerPage />, { wrapper: createWrapper() })
     expect(await screen.findByText('API Explorer')).toBeInTheDocument()
     expect(screen.getByText(/loading api endpoints/i)).toBeInTheDocument()
+  })
+
+  it('opens an endpoint whose array fields are missing without crashing', async () => {
+    // Regression: the catalog can return an endpoint with null/absent
+    // scopes/path_params/query_params (a Go nil slice serializes to null). The
+    // detail pane reads their .length unconditionally, which crashed the page
+    // with "Cannot read properties of undefined (reading 'length')". The
+    // queryFn now defaults these to [], so selecting such an endpoint renders.
+    const malformed = {
+      id: 'ep-broken',
+      service: 'identity',
+      method: 'GET' as const,
+      path: '/api/v1/identity/broken',
+      description: 'Endpoint with no array fields set',
+      has_body: false,
+      // scopes / path_params / query_params intentionally omitted
+    }
+    vi.mocked(api.get).mockResolvedValue({
+      endpoints: { identity: [malformed] },
+    })
+    const user = userEvent.setup()
+    render(<ApiExplorerPage />, { wrapper: createWrapper() })
+    await screen.findByText(/browse, test, and generate code/i)
+    // Service groups start expanded, so the endpoint is already listed — select it.
+    await user.click(await screen.findByText('/api/v1/identity/broken'))
+    // Detail pane renders (its unique "Try It" section) rather than the error
+    // boundary — proves the undefined .length no longer throws.
+    expect(await screen.findByText('Try It')).toBeInTheDocument()
   })
 
   it('groups endpoints under the SERVICE_GROUPS sidebar', async () => {
