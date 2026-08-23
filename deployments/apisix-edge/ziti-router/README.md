@@ -138,3 +138,10 @@ confirm no `1007`.
 - **`:3023` reachability:** the router is host-net and binds `:3023` directly;
   `browzer.tdv.org` must resolve to this box and `:3023` be reachable from clients
   (independent of the APISIX `:443` edge).
+- **External ingress / NAT forwarding:** this box has no public IP; the public
+  names DNAT through a gateway. The **CI/SDK data-path uses `tls:3022`** (only the
+  in-browser BrowZer runtime uses `wss:3023`), so the gateway must forward BOTH
+  `:3022` and `:3023` in addition to `:1280` and `:443`. A closed `:3022` forward
+  makes CI enroll fine but hang forever on the data channel. See
+  [`EXTERNAL-INGRESS.md`](./EXTERNAL-INGRESS.md) for the measured forwarding
+  matrix and the 2026-08-17 incident (stale signer key + missing `:3022` forward).
