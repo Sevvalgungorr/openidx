@@ -17,6 +17,7 @@ import (
 
 	"github.com/openidx/openidx/agent/internal/agent"
 	"github.com/openidx/openidx/agent/internal/authstore"
+	"github.com/openidx/openidx/agent/internal/control"
 	"github.com/openidx/openidx/agent/internal/enrollment"
 	"github.com/openidx/openidx/agent/internal/remotesupport"
 	"github.com/openidx/openidx/agent/internal/sso"
@@ -200,6 +201,48 @@ begin enforcing access policies and reporting health checks.`,
 	},
 }
 
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Run the headless control engine (local API for a desktop GUI)",
+	Long: `Start the OpenIDX native-client engine and expose its local control API.
+
+A desktop GUI connects to the control server to drive sign-in, enrollment,
+posture, PAM, and Ziti dial from the same engine the CLI uses. The listener is a
+0600 Unix domain socket on macOS/Linux, or a loopback TCP port guarded by a
+bearer token on Windows. The engine blocks until interrupted.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger.Info("starting control engine", zap.String("config_dir", configDir))
+
+		engine, err := control.NewEngine(configDir, logger)
+		if err != nil {
+			return fmt.Errorf("creating engine: %w", err)
+		}
+		srv, err := control.NewServer(engine, logger)
+		if err != nil {
+			return fmt.Errorf("creating control server: %w", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			sig := <-sigCh
+			logger.Info("received signal, shutting down", zap.String("signal", sig.String()))
+			cancel()
+		}()
+
+		logger.Info("control API ready", zap.String("addr", srv.Addr()))
+		fmt.Printf("OpenIDX control engine listening at %s\n", srv.Addr())
+
+		if err := srv.Serve(ctx); err != nil {
+			return fmt.Errorf("control server failed: %w", err)
+		}
+		return nil
+	},
+}
+
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Sign in to OpenIDX (browser PKCE flow) and cache the session",
@@ -374,6 +417,7 @@ func init() {
 
 	rootCmd.AddCommand(enrollCmd)
 	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(serviceCmd)
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)
