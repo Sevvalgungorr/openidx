@@ -57,7 +57,18 @@ const alerts = {
 }
 const risk = { risk: { avg_risk_score: 10, high_risk_logins_24h: 1, active_alerts: 2, impossible_travel_events: 0 } }
 
-function wireDefaultApi() {
+// Default PAM broker fixtures: direct broker configured + guacd healthy,
+// ziti broker configured. Individual tests override for degraded/down cases.
+const brokerStatusHealthy = { available: true, reach_modes: ['direct', 'ziti'], direct_broker: true, ziti_broker: true }
+const guacHealthy = {
+  status: 'healthy',
+  server_reachable: true,
+  authenticated: true,
+  connections_count: 3,
+  active_sessions: 1,
+}
+
+function wireDefaultApi(overrides?: { brokerStatus?: unknown; guacHealth?: unknown }) {
   vi.mocked(api.get).mockImplementation((url: string) => {
     if (url.includes('/fabric/overview')) return Promise.resolve(overview)
     if (url.includes('/ziti/status')) return Promise.resolve(status)
@@ -68,6 +79,8 @@ function wireDefaultApi() {
     if (url.includes('/ziti/sessions')) return Promise.resolve(sessions)
     if (url.includes('/security-alerts')) return Promise.resolve(alerts)
     if (url.includes('/analytics/risk')) return Promise.resolve(risk)
+    if (url.includes('/pam/broker/status')) return Promise.resolve(overrides?.brokerStatus ?? brokerStatusHealthy)
+    if (url.includes('/health/guacamole')) return Promise.resolve(overrides?.guacHealth ?? guacHealthy)
     return Promise.resolve([])
   })
 }
@@ -108,6 +121,64 @@ describe('OpsCockpitPage', () => {
     // Security tile top item.
     await waitFor(() => {
       expect(screen.getByText('Brute force detected')).toBeInTheDocument()
+    })
+  })
+
+  it('renders the PAM Brokers tile with a healthy direct + ziti broker', async () => {
+    render(<OpsCockpitPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText('PAM Brokers')).toBeInTheDocument()
+      expect(screen.getByText('Direct broker')).toBeInTheDocument()
+      expect(screen.getByText('Ziti broker')).toBeInTheDocument()
+    })
+
+    // Both brokers healthy → two "Healthy" badges, live guacd detail shown.
+    await waitFor(() => {
+      expect(screen.getAllByText('Healthy').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByText(/guacd reachable: yes/i)).toBeInTheDocument()
+      expect(screen.getByText(/authenticated: yes/i)).toBeInTheDocument()
+    })
+  })
+
+  it('renders a degraded direct broker and a down (unconfigured) ziti broker without crashing', async () => {
+    // Direct broker configured but guacd wedged: reachable yet NOT authenticated
+    // (the exact failure that went unseen for 6 weeks) → degraded. Ziti broker
+    // not configured → down.
+    wireDefaultApi({
+      brokerStatus: { available: true, reach_modes: ['direct'], direct_broker: true, ziti_broker: false },
+      guacHealth: {
+        status: 'degraded',
+        server_reachable: true,
+        authenticated: false,
+        connections_count: 0,
+        active_sessions: 0,
+        error_message: 'Not authenticated to Guacamole server',
+      },
+    })
+
+    render(<OpsCockpitPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText('PAM Brokers')).toBeInTheDocument()
+      expect(screen.getByText('Degraded')).toBeInTheDocument()
+      expect(screen.getByText('Down')).toBeInTheDocument()
+      expect(screen.getByText(/authenticated: no/i)).toBeInTheDocument()
+      expect(screen.getByText('Not authenticated to Guacamole server')).toBeInTheDocument()
+    })
+  })
+
+  it('treats brokers as down when the broker-status endpoint returns a sparse/empty body', async () => {
+    // Sparse response (no fields) must default to down, never crash the tile.
+    wireDefaultApi({ brokerStatus: {}, guacHealth: {} })
+
+    render(<OpsCockpitPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => {
+      expect(screen.getByText('PAM Brokers')).toBeInTheDocument()
+      // Both direct + ziti unconfigured → two Down badges.
+      expect(screen.getAllByText('Down').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByText('Not configured').length).toBeGreaterThanOrEqual(1)
     })
   })
 

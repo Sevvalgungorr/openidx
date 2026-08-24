@@ -27,6 +27,7 @@ import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
 import { useRevealedSecret, copyWithWarning } from '../lib/secret-reveal'
 import { TerminalSession } from '../components/remote/terminal-session'
+import { GuacSessionViewer } from '../components/remote/guac-session-viewer'
 import { connectionPathSteps } from '../lib/connection-path'
 import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
 
@@ -95,6 +96,10 @@ export function PamConnectionsPage() {
   // Clientless in-browser SSH terminal (wasm-ssh renderer). When set, a dialog
   // hosts the xterm session for this entry instead of opening a guac tab.
   const [terminalEntry, setTerminalEntry] = useState<PamEntry | null>(null)
+
+  // In-app Guacamole session host (replaces window.open to a new tab, which
+  // could expose Guacamole's own home/connection-manager on failure).
+  const [guacSession, setGuacSession] = useState<{ url: string; title: string } | null>(null)
 
   const [revealFor, setRevealFor] = useState<PamEntry | null>(null)
   const [revealReason, setRevealReason] = useState('')
@@ -215,11 +220,14 @@ export function PamConnectionsPage() {
   })
 
   const connect = useMutation({
-    mutationFn: (id: string) => api.pam.connect(id),
-    onSuccess: (res: PamConnectResult) => {
+    mutationFn: (vars: { id: string; name: string }) => api.pam.connect(vars.id),
+    onSuccess: (res: PamConnectResult, vars) => {
       const url = res.connect_url || res.url
       if (url) {
-        window.open(url, '_blank', 'noopener')
+        // Host the Guacamole session in our own dialog rather than
+        // window.open()'ing a new tab: on failure Guacamole would otherwise
+        // show its own home/connection-manager chrome to the end user.
+        setGuacSession({ url, title: vars.name })
         toast({
           title: 'Session launched',
           description: res.credential_injected
@@ -248,7 +256,7 @@ export function PamConnectionsPage() {
       setTerminalEntry(entry)
       return
     }
-    connect.mutate(entry.id)
+    connect.mutate({ id: entry.id, name: entry.name })
   }
 
   const del = useMutation({
@@ -888,6 +896,14 @@ export function PamConnectionsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* In-app Guacamole session host (RDP/VNC/SSH-via-guac, website, etc.). */}
+      <GuacSessionViewer
+        open={!!guacSession}
+        url={guacSession?.url ?? ''}
+        title={guacSession?.title ?? ''}
+        onClose={() => setGuacSession(null)}
+      />
     </div>
   )
 }

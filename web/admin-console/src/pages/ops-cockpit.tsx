@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import {
   Gauge, Server, Router, Activity, Network, ShieldCheck, ShieldAlert,
-  Share2, ExternalLink, ArrowRight,
+  Share2, ExternalLink, ArrowRight, KeyRound, ArrowRightLeft,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { QueryGate } from '../components/query-gate'
@@ -91,6 +91,34 @@ interface RiskOverview {
   active_alerts: number
   impossible_travel_events: number
 }
+
+// PAM broker health. Two reads back this tile because no single endpoint carries
+// both signals:
+//  1. /pam/broker/status  — which brokers are CONFIGURED/wired (direct/ziti) and
+//     which reach modes are available.
+//  2. /health/guacamole   — LIVE reachability + auth for the direct guacd broker
+//     (server_reachable / authenticated). This is the signal that would have
+//     surfaced the 6-week-wedged guacd instead of silently failing.
+// Both interfaces are defensive: every rendered field is defaulted at the queryFn
+// so a sparse/unknown backend response renders as down/unknown, never a crash.
+interface PamBrokerStatusResp {
+  available: boolean
+  reach_modes: string[]
+  direct_broker: boolean
+  ziti_broker: boolean
+}
+
+interface GuacamoleHealthResp {
+  status: string // "healthy" | "degraded" | "unhealthy" | "unavailable" | ...
+  server_reachable: boolean
+  authenticated: boolean
+  connections_count: number
+  active_sessions: number
+  error_message: string
+}
+
+/** A broker's rolled-up health state, used to pick the badge colour/label. */
+type BrokerHealth = 'healthy' | 'degraded' | 'down'
 
 // ─── Small tile helpers ────────────────────────────────────────────────────────
 
@@ -184,6 +212,38 @@ export function OpsCockpitPage() {
   const riskQuery = useQuery({
     queryKey: ['ops-risk-overview'],
     queryFn: () => api.get<{ risk: RiskOverview }>('/api/v1/analytics/risk'),
+  })
+
+  // PAM broker health (two reads, each defaulting every rendered field so a
+  // sparse response can't crash the tile). Non-gating — the fabric overview
+  // remains the primary gate; these degrade to "unknown"/down on failure.
+  const brokerStatusQuery = useQuery({
+    queryKey: ['ops-pam-broker-status'],
+    queryFn: async (): Promise<PamBrokerStatusResp> => {
+      const r = await api.get<Partial<PamBrokerStatusResp>>('/api/v1/access/pam/broker/status')
+      return {
+        available: r?.available ?? false,
+        reach_modes: Array.isArray(r?.reach_modes) ? r.reach_modes : [],
+        direct_broker: r?.direct_broker ?? false,
+        ziti_broker: r?.ziti_broker ?? false,
+      }
+    },
+    refetchInterval: 15000,
+  })
+  const guacHealthQuery = useQuery({
+    queryKey: ['ops-guacamole-health'],
+    queryFn: async (): Promise<GuacamoleHealthResp> => {
+      const r = await api.get<Partial<GuacamoleHealthResp>>('/api/v1/access/health/guacamole')
+      return {
+        status: typeof r?.status === 'string' ? r.status : 'unknown',
+        server_reachable: r?.server_reachable ?? false,
+        authenticated: r?.authenticated ?? false,
+        connections_count: r?.connections_count ?? 0,
+        active_sessions: r?.active_sessions ?? 0,
+        error_message: typeof r?.error_message === 'string' ? r.error_message : '',
+      }
+    },
+    refetchInterval: 15000,
   })
 
   // Topology preview built from the same reads as network-topology.
@@ -290,6 +350,10 @@ export function OpsCockpitPage() {
                 <PostureCard identities={identitiesQuery} />
                 <SecurityCard alerts={alertsQuery} risk={riskQuery} />
               </div>
+
+              {/* PAM broker health — the direct + ziti guacd brokers had zero
+                  visibility (a wedged guacd went unseen for 6 weeks). */}
+              <PamBrokersCard status={brokerStatusQuery} guac={guacHealthQuery} />
 
               {/* Topology preview */}
               <Card>
@@ -456,6 +520,141 @@ function SecurityCard({
           <Link to="/risk-dashboard" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
             Open risk dashboard <ArrowRight className="h-3 w-3" />
           </Link>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── PAM broker health tile ────────────────────────────────────────────────────
+
+const brokerBadgeVariant: Record<BrokerHealth, 'success' | 'warning' | 'destructive'> = {
+  healthy: 'success',
+  degraded: 'warning',
+  down: 'destructive',
+}
+const brokerBadgeLabel: Record<BrokerHealth, string> = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  down: 'Down',
+}
+
+/** Roll up the direct broker: configured? then reachable + authenticated. */
+function directBrokerHealth(configured: boolean, guac: GuacamoleHealthResp | undefined): BrokerHealth {
+  if (!configured) return 'down'
+  if (!guac) return 'degraded' // configured but health unknown — don't claim healthy
+  if (!guac.server_reachable) return 'down'
+  if (!guac.authenticated) return 'degraded'
+  return 'healthy'
+}
+
+/** One broker row: label, colored health badge, and detail lines. */
+function BrokerRow({
+  icon: Icon,
+  name,
+  health,
+  loading,
+  details,
+}: {
+  icon: typeof Server
+  name: string
+  health: BrokerHealth
+  loading: boolean
+  details: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 h-4 w-4 text-primary" />
+        <div>
+          <div className="text-sm font-medium text-foreground">{name}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{details}</div>
+        </div>
+      </div>
+      {loading ? (
+        <Skeleton className="h-5 w-16" />
+      ) : (
+        <Badge variant={brokerBadgeVariant[health]} className="shrink-0">
+          {brokerBadgeLabel[health]}
+        </Badge>
+      )}
+    </div>
+  )
+}
+
+function PamBrokersCard({
+  status,
+  guac,
+}: {
+  status: Pick<UseQueryResult<PamBrokerStatusResp>, 'isLoading' | 'isError' | 'data'>
+  guac: Pick<UseQueryResult<GuacamoleHealthResp>, 'isLoading' | 'isError' | 'data'>
+}) {
+  // Fall back to safe defaults so a failed/absent status read renders both
+  // brokers as "down (unconfigured)" rather than crashing or masking.
+  const s = status.data
+  const directConfigured = s?.direct_broker ?? false
+  const zitiConfigured = s?.ziti_broker ?? false
+  const g = status.isError ? undefined : guac.data
+
+  const directHealth = directBrokerHealth(directConfigured, guac.isError ? undefined : g)
+  // The ziti broker only has a wiring signal exposed (broker + live overlay);
+  // configured ⇒ healthy, otherwise down (unconfigured).
+  const zitiHealth: BrokerHealth = zitiConfigured ? 'healthy' : 'down'
+
+  const directDetails = !directConfigured ? (
+    <span>Not configured</span>
+  ) : status.isError ? (
+    <span>Broker status unavailable</span>
+  ) : (
+    <>
+      <div>guacd reachable: {g ? (g.server_reachable ? 'yes' : 'no') : 'unknown'}</div>
+      <div>authenticated: {g ? (g.authenticated ? 'yes' : 'no') : 'unknown'}</div>
+      {g && g.server_reachable && (
+        <div>active sessions: {g.active_sessions}</div>
+      )}
+      {g?.error_message ? (
+        <div className="text-red-500">{g.error_message}</div>
+      ) : null}
+    </>
+  )
+
+  const zitiDetails = zitiConfigured ? (
+    <span>Broker configured, overlay linked</span>
+  ) : (
+    <span>Not configured (needs ziti broker + live overlay)</span>
+  )
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="flex items-center gap-2 text-base text-foreground">
+          <KeyRound className="h-4 w-4 text-primary" /> PAM Brokers
+        </CardTitle>
+        <Link to="/pam-connections" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+          Connections <ArrowRight className="h-3 w-3" />
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {status.isError ? (
+          <p className="text-sm text-muted-foreground">
+            Broker status unavailable — treating brokers as unreachable.
+          </p>
+        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <BrokerRow
+            icon={KeyRound}
+            name="Direct broker"
+            health={directHealth}
+            loading={status.isLoading || (directConfigured && guac.isLoading)}
+            details={directDetails}
+          />
+          <BrokerRow
+            icon={ArrowRightLeft}
+            name="Ziti broker"
+            health={zitiHealth}
+            loading={status.isLoading}
+            details={zitiDetails}
+          />
         </div>
       </CardContent>
     </Card>

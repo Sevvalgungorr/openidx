@@ -86,12 +86,17 @@ describe('PamConnectionsPage', () => {
     expect(screen.getByText(/administrator@dc01.corp:3389/)).toBeInTheDocument()
   })
 
-  it('launches a session (passwordless) and opens the connect URL', async () => {
+  it('launches a session (passwordless) in the in-app viewer, not a new tab', async () => {
     renderPage()
     const card = (await screen.findByText('DC01')).closest('[class*="rounded"]') as HTMLElement
     fireEvent.click(within(card).getByRole('button', { name: /connect/i }))
     await waitFor(() => expect(pam.connect).toHaveBeenCalledWith('e1'))
-    await waitFor(() => expect(window.open).toHaveBeenCalledWith('https://guac/x', '_blank', 'noopener'))
+    // The session is now hosted in an OpenIDX dialog (framing the same-origin
+    // guac URL) rather than window.open'd — so guac's own chrome can't leak.
+    await waitFor(() =>
+      expect(document.querySelector('iframe[src="https://guac/x"]')).toBeInTheDocument(),
+    )
+    expect(window.open).not.toHaveBeenCalled()
   })
 
   it('shows a request-access button only for approval-gated entries', async () => {

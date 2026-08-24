@@ -37,6 +37,28 @@ var (
 	CommitHash = "unknown"
 )
 
+// dialGuacBrokerWithRetry authenticates to a Guacamole broker, retrying with a
+// bounded linear backoff (2,4,6,8,10s ~= 30s max) so a broker that is still
+// coming up — e.g. after a co-restart — doesn't leave the client permanently
+// nil and every PAM launch through it 503ing until the next service restart.
+// Returns nil only after exhausting retries; launches then fail until the
+// broker recovers (unchanged from before, just after a real retry window).
+func dialGuacBrokerWithRetry(broker string, log *zap.Logger, mk func() (*access.GuacamoleClient, error)) *access.GuacamoleClient {
+	var gc *access.GuacamoleClient
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		if gc, err = mk(); err == nil {
+			return gc
+		}
+		log.Warn("Guacamole broker not ready; retrying",
+			zap.String("broker", broker), zap.Int("attempt", attempt), zap.Int("max", 5), zap.Error(err))
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
+	}
+	log.Error("Guacamole broker init failed after retries -- launches via this broker unavailable until it recovers",
+		zap.String("broker", broker), zap.Error(err))
+	return nil
+}
+
 func main() {
 	// Initialize logger
 	log := logger.New()
@@ -300,10 +322,10 @@ func main() {
 	// Initialize Apache Guacamole client if configured
 	if cfg.GuacamoleURL != "" {
 		log.Info("Initializing Apache Guacamole integration (direct PAM broker)...", zap.String("url", cfg.GuacamoleURL))
-		gc, err := access.NewGuacamoleClient(cfg, db, log)
-		if err != nil {
-			log.Error("Failed to initialize Guacamole client -- remote access features disabled", zap.Error(err))
-		} else {
+		gc := dialGuacBrokerWithRetry("direct", log, func() (*access.GuacamoleClient, error) {
+			return access.NewGuacamoleClient(cfg, db, log)
+		})
+		if gc != nil {
 			accessService.SetGuacamoleClient(gc)
 			featureManager.SetGuacamoleClient(gc)
 			auditService.SetGuacamoleClient(gc)
@@ -318,10 +340,10 @@ func main() {
 	// and routed to the matching broker at connect time.
 	if cfg.GuacamoleZitiURL != "" {
 		log.Info("Initializing dedicated OpenZiti PAM broker...", zap.String("url", cfg.GuacamoleZitiURL))
-		zgc, err := access.NewGuacamoleZitiClient(cfg, db, log)
-		if err != nil {
-			log.Error("Failed to initialize OpenZiti PAM broker -- ziti-reach launches will be unavailable", zap.Error(err))
-		} else {
+		zgc := dialGuacBrokerWithRetry("ziti", log, func() (*access.GuacamoleClient, error) {
+			return access.NewGuacamoleZitiClient(cfg, db, log)
+		})
+		if zgc != nil {
 			accessService.SetGuacamoleZitiClient(zgc)
 			log.Info("Dedicated OpenZiti PAM broker ready")
 		}

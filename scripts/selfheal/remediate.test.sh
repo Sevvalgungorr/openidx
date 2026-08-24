@@ -49,5 +49,38 @@ rc=$(grep -c 'restart:oidx-oauth' "$SELFHEAL_STATE_DIR/acts" || true)
 echo "$FIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh --dry-run > /tmp/o5
 grep -qi 'would' /tmp/o5 && [ ! -s "$SELFHEAL_STATE_DIR/acts" ] && ok "dry-run: intent only" || bad "dry-run acted"
 
+# --- restart_pam_broker: same safety envelope, podman-container pair restart ---
+PAMFIND='{"fingerprint":"ops:pam-broker-wedged:direct","class":"ops","severity":"high","service":"pam-direct","suggested_action":"restart_pam_broker","data":{"container":"pam-guacamole","guacd":"pam-guacd","url":"http://127.0.0.1:10090/guacamole/"}}'
+export SH_ACT_RESTART_PAM='_rp'; _rp(){ echo "pamrestart:$1:$2" >> "$SELFHEAL_STATE_DIR/pamacts"; }
+export SH_ACT_PAM_HEALTH='_ph'; _ph(){ cat "$SELFHEAL_STATE_DIR/pamhealth" 2>/dev/null || echo up; }
+export -f _rp _ph
+
+# observe mode -> records intent, never restarts a container.
+: > "$SELFHEAL_STATE_DIR/pamacts" 2>/dev/null; rm -f "$SELFHEAL_STATE_DIR/pamacts"
+echo "$PAMFIND" | SELFHEAL_MODE=observe bash ./remediate.sh >/dev/null
+[ ! -f "$SELFHEAL_STATE_DIR/pamacts" ] && ok "pam observe: no restart" || bad "pam observe restarted"
+
+# kill-switch -> no restart even in tier0.
+touch "$SELFHEAL_STATE_DIR/DISABLE"
+echo "$PAMFIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh >/dev/null
+[ ! -f "$SELFHEAL_STATE_DIR/pamacts" ] && ok "pam kill-switch: no restart" || bad "pam acted despite kill-switch"
+rm -f "$SELFHEAL_STATE_DIR/DISABLE"
+
+# dry-run -> intent only, no container restart.
+echo "$PAMFIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh --dry-run > /tmp/op1
+grep -qi 'would' /tmp/op1 && [ ! -f "$SELFHEAL_STATE_DIR/pamacts" ] && ok "pam dry-run: intent only" || bad "pam dry-run acted"
+
+# tier0 + healthy-after -> restarts the guac pair once, records recovered.
+echo up > "$SELFHEAL_STATE_DIR/pamhealth"
+echo "$PAMFIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh >/dev/null
+grep -q 'pamrestart:pam-guacamole:pam-guacd' "$SELFHEAL_STATE_DIR/pamacts" && ok "tier0 restarted guac pair" || bad "no guac pair restart"
+grep -q '"action":"restart_pam_broker","result":"recovered"' "$SELFHEAL_STATE_DIR/actions.jsonl" && ok "recorded pam recovered action" || bad "no pam recovered line"
+
+# still-bad after restart -> escalates (records still-bad).
+echo down > "$SELFHEAL_STATE_DIR/pamhealth"
+: > "$SELFHEAL_STATE_DIR/actions.jsonl"
+echo "$PAMFIND" | SELFHEAL_MODE=tier0 bash ./remediate.sh >/dev/null
+grep -q '"action":"restart_pam_broker","result":"still-bad"' "$SELFHEAL_STATE_DIR/actions.jsonl" && ok "pam still-bad escalates" || bad "no pam still-bad line"
+
 rm -rf "$SELFHEAL_STATE_DIR"
 [ "$fails" -eq 0 ] && echo "remediate PASS" || { echo "FAIL ($fails)"; exit 1; }
