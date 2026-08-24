@@ -1,0 +1,32 @@
+name: openidx_engine
+description: >-
+  Flutter federated plugin bridging Dart to the OpenIDX Go engine's gomobile
+  binding (agent/mobile) via a MethodChannel. iOS links Engine.xcframework
+  (Swift module `Mobile`); Android links engine.aar (Kotlin class `mobile.Mobile`).
+version: 0.1.0
+publish_to: "none"
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_test:
+    sdk: flutter
+
+# Federated plugin: only mobile platforms are implemented. On desktop the app
+# talks to the engine over the local control socket (Phase 1) and never loads
+# this plugin.
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: OpenidxEnginePlugin
+      android:
+        package: org.openidx.engine
+        pluginClass: OpenidxEnginePlugin

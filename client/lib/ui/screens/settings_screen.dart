@@ -22,8 +22,10 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _quit(BuildContext context, WidgetRef ref) async {
-    // Let the supervisor tear down a spawned engine before we exit.
-    await ref.read(engineSupervisorProvider).dispose();
+    // Let the supervisor tear down a spawned engine before we exit. On mobile
+    // there is no supervisor (the engine is in-process) and no "quit", so this
+    // is desktop-only — see the tile's visibility guard below.
+    await ref.read(engineSupervisorProvider)?.dispose();
     exit(0);
   }
 
@@ -58,11 +60,14 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Sign out'),
             onTap: () => _signOut(context, ref),
           ),
-          ListTile(
-            leading: const Icon(Icons.power_settings_new),
-            title: const Text('Quit OpenIDX'),
-            onTap: () => _quit(context, ref),
-          ),
+          // "Quit" is a desktop-only concept (mobile apps are backgrounded,
+          // not quit, and there is no spawned engine to tear down).
+          if (!Platform.isIOS && !Platform.isAndroid)
+            ListTile(
+              leading: const Icon(Icons.power_settings_new),
+              title: const Text('Quit OpenIDX'),
+              onTap: () => _quit(context, ref),
+            ),
         ],
       ),
     );

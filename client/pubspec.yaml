@@ -1,5 +1,5 @@
 name: openidx_client
-description: OpenIDX native desktop client (Flutter shell over the local openidx-agent engine).
+description: OpenIDX native client (Flutter shell over the local openidx-agent engine on desktop, and the in-process gomobile engine on iOS/Android).
 publish_to: "none"
 version: 0.1.0+1
 
@@ -12,15 +12,37 @@ dependencies:
     sdk: flutter
 
   # Desktop shell: window chrome + system tray + open external URLs.
+  # (Pub resolves these on all platforms; they are only invoked on desktop.)
   window_manager: ^0.4.2
   tray_manager: ^0.3.2
   url_launcher: ^6.3.0
 
-  # Platform paths (locating the bundled sidecar / runtime dir).
+  # Platform paths: locating the bundled sidecar on desktop, and the
+  # app-support sandbox dir the mobile engine is Start()ed against.
   path_provider: ^2.1.4
 
   # State management.
   flutter_riverpod: ^2.5.1
+
+  # --- Mobile (iOS/Android) -------------------------------------------------
+  # In-process Go engine bridge (gomobile binding over a MethodChannel).
+  openidx_engine:
+    path: plugins/openidx_engine
+
+  # Backend HTTP journeys (MFA / governance / notifications) + token refresh.
+  dio: ^5.7.0
+
+  # Tokens + otpauth secrets in the platform keystore/keychain.
+  flutter_secure_storage: ^9.2.2
+
+  # Biometric app-lock (Face ID / Touch ID / fingerprint).
+  local_auth: ^2.3.0
+
+  # openidx:// deep links (oauth-callback + approve).
+  app_links: ^6.3.2
+
+  # HMAC-SHA1/256/512 for the RFC 6238 TOTP helper + PKCE code_challenge.
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_lints: ^4.0.0

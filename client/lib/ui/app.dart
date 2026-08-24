@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/providers.dart';
+import 'mobile_shell.dart';
 import 'screens/enroll_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -39,6 +42,9 @@ class _RootRouter extends ConsumerWidget {
       data: (status) {
         if (!status.enrolled) return const EnrollScreen();
         if (!status.loggedIn) return const LoginScreen();
+        // Mobile gets the bottom-nav shell (Codes/Approvals/Access/Settings);
+        // desktop keeps its single-pane HomeScreen inside the window/tray shell.
+        if (Platform.isIOS || Platform.isAndroid) return const MobileShell();
         return const HomeScreen();
       },
     );

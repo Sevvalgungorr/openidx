@@ -1,0 +1,53 @@
+group 'org.openidx.engine'
+version '0.1.0'
+
+buildscript {
+    ext.kotlin_version = '1.9.22'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        // The gomobile-produced engine.aar is dropped here (see README.md); CI
+        // stages it before the Gradle build.
+        flatDir { dirs "${project.projectDir}/libs" }
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'org.openidx.engine'
+    compileSdk 34
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+    defaultConfig {
+        minSdkVersion 24
+    }
+}
+
+dependencies {
+    // gomobile bind -target=android -o engine.aar ./agent/mobile
+    // Stage the artifact at android/libs/engine.aar (see README.md).
+    implementation(name: 'engine', ext: 'aar')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+}

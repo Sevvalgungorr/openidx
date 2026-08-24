@@ -165,3 +165,92 @@ client/
 └── test/
     └── engine_client_test.dart
 ```
+
+---
+
+## Phase 2b — Mobile (iOS / Android)
+
+The **same** `openidx_client` package also runs on iOS and Android. The
+difference is purely transport: where desktop reaches the engine over a local
+control socket, mobile links the engine **in-process** via its gomobile binding
+(`agent/mobile`, Phase 2a) and calls it across a Flutter `MethodChannel`.
+
+> ⚠️ **Written, not built here.** As with the desktop shell, there is no
+> Flutter/Dart SDK (nor the `gomobile` toolchain) in this checkout, so none of
+> the mobile code has been compiled, `flutter analyze`d, or `flutter test`ed
+> locally. It is written to the gomobile binding contract in
+> `agent/mobile/mobile.go` and the backend HTTP contracts, and is **verified in
+> CI** by `.github/workflows/client-mobile-build.yml` (builds the
+> `Engine.xcframework`/`engine.aar`, `flutter create --platforms=ios,android`,
+> then `flutter analyze` / `flutter test` / `flutter build apk` /
+> `flutter build ios --no-codesign`).
+
+### Engine transport on mobile
+
+```
+Dart EngineClient (shared contract + models.dart)
+      │  EngineClientFactory picks by platform
+      ├─ desktop → DesktopEngineClient  ── HTTP over control socket (Phase 1)
+      └─ mobile  → MobileEngineClient   ── MethodChannel('openidx_engine')
+                                              │
+                          plugins/openidx_engine (federated plugin)
+                             Swift OpenidxEnginePlugin → Mobile.*  (Engine.xcframework)
+                             Kotlin OpenidxEnginePlugin → mobile.Mobile.*  (engine.aar)
+                                              │
+                                     agent/mobile (Go) → control.Engine
+```
+
+The gomobile funcs return the **same JSON shapes** the control server emits, so
+`MobileEngineClient` decodes them with the identical Phase-1 `models.dart`
+factories — desktop and mobile stay wire-compatible by construction. See
+`plugins/openidx_engine/README.md` for how to produce and drop the native
+artifacts.
+
+### Non-engine journeys (HTTP)
+
+Enroll / PAM / Ziti go through the engine. The remaining journeys (MFA,
+governance, notifications) talk to the backend gateway **directly** over HTTP,
+mirroring the React-Native app's `src/lib/api.ts`:
+
+- `lib/api/api_client.dart` — token-authed `dio` client; `Bearer` injection,
+  `X-Org-Slug`, single-flight refresh-on-401 via `/oauth/token`.
+- `lib/api/auth.dart` — PKCE via `/oauth/native/login-init`, then passkey
+  (`/oauth/passkey-begin`/`finish`) or a browser PKCE fallback; tokens in
+  `flutter_secure_storage`.
+- `lib/api/{mfa,governance,notifications}.dart` — the endpoint wrappers.
+
+### Mobile UI + platform
+
+- `lib/ui/mobile_shell.dart` — bottom-nav shell (Codes / Approvals / Access /
+  Settings), used when `Platform.isIOS || isAndroid`; desktop keeps its
+  window/tray shell.
+- `lib/ui/screens/mobile/` — authenticator (offline TOTP), push number-match
+  approval, governance approvals, my-access, notifications.
+- `lib/features/totp.dart` — self-contained RFC 6238 TOTP + base32 (codes are
+  generated on-device; secrets never leave the keystore).
+- `lib/mobile/app_lock.dart` — biometric app-lock (`local_auth`) on cold start
+  and after idle, with a graceful no-biometric fallback.
+- `lib/mobile/deep_links.dart` — `app_links` handling for
+  `openidx://oauth-callback` and `openidx://approve/<id>`.
+
+### Mobile file map (Phase 2b additions)
+
+```
+client/
+├── plugins/openidx_engine/            # federated Dart↔gomobile plugin
+│   ├── lib/openidx_engine.dart
+│   ├── ios/Classes/OpenidxEnginePlugin.swift
+│   ├── android/.../OpenidxEnginePlugin.kt
+│   └── README.md
+├── lib/
+│   ├── engine/mobile_engine_client.dart
+│   ├── engine/engine_client_factory.dart
+│   ├── api/{api_client,token_store,auth,mfa,governance,notifications}.dart
+│   ├── features/totp.dart
+│   ├── mobile/{app_lock,deep_links}.dart
+│   ├── state/mobile_providers.dart
+│   └── ui/
+│       ├── mobile_shell.dart
+│       └── screens/mobile/{authenticator,push_approve,approvals,my_access,notifications}_screen.dart
+└── test/{mobile_engine_client_test,totp_test}.dart
+```

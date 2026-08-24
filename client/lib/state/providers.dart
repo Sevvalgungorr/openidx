@@ -3,20 +3,30 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine/engine_client.dart';
+import '../engine/engine_client_factory.dart';
 import '../engine/engine_supervisor.dart';
 import '../engine/models.dart';
 
-/// The active [EngineSupervisor]. Overridden at app boot in `main.dart` with a
-/// supervisor that has already spawned/attached the engine.
-final engineSupervisorProvider = Provider<EngineSupervisor>((ref) {
-  throw UnimplementedError(
-    'engineSupervisorProvider must be overridden in ProviderScope',
-  );
-});
+/// The active [EngineSupervisor] on **desktop**. Overridden at app boot in
+/// `main.dart` with a supervisor that has already spawned/attached the engine.
+///
+/// On **mobile** there is no external engine process to supervise (the engine
+/// is linked in-process via the gomobile plugin), so this provider is left
+/// un-overridden and `engineClientProvider` falls back to the factory instead.
+final engineSupervisorProvider = Provider<EngineSupervisor?>((ref) => null);
 
 /// The [EngineClient] the UI talks to.
+///
+/// Desktop boot overrides [engineSupervisorProvider], so we reuse the
+/// supervisor's already-started client. Mobile leaves it null, so we build the
+/// transport for the current platform via [EngineClientFactory] (which returns
+/// [MobileEngineClient] on iOS/Android).
 final engineClientProvider = Provider<EngineClient>((ref) {
-  return ref.watch(engineSupervisorProvider).client;
+  final supervisor = ref.watch(engineSupervisorProvider);
+  if (supervisor != null) return supervisor.client;
+  final client = const EngineClientFactory().create();
+  ref.onDispose(client.close);
+  return client;
 });
 
 /// How often to re-poll `/status`.
