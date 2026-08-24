@@ -50,17 +50,20 @@ jobs:
 
       - name: Install gomobile
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20250606033058-a2a15c67f36f
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20250606033058-a2a15c67f36f
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: gomobile init
         run: gomobile init
 
       - name: Build engine.aar
+        # Must run inside the agent module (its go.mod requires golang.org/x/mobile);
+        # from the repo root, gobind can't resolve x/mobile/bind for ./agent/mobile.
+        working-directory: agent
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.1.10909125
-        run: gomobile bind -target=android -o engine.aar ./agent/mobile
+        run: gomobile bind -target=android -androidapi 21 -ldflags=-checklinkname=0 -o ../engine.aar ./mobile
 
       - uses: actions/upload-artifact@v4
         with:
@@ -81,15 +84,17 @@ jobs:
 
       - name: Install gomobile
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20250606033058-a2a15c67f36f
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20250606033058-a2a15c67f36f
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: gomobile init
         run: gomobile init
 
       - name: Build Engine.xcframework
-        run: gomobile bind -target=ios -o Engine.xcframework ./agent/mobile
+        # Run inside the agent module (see the android job for why).
+        working-directory: agent
+        run: gomobile bind -target=ios -ldflags=-checklinkname=0 -o ../Engine.xcframework ./mobile
 
       - name: Zip framework (preserve symlinks)
         run: zip -ry Engine.xcframework.zip Engine.xcframework
@@ -109,7 +114,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Materialize platform runners
@@ -144,7 +148,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Download engine.aar
@@ -181,7 +184,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Download Engine.xcframework

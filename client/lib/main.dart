@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'engine/engine_supervisor.dart';
@@ -34,7 +33,10 @@ Future<void> main() async {
   }
 
   // --- System tray ----------------------------------------------------------
-  final tray = TrayController(
+  // `late` so the onQuit closure can capture `tray` before the initializer
+  // completes (it disposes the controller on Quit).
+  late final TrayController tray;
+  tray = TrayController(
     onQuit: () async {
       await supervisor.dispose();
       await tray.dispose();

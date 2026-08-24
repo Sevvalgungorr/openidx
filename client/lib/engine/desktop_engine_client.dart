@@ -83,13 +83,13 @@ class EngineEndpointResolver {
       }
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is! Map<String, dynamic>) {
-        throw EngineException(0, 'malformed control-endpoint.json');
+        throw const EngineException(0, 'malformed control-endpoint.json');
       }
       final addr = (decoded['addr'] as String?) ?? '';
       final token = (decoded['token'] as String?) ?? '';
       final sep = addr.lastIndexOf(':');
       if (sep <= 0 || token.isEmpty) {
-        throw EngineException(0, 'invalid control-endpoint.json contents');
+        throw const EngineException(0, 'invalid control-endpoint.json contents');
       }
       final host = addr.substring(0, sep);
       final port = int.tryParse(addr.substring(sep + 1)) ?? 0;

@@ -46,23 +46,25 @@ jobs:
 
       - name: Install gomobile
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20250606033058-a2a15c67f36f
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20250606033058-a2a15c67f36f
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: gomobile init
         run: gomobile init
 
       - name: Build engine.aar (gomobile bind)
+        # Must run inside the agent module (its go.mod requires golang.org/x/mobile);
+        # from the repo root, gobind can't resolve x/mobile/bind for ./agent/mobile.
+        working-directory: agent
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
         run: |
-          mkdir -p client/plugins/openidx_engine/android/libs
-          gomobile bind -target=android -o client/plugins/openidx_engine/android/libs/engine.aar ./agent/mobile
+          mkdir -p "$GITHUB_WORKSPACE/client/plugins/openidx_engine/android/libs"
+          gomobile bind -target=android -androidapi 21 -ldflags=-checklinkname=0 -o "$GITHUB_WORKSPACE/client/plugins/openidx_engine/android/libs/engine.aar" ./mobile
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Materialize platform runners

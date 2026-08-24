@@ -13,13 +13,19 @@ buildscript {
     }
 }
 
+// Capture THIS plugin's libs dir up front. Inside allprojects, `project.projectDir`
+// is each project's own dir (so the :app project would look in app/libs and miss
+// the aar) — the gomobile engine.aar only ever lives in the plugin's libs.
+def engineLibsDir = "${projectDir}/libs"
+
 rootProject.allprojects {
     repositories {
         google()
         mavenCentral()
         // The gomobile-produced engine.aar is dropped here (see README.md); CI
-        // stages it before the Gradle build.
-        flatDir { dirs "${project.projectDir}/libs" }
+        // stages it before the Gradle build. Every project (incl. :app, which
+        // resolves the aar transitively) must find it in the plugin's libs.
+        flatDir { dirs engineLibsDir }
     }
 }
 
