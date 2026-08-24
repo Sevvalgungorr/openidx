@@ -549,6 +549,27 @@ export function PamConnectionsPage() {
             {form.entry_type === 'rdp' && (
               <div className="rounded-md border p-3 space-y-3">
                 <div>
+                  <label className="text-sm font-medium">Security mode</label>
+                  <p className="text-xs text-muted-foreground">
+                    RDP security negotiation. Default is NLA (most secure). If the target
+                    refuses with &quot;wrong security type&quot;, pick <strong>Any</strong> so
+                    guacd negotiates whatever the server accepts.
+                  </p>
+                  <Select
+                    value={settingStr('security') || 'default'}
+                    onValueChange={(v) => setSetting('security', v === 'default' ? '' : v)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default (NLA)</SelectItem>
+                      <SelectItem value="any">Any (most compatible)</SelectItem>
+                      <SelectItem value="nla">NLA</SelectItem>
+                      <SelectItem value="tls">TLS</SelectItem>
+                      <SelectItem value="rdp">Standard RDP</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
                   <p className="text-sm font-medium">RemoteApp (optional)</p>
                   <p className="text-xs text-muted-foreground">
                     Publish a single application (e.g. SSMS) instead of the full desktop.
