@@ -1,0 +1,99 @@
+name: client-desktop-build
+
+# Verifies the Flutter desktop client (client/) against the Flutter SDK:
+# materializes the SDK-generated platform runners, then analyzes, tests, and
+# builds on macOS, Linux, and Windows. The runner directories (macos/, linux/,
+# windows/) are intentionally not committed — they are generated here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "client/**"
+      - ".github/workflows/client-desktop-build.yml"
+  pull_request:
+    paths:
+      - "client/**"
+      - ".github/workflows/client-desktop-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: client-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            build_target: macos
+          - os: ubuntu-latest
+            platform: linux
+            build_target: linux
+          - os: windows-latest
+            platform: windows
+            build_target: windows
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Linux desktop toolchain (GTK + ninja) required by `flutter build linux`.
+      - name: Install Linux desktop build deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev clang cmake pkg-config
+        working-directory: ${{ github.workspace }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable desktop
+        run: flutter config --enable-${{ matrix.platform }}-desktop
+
+      # Materialize the SDK-generated runner directory for this OS (not committed).
+      - name: Materialize platform runner
+        run: flutter create --platforms=${{ matrix.platform }} .
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      # Placeholder: bundle the openidx-agent sidecar binary into the app
+      # payload here (download the Phase 0 release artifact for this OS/arch and
+      # copy it next to the built executable, or into the app's bin/ directory,
+      # so the supervisor can spawn it). Left as a no-op for the scaffold.
+      - name: Bundle openidx-agent sidecar (placeholder)
+        run: echo "TODO: fetch + stage openidx-agent sidecar for ${{ matrix.platform }}"
+
+      - name: Build
+        run: flutter build ${{ matrix.build_target }} --release
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openidx-client-${{ matrix.platform }}
+          path: |
+            client/build/${{ matrix.platform }}/**/Release/**
+            client/build/${{ matrix.platform }}/**/release/**
+          if-no-files-found: ignore
+          retention-days: 7
