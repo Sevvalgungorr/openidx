@@ -11,12 +11,12 @@ on:
     branches: ["**"]
     paths:
       - "client/**"
-      - "agent/mobile/**"
+      - "agent/**"
       - ".github/workflows/client-mobile-build.yml"
   pull_request:
     paths:
       - "client/**"
-      - "agent/mobile/**"
+      - "agent/**"
       - ".github/workflows/client-mobile-build.yml"
   workflow_dispatch:
 

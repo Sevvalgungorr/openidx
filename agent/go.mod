@@ -144,3 +144,7 @@ require (
 )
 
 tool golang.org/x/mobile/cmd/gobind
+
+replace github.com/shoenig/go-m1cpu => ./third_party/go-m1cpu
+
+replace github.com/shirou/gopsutil/v3 => ./third_party/gopsutil
