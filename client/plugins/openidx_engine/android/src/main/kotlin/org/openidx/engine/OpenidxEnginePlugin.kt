@@ -62,6 +62,7 @@ class OpenidxEnginePlugin : FlutterPlugin, MethodCallHandler {
       "pamRequest" -> { Mobile.pamRequest(arg(call, "entryId"), arg(call, "reason")); null }
       "zitiDial" -> Mobile.zitiDial(arg(call, "service"))
       "zitiClose" -> { Mobile.zitiClose(arg(call, "service")); null }
+      "logs" -> Mobile.logs()
       else -> throw IllegalArgumentException("unimplemented method ${call.method}")
     }
   }

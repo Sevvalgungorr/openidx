@@ -80,4 +80,8 @@ class OpenidxEngine {
       'service': service,
     });
   }
+
+  /// Tail of the on-device control log (engine/control activity). Used by the
+  /// in-app log viewer so users can inspect control logs without adb.
+  Future<String> logs() => _invokeString('logs');
 }

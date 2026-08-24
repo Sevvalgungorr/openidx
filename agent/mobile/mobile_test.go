@@ -52,6 +52,7 @@ func TestSignaturesAreGomobileSafe(t *testing.T) {
 		"Enroll": Enroll, "Posture": Posture, "PamList": PamList,
 		"PamConnect": PamConnect, "PamRequest": PamRequest,
 		"ZitiDial": ZitiDial, "ZitiClose": ZitiClose,
+		"Logs": Logs,
 	}
 	errType := reflect.TypeOf((*error)(nil)).Elem()
 	safe := func(tp reflect.Type) bool {

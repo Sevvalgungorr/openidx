@@ -72,6 +72,8 @@ public class OpenidxEnginePlugin: NSObject, FlutterPlugin {
     case "zitiClose":
       try MobileZitiClose(str(args, "service"))
       return nil
+    case "logs":
+      return try callString { MobileLogs($0) }
     default:
       throw NSError(
         domain: "openidx_engine",

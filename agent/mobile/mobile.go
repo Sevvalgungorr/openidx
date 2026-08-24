@@ -17,17 +17,72 @@ package mobile
 
 import (
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/openidx/openidx/agent/internal/control"
 )
 
 var (
-	mu     sync.Mutex
-	engine *control.Engine
+	mu      sync.Mutex
+	engine  *control.Engine
+	logPath string // <configDir>/control.log, set on Start; read by Logs()
 )
+
+// newMobileLogger routes engine/control activity to BOTH stderr (which gomobile
+// surfaces as Android logcat "GoLog" / the iOS console) and a control.log file
+// in the app sandbox, so the in-app viewer (Logs) and `adb pull` can read it
+// without a live logcat session. Replaces the no-op logger the scaffold used —
+// which is why the client previously had no control logs at all.
+func newMobileLogger(configDir string) *zap.Logger {
+	logPath = filepath.Join(configDir, "control.log")
+	encCfg := zap.NewProductionEncoderConfig()
+	encCfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	enc := zapcore.NewConsoleEncoder(encCfg)
+
+	cores := []zapcore.Core{
+		zapcore.NewCore(enc, zapcore.AddSync(os.Stderr), zapcore.InfoLevel),
+	}
+	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+		cores = append(cores, zapcore.NewCore(enc, zapcore.AddSync(f), zapcore.InfoLevel))
+	}
+	return zap.New(zapcore.NewTee(cores...))
+}
+
+// Logs returns the tail (up to ~64 KiB) of the on-device control log so the app
+// can show engine/control activity without adb. Empty when nothing is logged yet.
+func Logs() (string, error) {
+	mu.Lock()
+	p := logPath
+	mu.Unlock()
+	if p == "" {
+		return "", errNotStarted
+	}
+	f, err := os.Open(p) //nolint:gosec // path is <configDir>/control.log, app-owned
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	defer f.Close()
+	const maxTail = 64 * 1024
+	if info, err := f.Stat(); err == nil && info.Size() > maxTail {
+		if _, err := f.Seek(-maxTail, io.SeekEnd); err != nil {
+			return "", err
+		}
+	}
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
 
 // errNotStarted is returned by every call before Start has succeeded.
 var errNotStarted = errors.New("openidx engine not started; call Start(configDir) first")
@@ -41,7 +96,7 @@ func Start(configDir string) error {
 	if engine != nil {
 		return nil
 	}
-	e, err := control.NewEngine(configDir, zap.NewNop())
+	e, err := control.NewEngine(configDir, newMobileLogger(configDir))
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/providers.dart';
+import 'mobile/control_logs_screen.dart';
 
 /// Settings: shows the connected server, signs out, or quits the app.
 class SettingsScreen extends ConsumerWidget {
@@ -55,6 +56,20 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(status.deviceId.isEmpty ? '—' : status.deviceId),
           ),
           const Divider(),
+          // Control logs viewer — mobile only (the engine runs in-process via
+          // the gomobile plugin, which exposes its log tail over the channel).
+          if (Platform.isIOS || Platform.isAndroid)
+            ListTile(
+              leading: const Icon(Icons.article_outlined),
+              title: const Text('Control logs'),
+              subtitle: const Text('Engine / control-plane activity'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ControlLogsScreen(),
+                ),
+              ),
+            ),
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Sign out'),
