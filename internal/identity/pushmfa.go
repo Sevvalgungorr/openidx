@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -573,14 +574,29 @@ func (s *Service) sendPushNotification(ctx context.Context, device *PushMFADevic
 	}
 
 	// Send based on platform
+	var sendErr error
 	switch device.Platform {
 	case "android", "web":
-		return s.sendFCMNotification(ctx, device.DeviceToken, payload)
+		sendErr = s.sendFCMNotification(ctx, device.DeviceToken, payload)
 	case "ios":
-		return s.sendAPNSNotification(ctx, device.DeviceToken, payload)
+		sendErr = s.sendAPNSNotification(ctx, device.DeviceToken, payload)
 	default:
 		return fmt.Errorf("unsupported platform: %s", device.Platform)
 	}
+
+	// If the provider reported the token is dead (app uninstalled / token
+	// rotated), prune the stale registration so we stop retrying it every login
+	// and the table doesn't accumulate garbage tokens.
+	if errors.Is(sendErr, errDeadPushToken) {
+		if delErr := s.DeletePushMFADevice(ctx, device.UserID, device.ID); delErr != nil {
+			s.logger.Warn("failed to prune dead push device",
+				zap.String("device_id", device.ID), zap.Error(delErr))
+		} else {
+			s.logger.Info("pruned dead push device (token no longer registered)",
+				zap.String("device_id", device.ID), zap.String("platform", device.Platform))
+		}
+	}
+	return sendErr
 }
 
 // Process-wide caches for the push provider credentials/tokens. Config is fixed
@@ -636,6 +652,14 @@ func (s *Service) sendFCMNotification(ctx context.Context, token string, payload
 		s.logger.Error("FCM returned non-200 status",
 			zap.Int("status", resp.StatusCode),
 			zap.String("response", string(respBody)))
+		// A 404, or an UNREGISTERED/INVALID_ARGUMENT FcmError, means the device
+		// token is dead (app uninstalled / token rotated) — signal the caller to
+		// prune the registration rather than retry it forever.
+		if resp.StatusCode == http.StatusNotFound ||
+			bytes.Contains(respBody, []byte("UNREGISTERED")) ||
+			bytes.Contains(respBody, []byte("INVALID_ARGUMENT")) {
+			return fmt.Errorf("FCM token unregistered (status %d): %w", resp.StatusCode, errDeadPushToken)
+		}
 		return fmt.Errorf("FCM returned status %d", resp.StatusCode)
 	}
 
@@ -707,6 +731,13 @@ func (s *Service) sendAPNSNotification(ctx context.Context, token string, payloa
 		s.logger.Error("APNS returned non-200 status",
 			zap.Int("status", resp.StatusCode),
 			zap.String("response", string(respBody)))
+		// 410 Gone, or a BadDeviceToken/Unregistered reason, means the token is
+		// dead — signal the caller to prune the registration.
+		if resp.StatusCode == http.StatusGone ||
+			bytes.Contains(respBody, []byte("BadDeviceToken")) ||
+			bytes.Contains(respBody, []byte("Unregistered")) {
+			return fmt.Errorf("APNS token invalid (status %d): %w", resp.StatusCode, errDeadPushToken)
+		}
 		return fmt.Errorf("APNS returned status %d", resp.StatusCode)
 	}
 

@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -26,15 +27,23 @@ import (
 // fcmMessagingScope is the OAuth2 scope required to send FCM HTTP v1 messages.
 const fcmMessagingScope = "https://www.googleapis.com/auth/firebase.messaging"
 
+// errDeadPushToken signals that the destination push token is no longer valid
+// (the app was uninstalled or its token rotated). The provider transports wrap
+// this when FCM reports UNREGISTERED / APNS reports Unregistered, and the caller
+// prunes the stale device registration so it isn't retried forever.
+var errDeadPushToken = errors.New("push token no longer registered")
+
 // apnsTokenTTL is how long a minted APNS provider token is reused before being
 // refreshed. Apple rejects tokens older than 60 minutes and throttles clients
 // that mint a fresh token per request, so we refresh at 45 minutes.
 const apnsTokenTTL = 45 * time.Minute
 
 // fcmProvider holds a cached FCM HTTP v1 token source and the resolved project ID.
+// Only a *successful* build is memoized: a transient failure (credentials file
+// mounted late at boot, a flaky read) must not permanently disable push for the
+// whole process lifetime, so it is retried on the next call.
 type fcmProvider struct {
-	once      sync.Once
-	err       error
+	mu        sync.Mutex
 	tokenSrc  oauth2.TokenSource
 	projectID string
 }
@@ -64,51 +73,61 @@ type fcmMessage struct {
 // service-account credentials file and returns a fresh bearer token plus the
 // resolved project ID.
 func (p *fcmProvider) getToken(ctx context.Context, credFile, projectID string) (string, string, error) {
-	p.once.Do(func() {
-		if credFile == "" {
-			p.err = fmt.Errorf("FCM credentials file not configured")
-			return
-		}
-		raw, err := os.ReadFile(credFile) //nolint:gosec // operator-supplied credentials path
+	p.mu.Lock()
+	if p.tokenSrc == nil {
+		src, pid, err := buildFCMTokenSource(ctx, credFile, projectID)
 		if err != nil {
-			p.err = fmt.Errorf("read FCM credentials file: %w", err)
-			return
+			// Do NOT cache the failure — leave tokenSrc nil so the next call retries.
+			p.mu.Unlock()
+			return "", "", err
 		}
-		// The credentials JSON is an operator-supplied service-account file from
-		// our own config (not untrusted input), so the validation caveat behind
-		// the SA1019 deprecation does not apply here.
-		creds, err := google.CredentialsFromJSON(ctx, raw, fcmMessagingScope) //nolint:staticcheck // operator-supplied, trusted service-account file
-		if err != nil {
-			p.err = fmt.Errorf("parse FCM credentials: %w", err)
-			return
-		}
-		p.tokenSrc = creds.TokenSource
-		// Resolve the project ID: explicit config wins, else the credentials JSON.
-		p.projectID = projectID
-		if p.projectID == "" {
-			p.projectID = creds.ProjectID
-		}
-		if p.projectID == "" {
-			var sa struct {
-				ProjectID string `json:"project_id"`
-			}
-			if json.Unmarshal(raw, &sa) == nil {
-				p.projectID = sa.ProjectID
-			}
-		}
-		if p.projectID == "" {
-			p.err = fmt.Errorf("FCM project ID not configured and not present in credentials")
-		}
-	})
-	if p.err != nil {
-		return "", "", p.err
+		p.tokenSrc = src
+		p.projectID = pid
 	}
+	src, pid := p.tokenSrc, p.projectID
+	p.mu.Unlock()
 
-	tok, err := p.tokenSrc.Token()
+	tok, err := src.Token()
 	if err != nil {
 		return "", "", fmt.Errorf("obtain FCM access token: %w", err)
 	}
-	return tok.AccessToken, p.projectID, nil
+	return tok.AccessToken, pid, nil
+}
+
+// buildFCMTokenSource loads the service-account credentials file and returns an
+// OAuth2 token source plus the resolved project ID (explicit config wins, else
+// the credentials JSON).
+func buildFCMTokenSource(ctx context.Context, credFile, projectID string) (oauth2.TokenSource, string, error) {
+	if credFile == "" {
+		return nil, "", fmt.Errorf("FCM credentials file not configured")
+	}
+	raw, err := os.ReadFile(credFile) //nolint:gosec // operator-supplied credentials path
+	if err != nil {
+		return nil, "", fmt.Errorf("read FCM credentials file: %w", err)
+	}
+	// The credentials JSON is an operator-supplied service-account file from our
+	// own config (not untrusted input), so the validation caveat behind the
+	// SA1019 deprecation does not apply here.
+	creds, err := google.CredentialsFromJSON(ctx, raw, fcmMessagingScope) //nolint:staticcheck // operator-supplied, trusted service-account file
+	if err != nil {
+		return nil, "", fmt.Errorf("parse FCM credentials: %w", err)
+	}
+	pid := projectID
+	if pid == "" {
+		pid = creds.ProjectID
+	}
+	if pid == "" {
+		var sa struct {
+			ProjectID string `json:"project_id"`
+		}
+		if json.Unmarshal(raw, &sa) == nil {
+			pid = sa.ProjectID
+		}
+	}
+	if pid == "" {
+		return nil, "", fmt.Errorf("FCM project ID not configured and not present in credentials")
+	}
+	return creds.TokenSource, pid, nil
 }
 
 // getToken returns a cached APNS provider token, minting a new ES256 JWT when the
