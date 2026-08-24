@@ -37,7 +37,7 @@ const HANDOFF_PREFIX = 'pam-session:'
 export function consumeHandoff(key: string): Handoff | null {
   if (!key) return null
   const storageKey = HANDOFF_PREFIX + key
-  let raw: string | null = null
+  let raw: string | null
   try {
     raw = window.localStorage.getItem(storageKey)
     // Remove immediately so a reload / second window can't replay the token.

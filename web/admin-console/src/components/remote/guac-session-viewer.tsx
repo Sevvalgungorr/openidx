@@ -77,7 +77,7 @@ export function useGuacSessionPhase(
 
     const tick = () => {
       // While we're showing our own overlay there's no iframe to inspect.
-      let hash = ''
+      let hash: string
       try {
         hash = iframeRef.current?.contentWindow?.location?.hash ?? ''
       } catch {
