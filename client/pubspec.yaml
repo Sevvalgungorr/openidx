@@ -1,7 +1,9 @@
 name: openidx_client
 description: OpenIDX native client (Flutter shell over the local openidx-agent engine on desktop, and the in-process gomobile engine on iOS/Android).
 publish_to: "none"
-version: 0.1.0+1
+# Kept in step with the repo release tags so the installed build is
+# identifiable on-device (`adb shell dumpsys package … | grep version`).
+version: 1.33.2+13302
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

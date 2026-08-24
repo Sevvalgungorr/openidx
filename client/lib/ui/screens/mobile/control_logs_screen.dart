@@ -49,13 +49,16 @@ class _ControlLogsScreenState extends State<ControlLogsScreen> {
             icon: const Icon(Icons.copy_all_outlined),
             tooltip: 'Copy',
             onPressed: () async {
+              // Resolve the messenger *before* the awaits: looking it up off
+              // `context` afterwards is a use across an async gap, which the
+              // `mounted` check on the State does not make safe.
+              final messenger = ScaffoldMessenger.of(context);
               final s = await _future;
               await Clipboard.setData(ClipboardData(text: s));
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Control logs copied')),
-                );
-              }
+              if (!mounted) return;
+              messenger.showSnackBar(
+                const SnackBar(content: Text('Control logs copied')),
+              );
             },
           ),
         ],

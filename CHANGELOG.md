@@ -181,6 +181,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Android/iOS client no longer boots to a blank white screen.** `main()` ran
+  the desktop boot path on every platform: it awaited
+  `windowManager.ensureInitialized()` (and later `TrayController.init()`), but
+  `window_manager` / `tray_manager` are desktop-only plugins with no method-channel
+  implementation on mobile. The call threw
+  `MissingPluginException(No implementation found for method ensureInitialized on
+  channel window_manager)` **before `runApp()`**, so the app started, painted
+  nothing, and showed no crash dialog — it just sat on white. `main()` now
+  branches on `EngineClientFactory.isMobile`: mobile calls `runApp()` directly
+  (leaving `engineSupervisorProvider` un-overridden so `engineClientProvider`
+  builds the in-process `MobileEngineClient`), while desktop keeps the unchanged
+  window-chrome + tray + sidecar-supervisor path. The rest of the mobile
+  code (`MobileShell`, `SettingsScreen`) was already platform-guarded; `main.dart`
+  was the only unguarded entry point. The Flutter client version also now tracks
+  the release tag (`1.33.2+13302`, was `0.1.0+1`) so the installed build is
+  identifiable on-device.
+
 - **Admin-console unit tests can run again (frontend test env repaired).**
   `vitest.config.ts` requested `environment: 'happy-dom'`, but `happy-dom` was
   never in `package.json` (only `jsdom` is a pinned devDependency), so `npm test`

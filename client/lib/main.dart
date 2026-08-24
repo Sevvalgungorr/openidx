@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'engine/engine_client_factory.dart';
 import 'engine/engine_supervisor.dart';
 import 'state/providers.dart';
 import 'ui/app.dart';
@@ -12,6 +13,34 @@ import 'ui/tray.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // The two shells diverge from the very first frame, so split before touching
+  // any platform plugin: `window_manager` and `tray_manager` are desktop-only
+  // and their method channels have no iOS/Android implementation. Calling them
+  // on mobile throws MissingPluginException *before* runApp(), which leaves the
+  // app on a blank white screen with no crash dialog.
+  if (EngineClientFactory.isMobile) {
+    runMobile();
+    return;
+  }
+  await runDesktop();
+}
+
+/// Mobile (iOS / Android) boot: no window chrome, no tray, and no sidecar
+/// process to supervise — the Go engine is linked in-process via the
+/// `openidx_engine` gomobile plugin.
+///
+/// [engineSupervisorProvider] is deliberately left un-overridden: that is the
+/// signal `engineClientProvider` uses to build the transport for the current
+/// platform through [EngineClientFactory] (→ `MobileEngineClient`), which
+/// starts the engine lazily against the app-support sandbox on first call.
+void runMobile() {
+  runApp(const ProviderScope(child: OpenIdxApp()));
+}
+
+/// Desktop (Windows / macOS / Linux) boot: window chrome, tray icon, and a
+/// supervised `openidx-agent serve` sidecar the UI talks to over the control
+/// socket.
+Future<void> runDesktop() async {
   // --- Desktop window chrome ------------------------------------------------
   await windowManager.ensureInitialized();
   const windowOptions = WindowOptions(
