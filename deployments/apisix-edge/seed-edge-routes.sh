@@ -67,7 +67,11 @@ put openidx-wellknown        "{$H,\"uri\":\"/.well-known/*\",\"priority\":30,\"u
 # ===========================================================================
 if [ "$DARK_MODE" = "off" ] || [ "$DARK_MODE" = "tier2" ]; then
   put openidx-api-identity     "{$H,\"uri\":\"/api/v1/identity/*\",\"priority\":30,\"upstream\":{\"type\":\"roundrobin\",\"nodes\":{\"127.0.0.1:8001\":1}}}"
-  put openidx-spa              "{$H,\"uri\":\"/*\",\"priority\":10,\"upstream\":{\"type\":\"roundrobin\",\"scheme\":\"https\",\"pass_host\":\"pass\",\"nodes\":{\"127.0.0.1:8443\":1},\"tls\":{\"verify\":false}}}"
+  # enable_websocket: this /* catch-all fronts nginx :8443, which serves the
+  # Guacamole PAM console at /guacamole/*. Guacamole's session tunnel is a
+  # WebSocket; without this APISIX drops the Upgrade and the browser authenticates
+  # but the tunnel to guacd never establishes (session won't open).
+  put openidx-spa              "{$H,\"uri\":\"/*\",\"priority\":10,\"enable_websocket\":true,\"upstream\":{\"type\":\"roundrobin\",\"scheme\":\"https\",\"pass_host\":\"pass\",\"nodes\":{\"127.0.0.1:8443\":1},\"tls\":{\"verify\":false}}}"
 fi
 
 # ===========================================================================
