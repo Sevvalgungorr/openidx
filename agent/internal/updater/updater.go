@@ -1,13 +1,14 @@
-// Package updater implements self-update for the Windows client: poll a version
-// manifest, and when a newer signed MSI is published, download it (checksum-
-// verified) and apply it via msiexec (MajorUpgrade swaps the files + restarts
-// the service). The manifest URL is configured per-install; empty disables
-// auto-update.
+// Package updater implements cross-platform self-update: poll a version
+// manifest, and when a newer signed artifact is published, download it
+// (checksum-verified) and apply it with the platform-appropriate installer —
+// msiexec on Windows, `installer` for a macOS .pkg, dpkg/rpm for Linux packages,
+// or an atomic executable self-replace + re-exec for a bare binary/AppImage. The
+// manifest URL is configured per-install; empty disables auto-update.
 //
-// Manifest format (JSON):
+// Manifest format (JSON) — the url's file extension selects the install method:
 //
 //	{ "version": "1.2.0",
-//	  "url": "https://.../OpenIDX-1.2.0.msi",
+//	  "url": "https://.../OpenIDX-1.2.0.msi",   // or .pkg/.deb/.rpm/.AppImage/bare
 //	  "sha256": "<hex>" }
 package updater
 
@@ -108,6 +109,22 @@ func compare(a, b []int) int {
 	return 0
 }
 
+// artifactExt returns the download URL's file extension (lowercased, with the
+// leading dot), which selects the install method. Query/fragment suffixes are
+// stripped first; a URL with no extension yields ".bin" (treated as a bare
+// binary for self-replace).
+func artifactExt(url string) string {
+	u := url
+	if i := strings.IndexAny(u, "?#"); i >= 0 {
+		u = u[:i]
+	}
+	ext := strings.ToLower(filepath.Ext(u))
+	if ext == "" {
+		return ".bin"
+	}
+	return ext
+}
+
 // downloadVerified downloads url to a temp file and verifies its SHA-256 (when
 // the manifest provides one). Returns the temp file path (caller removes it).
 func downloadVerified(ctx context.Context, url, wantSHA string) (string, error) {
@@ -124,7 +141,7 @@ func downloadVerified(ctx context.Context, url, wantSHA string) (string, error) 
 		return "", fmt.Errorf("download returned %d", resp.StatusCode)
 	}
 
-	f, err := os.CreateTemp("", "openidx-update-*.msi")
+	f, err := os.CreateTemp("", "openidx-update-*"+artifactExt(url))
 	if err != nil {
 		return "", err
 	}
@@ -161,9 +178,10 @@ func CheckAndApply(ctx context.Context, manifestURL, currentVersion string) (app
 	if err != nil {
 		return false, m.Version, err
 	}
-	// Leave the MSI in a stable temp path; msiexec runs asynchronously and the
-	// installer removes/keeps it as needed.
-	stable := filepath.Join(os.TempDir(), "OpenIDX-"+m.Version+".msi")
+	// Move the artifact to a stable, predictable temp path before applying: the
+	// Windows msiexec path runs asynchronously, and a self-replace reads it as
+	// the new binary.
+	stable := filepath.Join(os.TempDir(), "OpenIDX-"+m.Version+artifactExt(m.URL))
 	_ = os.Rename(path, stable)
 	if err := apply(stable); err != nil {
 		return false, m.Version, err
