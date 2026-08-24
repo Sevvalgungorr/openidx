@@ -56,15 +56,17 @@ type CSPPathOverride struct {
 //
 //   - 'unsafe-inline' is omitted because the console renders without it, and
 //     inline script is the directive that actually matters for XSS.
-//   - frame-ancestors stays 'none' because the console is launched with
-//     window.open (pam-connections.tsx:219), never embedded in an iframe, so
-//     clickjacking protection costs us nothing here.
+//   - frame-ancestors is 'self': the PAM/Guacamole session IS embedded in a
+//     same-origin iframe by the console (the earlier "launched via window.open"
+//     assumption was wrong — 'none' blocked the iframe and blanked every PAM
+//     session). 'self' allows same-origin framing while still blocking
+//     cross-origin clickjacking.
 //
 // The net difference from the application-wide policy is one token:
 // 'unsafe-eval', on two paths. Everything else is identical or stricter.
 const GuacamoleCSP = "default-src 'self'; script-src 'self' 'unsafe-eval'; " +
 	"style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; " +
-	"connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	"connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
 
 // GuacamolePathPrefixes are the paths the embedded console is served under.
 // Measured live on 2026-08-14: the direct broker answers on /guacamole/ and
@@ -135,7 +137,7 @@ func SecurityHeaders(cfg SecurityConfig) gin.HandlerFunc {
 			csp := cfg.CSPCustom
 			if csp == "" {
 				// Default CSP if no custom policy provided
-				csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';"
+				csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';"
 			}
 			// Some embedded consoles need a different policy from the rest
 			// of the app; see GuacamoleCSP. Per-path on purpose: widening the

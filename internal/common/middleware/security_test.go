@@ -36,7 +36,7 @@ func TestSecurityHeaders_DefaultConfig(t *testing.T) {
 		"X-XSS-Protection":        "1; mode=block",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
 		"Permissions-Policy":      "geolocation=(), microphone=(), camera=()",
-		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';",
+		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';",
 	}
 
 	for header, expected := range headers {
@@ -323,8 +323,12 @@ func TestGuacamoleCSPOverride(t *testing.T) {
 			t.Errorf("script-src must not gain 'unsafe-inline' (measured unnecessary): %q", d)
 		}
 	}
-	if !strings.Contains(GuacamoleCSP, "frame-ancestors 'none'") {
-		t.Error("console is opened with window.open, not embedded; keep frame-ancestors 'none'")
+	// The PAM/Guacamole session IS embedded in a same-origin iframe by the
+	// console (not window.open, as previously assumed), so 'none' blocked it and
+	// blanked the session. 'self' allows same-origin framing while still
+	// preventing cross-origin clickjacking.
+	if !strings.Contains(GuacamoleCSP, "frame-ancestors 'self'") {
+		t.Error("PAM session is embedded in a same-origin iframe; frame-ancestors must be 'self' (not 'none')")
 	}
 }
 
