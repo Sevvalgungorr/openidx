@@ -56,6 +56,7 @@ import {
   KioskPolicies,
   RemoteSupport,
   RemoteSupportPopout,
+  PamSessionWindow,
   MFAManagement,
   RiskPolicies,
   LoginAnomalies,
@@ -208,6 +209,19 @@ function App() {
         element={
           <ProtectedRoute>
             <RemoteSupportPopout />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Standalone PAM session window: protected but chrome-less, so each
+          launched connection lives in its own OS window. It frames the guac
+          client itself (never guac's own chrome) and reads the connect URL
+          from a single-use localStorage handoff, not the URL. */}
+      <Route
+        path="/pam-session"
+        element={
+          <ProtectedRoute>
+            <PamSessionWindow />
           </ProtectedRoute>
         }
       />

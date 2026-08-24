@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Dialog, DialogContent } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -43,16 +43,33 @@ export function classifyGuacHash(hash: string): 'client' | 'other' {
 const CONNECT_GRACE_MS = 20_000
 const POLL_INTERVAL_MS = 1000
 
-type Phase = 'loading' | 'active' | 'ended' | 'failed'
+export type Phase = 'loading' | 'active' | 'ended' | 'failed'
 
-export function GuacSessionViewer({ url, title, open, onClose }: Props) {
-  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+/**
+ * Watch a framed same-origin Guacamole client and report its lifecycle phase.
+ *
+ * Polls the iframe's location hash: a `#/client/<id>` route means the session
+ * is live ('active'); leaving that route after having reached it means the
+ * session 'ended'; never reaching it inside the grace window means it 'failed'.
+ * Callers unmount the iframe once the phase is terminal (ended/failed) so the
+ * user can never glimpse Guacamole's own home/manager chrome.
+ *
+ * `active` re-runs the effect (via the deps) so both the in-app dialog and the
+ * standalone session window share exactly one copy of this monitoring logic.
+ *
+ * @param iframeRef ref to the framed guac client
+ * @param active    whether monitoring should run (frame is/should be mounted)
+ * @param resetKey  bump to restart the grace window (e.g. a "Try again" retry)
+ */
+export function useGuacSessionPhase(
+  iframeRef: RefObject<HTMLIFrameElement | null>,
+  active: boolean,
+  resetKey: number = 0,
+): Phase {
   const [phase, setPhase] = useState<Phase>('loading')
-  // Bumping this remounts the iframe for "Try again" (fresh src load).
-  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
-    if (!open) return
+    if (!active) return
     // Reset for each fresh open / retry.
     setPhase('loading')
     const mountedAt = Date.now()
@@ -89,13 +106,22 @@ export function GuacSessionViewer({ url, title, open, onClose }: Props) {
 
     const id = window.setInterval(tick, POLL_INTERVAL_MS)
     return () => window.clearInterval(id)
-  }, [open, reloadKey])
+  }, [iframeRef, active, resetKey])
+
+  return phase
+}
+
+export function GuacSessionViewer({ url, title, open, onClose }: Props) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  // Bumping this remounts the iframe for "Try again" (fresh src load) and
+  // restarts the phase monitor's grace window.
+  const [reloadKey, setReloadKey] = useState(0)
+  const phase = useGuacSessionPhase(iframeRef, open, reloadKey)
 
   const showOverlay = phase === 'ended' || phase === 'failed'
 
   const retry = () => {
     setReloadKey((k) => k + 1)
-    setPhase('loading')
   }
 
   return (

@@ -86,17 +86,25 @@ describe('PamConnectionsPage', () => {
     expect(screen.getByText(/administrator@dc01.corp:3389/)).toBeInTheDocument()
   })
 
-  it('launches a session (passwordless) in the in-app viewer, not a new tab', async () => {
+  it('launches a session (passwordless) in its own /pam-session window via a single-use handoff', async () => {
+    localStorage.clear()
     renderPage()
     const card = (await screen.findByText('DC01')).closest('[class*="rounded"]') as HTMLElement
     fireEvent.click(within(card).getByRole('button', { name: /connect/i }))
     await waitFor(() => expect(pam.connect).toHaveBeenCalledWith('e1'))
-    // The session is now hosted in an OpenIDX dialog (framing the same-origin
-    // guac URL) rather than window.open'd — so guac's own chrome can't leak.
-    await waitFor(() =>
-      expect(document.querySelector('iframe[src="https://guac/x"]')).toBeInTheDocument(),
-    )
-    expect(window.open).not.toHaveBeenCalled()
+
+    // Each connection opens its own chrome-less wrapper window (multi-window),
+    // pointed at /pam-session — NOT the raw guac URL.
+    await waitFor(() => expect(window.open).toHaveBeenCalled())
+    const openArg = (window.open as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    expect(openArg).toMatch(/^\/pam-session\?k=/)
+    expect(openArg).not.toContain('guac')
+
+    // The token-bearing connect URL is handed off via localStorage (not the
+    // URL/history), keyed by the same `k`.
+    const key = new URLSearchParams(openArg.split('?')[1]).get('k')!
+    const handoff = JSON.parse(localStorage.getItem('pam-session:' + key)!)
+    expect(handoff).toMatchObject({ url: 'https://guac/x', title: 'DC01' })
   })
 
   it('shows a request-access button only for approval-gated entries', async () => {

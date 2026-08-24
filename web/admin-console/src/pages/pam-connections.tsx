@@ -27,9 +27,20 @@ import { useToast } from '../hooks/use-toast'
 import { QueryError } from '../components/query-error'
 import { useRevealedSecret, copyWithWarning } from '../lib/secret-reveal'
 import { TerminalSession } from '../components/remote/terminal-session'
-import { GuacSessionViewer } from '../components/remote/guac-session-viewer'
 import { connectionPathSteps } from '../lib/connection-path'
 import { remoteAppArgsLookSecret, REMOTE_APP_SECRET_HINT } from '../lib/remote-app'
+
+// Random, unguessable key for the single-use /pam-session localStorage handoff.
+// Prefer crypto.randomUUID, but fall back to getRandomValues hex so this still
+// works in insecure contexts (the console may be served over plain HTTP).
+function randomHandoffKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 // Icon + accent per entry type, so the list reads like RDM's typed tree.
 const typeIcon = (t: string) => {
@@ -96,10 +107,6 @@ export function PamConnectionsPage() {
   // Clientless in-browser SSH terminal (wasm-ssh renderer). When set, a dialog
   // hosts the xterm session for this entry instead of opening a guac tab.
   const [terminalEntry, setTerminalEntry] = useState<PamEntry | null>(null)
-
-  // In-app Guacamole session host (replaces window.open to a new tab, which
-  // could expose Guacamole's own home/connection-manager on failure).
-  const [guacSession, setGuacSession] = useState<{ url: string; title: string } | null>(null)
 
   const [revealFor, setRevealFor] = useState<PamEntry | null>(null)
   const [revealReason, setRevealReason] = useState('')
@@ -224,10 +231,23 @@ export function PamConnectionsPage() {
     onSuccess: (res: PamConnectResult, vars) => {
       const url = res.connect_url || res.url
       if (url) {
-        // Host the Guacamole session in our own dialog rather than
-        // window.open()'ing a new tab: on failure Guacamole would otherwise
-        // show its own home/connection-manager chrome to the end user.
-        setGuacSession({ url, title: vars.name })
+        // Open each session in its OWN window pointed at our chrome-less
+        // /pam-session wrapper (NOT the raw guac URL). The wrapper frames the
+        // guac client and, on failure/disconnect, shows OpenIDX messaging —
+        // never Guacamole's own home/connection-manager. Users can launch
+        // several connections, each in a separate window.
+        //
+        // The connect URL carries a token, so we must NOT put it in the URL or
+        // browser history: hand it off via a single-use localStorage entry the
+        // wrapper reads and immediately deletes.
+        const key = randomHandoffKey()
+        try {
+          localStorage.setItem(
+            'pam-session:' + key,
+            JSON.stringify({ url, title: vars.name }),
+          )
+        } catch { /* private-mode / quota — window will show the expired card */ }
+        window.open('/pam-session?k=' + key, '_blank')
         toast({
           title: 'Session launched',
           description: res.credential_injected
@@ -897,13 +917,6 @@ export function PamConnectionsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* In-app Guacamole session host (RDP/VNC/SSH-via-guac, website, etc.). */}
-      <GuacSessionViewer
-        open={!!guacSession}
-        url={guacSession?.url ?? ''}
-        title={guacSession?.title ?? ''}
-        onClose={() => setGuacSession(null)}
-      />
     </div>
   )
 }
