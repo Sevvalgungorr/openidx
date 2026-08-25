@@ -5,6 +5,7 @@ import '../mobile/app_lock.dart';
 import 'screens/mobile/approvals_screen.dart';
 import 'screens/mobile/authenticator_screen.dart';
 import 'screens/mobile/my_access_screen.dart';
+import 'screens/pam_screen.dart';
 import 'screens/settings_screen.dart';
 
 /// Bottom-navigation shell used on iOS/Android (desktop keeps its window/tray
@@ -28,6 +29,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     AuthenticatorScreen(),
     ApprovalsScreen(),
     MyAccessScreen(),
+    PamScreen(),
     SettingsScreen(),
   ];
 
@@ -52,6 +54,10 @@ class _MobileShellState extends ConsumerState<MobileShell> {
                 icon: Icon(Icons.vpn_key_outlined),
                 selectedIcon: Icon(Icons.vpn_key),
                 label: 'Access'),
+            NavigationDestination(
+                icon: Icon(Icons.dns_outlined),
+                selectedIcon: Icon(Icons.dns),
+                label: 'PAM'),
             NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
                 selectedIcon: Icon(Icons.settings),
