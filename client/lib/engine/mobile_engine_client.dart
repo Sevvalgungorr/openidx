@@ -144,8 +144,12 @@ class MobileEngineClient implements EngineClient {
   @override
   Future<PamConnectResult> pamConnect(String entryId) async {
     await _ensureStarted();
-    final json = await _guard(() => _engine.pamConnect(entryId), 'pamConnect');
-    return PamConnectResult.fromJson(_decodeMap(json, 'pamConnect'));
+    // The gomobile engine returns the raw connect URL (the desktop control
+    // server is what wraps it in JSON — the mobile binding does not), so treat
+    // the result as the launch URL rather than JSON-decoding it.
+    final url =
+        (await _guard(() => _engine.pamConnect(entryId), 'pamConnect')).trim();
+    return PamConnectResult(launchType: '', connectUrl: url, url: url);
   }
 
   @override
