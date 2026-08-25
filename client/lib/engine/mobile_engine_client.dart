@@ -83,6 +83,19 @@ class MobileEngineClient implements EngineClient {
   }
 
   @override
+  Future<String> loginStart() async {
+    await _ensureStarted();
+    return _guard(_engine.loginStart, 'loginStart');
+  }
+
+  @override
+  Future<User> loginWait() async {
+    await _ensureStarted();
+    final json = await _guard(_engine.loginWait, 'loginWait');
+    return User.fromJson(_decodeMap(json, 'loginWait'));
+  }
+
+  @override
   Future<void> logout() async {
     await _ensureStarted();
     await _guard(_engine.logout, 'logout');

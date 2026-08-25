@@ -59,8 +59,9 @@ type Engine struct {
 	newDialer  func(identityFile string) (zitiDialer, error)
 	loginTimeout time.Duration
 
-	mu      sync.Mutex
-	bridges map[string]*bridge // active Ziti bridges keyed by service name
+	mu           sync.Mutex
+	bridges      map[string]*bridge  // active Ziti bridges keyed by service name
+	pendingLogin *sso.PendingLogin   // in-flight split login (LoginStart→LoginWait)
 }
 
 type bridge struct {
@@ -162,6 +163,54 @@ func (e *Engine) Login() (string, error) {
 	defer cancel()
 
 	tok, err := e.be.Login(ctx, e.serverURL)
+	if err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+	if err := authstore.Save(e.configDir, tok); err != nil {
+		return "", fmt.Errorf("saving session: %w", err)
+	}
+	sub, email, exp, _ := decodeJWTClaims(tok.AccessToken)
+	if exp == 0 {
+		exp = tok.ExpiresAt
+	}
+	return toJSON(userPayload{Sub: sub, Email: email, Exp: exp})
+}
+
+// LoginStart begins the split loopback login used on mobile, where the engine
+// cannot open a browser itself. It binds the loopback + builds the authorize
+// URL (via sso.StartLogin) and returns that URL for the caller (the Dart layer)
+// to open with url_launcher; the loopback keeps listening. Call LoginWait to
+// block for the redirect and finish. Desktop keeps using Login().
+func (e *Engine) LoginStart() (string, error) {
+	if e.serverURL == "" {
+		return "", fmt.Errorf("no server configured: enroll first")
+	}
+	p, err := sso.StartLogin(e.serverURL)
+	if err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+	e.mu.Lock()
+	e.pendingLogin = p
+	e.mu.Unlock()
+	return p.AuthURL(), nil
+}
+
+// LoginWait blocks for the loopback callback of an in-flight LoginStart, caches
+// the tokens, and returns {sub,email,exp} as a JSON string — the same shape as
+// Login(). Errors if no login is in progress.
+func (e *Engine) LoginWait() (string, error) {
+	e.mu.Lock()
+	p := e.pendingLogin
+	e.pendingLogin = nil
+	e.mu.Unlock()
+	if p == nil {
+		return "", fmt.Errorf("no login in progress")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), e.loginTimeout)
+	defer cancel()
+
+	tok, err := p.Wait(ctx)
 	if err != nil {
 		return "", fmt.Errorf("login failed: %w", err)
 	}

@@ -98,6 +98,16 @@ class EngineActions {
     return user;
   }
 
+  /// Mobile split login: returns the OAuth authorize URL to open in a browser.
+  Future<String> loginStart() => _engine.loginStart();
+
+  /// Mobile split login: blocks for the loopback redirect, then refreshes state.
+  Future<User> loginWait() async {
+    final u = await _engine.loginWait();
+    await _refreshAll();
+    return u;
+  }
+
   Future<void> logout() async {
     await _engine.logout();
     await _refreshAll();

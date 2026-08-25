@@ -42,10 +42,34 @@ type tokenResponse struct {
 	TokenType    string `json:"token_type"`
 }
 
-// Login runs the interactive PKCE-loopback flow against serverURL (e.g.
-// https://openidx.tdv.org) and returns tokens. Blocks until the browser
-// redirect is captured, the context is cancelled, or the timeout elapses.
-func Login(ctx context.Context, serverURL string) (*Tokens, error) {
+// callbackResult carries the loopback handler's outcome to Wait.
+type callbackResult struct {
+	code string
+	err  error
+}
+
+// PendingLogin is an in-flight loopback OAuth flow: the callback listener is
+// already bound and serving, and AuthURL is ready for the caller to open in a
+// browser. Desktop opens it automatically (see Login); mobile hands it to the
+// Dart layer's url_launcher. Wait blocks for the redirect and exchanges the
+// code for tokens.
+type PendingLogin struct {
+	authURL   string
+	ln        net.Listener
+	srv       *http.Server
+	resCh     chan callbackResult
+	verifier  string
+	state     string
+	serverURL string
+}
+
+// AuthURL is the OAuth authorize URL the browser must open to complete sign-in.
+func (p *PendingLogin) AuthURL() string { return p.authURL }
+
+// StartLogin binds the loopback listener, starts the callback handler, and
+// builds the authorize URL — but does NOT open a browser or block. The caller
+// opens AuthURL() (or hands it to a mobile browser) and then calls Wait.
+func StartLogin(serverURL string) (*PendingLogin, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 
 	pk, err := newPKCE()
@@ -62,40 +86,35 @@ func Login(ctx context.Context, serverURL string) (*Tokens, error) {
 		return nil, fmt.Errorf("binding loopback %s: %w", LoopbackAddr, err)
 	}
 
-	type result struct {
-		code string
-		err  error
-	}
-	resCh := make(chan result, 1)
+	resCh := make(chan callbackResult, 1)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if e := q.Get("error"); e != "" {
 			http.Error(w, "sign-in failed: "+e, http.StatusBadRequest)
-			resCh <- result{err: fmt.Errorf("authorization error: %s", e)}
+			resCh <- callbackResult{err: fmt.Errorf("authorization error: %s", e)}
 			return
 		}
 		if q.Get("state") != state {
 			http.Error(w, "state mismatch", http.StatusBadRequest)
-			resCh <- result{err: fmt.Errorf("state mismatch")}
+			resCh <- callbackResult{err: fmt.Errorf("state mismatch")}
 			return
 		}
 		code := q.Get("code")
 		if code == "" {
 			http.Error(w, "no code", http.StatusBadRequest)
-			resCh <- result{err: fmt.Errorf("no authorization code")}
+			resCh <- callbackResult{err: fmt.Errorf("no authorization code")}
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte(`<html><body style="font-family:sans-serif;text-align:center;padding-top:80px">` +
 			`<h2>Signed in to OpenIDX</h2><p>You can close this tab and return to the app.</p></body></html>`))
-		resCh <- result{code: code}
+		resCh <- callbackResult{code: code}
 	})
 
 	srv := &http.Server{Handler: mux}
 	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
 
 	// Use /oauth/authorize (v1): for public/PKCE clients it renders the login
 	// form inline and completes via POST /login, then redirects to our loopback
@@ -110,10 +129,23 @@ func Login(ctx context.Context, serverURL string) (*Tokens, error) {
 		"code_challenge":        {pk.challenge},
 		"code_challenge_method": {"S256"},
 	}.Encode()
-	if err := openBrowser(authURL); err != nil {
-		// Non-fatal: print the URL so the user can open it manually.
-		fmt.Printf("Open this URL to sign in:\n  %s\n", authURL)
-	}
+
+	return &PendingLogin{
+		authURL:   authURL,
+		ln:        ln,
+		srv:       srv,
+		resCh:     resCh,
+		verifier:  pk.verifier,
+		state:     state,
+		serverURL: serverURL,
+	}, nil
+}
+
+// Wait blocks until the browser redirect is captured, the context is cancelled,
+// or the timeout elapses, then tears down the listener and exchanges the code
+// for tokens. It always closes the listener before returning.
+func (p *PendingLogin) Wait(ctx context.Context) (*Tokens, error) {
+	defer p.srv.Close()
 
 	timeout := time.NewTimer(5 * time.Minute)
 	defer timeout.Stop()
@@ -122,18 +154,34 @@ func Login(ctx context.Context, serverURL string) (*Tokens, error) {
 		return nil, ctx.Err()
 	case <-timeout.C:
 		return nil, fmt.Errorf("sign-in timed out")
-	case res := <-resCh:
+	case res := <-p.resCh:
 		if res.err != nil {
 			return nil, res.err
 		}
-		return exchange(ctx, serverURL, url.Values{
+		return exchange(ctx, p.serverURL, url.Values{
 			"grant_type":    {"authorization_code"},
 			"client_id":     {DesktopClientID},
 			"code":          {res.code},
 			"redirect_uri":  {RedirectURI},
-			"code_verifier": {pk.verifier},
+			"code_verifier": {p.verifier},
 		})
 	}
+}
+
+// Login runs the interactive PKCE-loopback flow against serverURL (e.g.
+// https://openidx.tdv.org) and returns tokens. Blocks until the browser
+// redirect is captured, the context is cancelled, or the timeout elapses.
+// It is StartLogin + open-browser + Wait; desktop behavior is unchanged.
+func Login(ctx context.Context, serverURL string) (*Tokens, error) {
+	p, err := StartLogin(serverURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := openBrowser(p.AuthURL()); err != nil {
+		// Non-fatal: print the URL so the user can open it manually.
+		fmt.Printf("Open this URL to sign in:\n  %s\n", p.AuthURL())
+	}
+	return p.Wait(ctx)
 }
 
 // Refresh exchanges a refresh token for a fresh access token.

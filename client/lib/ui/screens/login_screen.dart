@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../state/providers.dart';
 
@@ -22,7 +25,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(engineActionsProvider).login();
+      final actions = ref.read(engineActionsProvider);
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Mobile: the engine can't open a browser itself. Get the authorize URL,
+        // open it in the system browser (OAuth + MFA happen there), then block
+        // for the loopback redirect the engine still listens for.
+        final url = await actions.loginStart();
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        await actions.loginWait();
+      } else {
+        await actions.login();
+      }
       // Router reacts to the refreshed status; no manual navigation needed.
     } on Object catch (e) {
       if (mounted) setState(() => _error = e.toString());

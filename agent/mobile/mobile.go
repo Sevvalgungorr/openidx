@@ -134,6 +134,27 @@ func Login() (string, error) {
 	return e.Login()
 }
 
+// LoginStart begins the split loopback login (mobile): it returns the OAuth
+// authorize URL for the Dart layer to open in the system browser. The engine's
+// loopback keeps listening; call LoginWait afterward to finish.
+func LoginStart() (string, error) {
+	e, err := get()
+	if err != nil {
+		return "", err
+	}
+	return e.LoginStart()
+}
+
+// LoginWait blocks for the browser redirect started by LoginStart, caches the
+// session, and returns the {sub,email,exp} user JSON.
+func LoginWait() (string, error) {
+	e, err := get()
+	if err != nil {
+		return "", err
+	}
+	return e.LoginWait()
+}
+
 // Logout clears the stored session.
 func Logout() error {
 	e, err := get()

@@ -226,6 +226,14 @@ class DesktopEngineClient implements EngineClient {
       User.fromJson(_asMap(await _send('POST', '/login'), '/login'));
 
   @override
+  Future<String> loginStart() =>
+      throw UnsupportedError('desktop uses login()');
+
+  @override
+  Future<User> loginWait() =>
+      throw UnsupportedError('desktop uses login()');
+
+  @override
   Future<void> logout() async {
     await _send('POST', '/logout');
   }

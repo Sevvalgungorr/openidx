@@ -21,6 +21,14 @@ abstract class EngineClient {
 
   Future<User> login();
 
+  /// Split login for mobile: [loginStart] returns the OAuth authorize URL the
+  /// app opens in the system browser; [loginWait] blocks for the loopback
+  /// redirect and returns the signed-in user. Desktop uses [login] and these
+  /// throw [UnsupportedError].
+  Future<String> loginStart();
+
+  Future<User> loginWait();
+
   Future<void> logout();
 
   /// Enrolls this device with a one-time [code]. On mobile (no seeded config)

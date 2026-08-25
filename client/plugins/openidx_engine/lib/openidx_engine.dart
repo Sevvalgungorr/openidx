@@ -57,6 +57,14 @@ class OpenidxEngine {
 
   Future<String> login() => _invokeString('login');
 
+  /// Begin the split loopback login (mobile): returns the OAuth authorize URL
+  /// the app opens in the system browser. Follow with [loginWait].
+  Future<String> loginStart() => _invokeString('loginStart');
+
+  /// Block for the browser redirect started by [loginStart]; returns the user
+  /// JSON.
+  Future<String> loginWait() => _invokeString('loginWait');
+
   Future<void> logout() async {
     await _channel.invokeMethod<void>('logout');
   }
