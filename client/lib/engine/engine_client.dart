@@ -23,7 +23,10 @@ abstract class EngineClient {
 
   Future<void> logout();
 
-  Future<EnrollResult> enroll(String code);
+  /// Enrolls this device with a one-time [code]. On mobile (no seeded config)
+  /// [serverUrl] must be supplied so the engine knows which server to target;
+  /// desktop resolves it from the installed sidecar config and ignores it.
+  Future<EnrollResult> enroll(String code, {String? serverUrl});
 
   Future<Posture> posture();
 

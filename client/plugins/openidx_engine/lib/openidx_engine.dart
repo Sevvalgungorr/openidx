@@ -47,6 +47,12 @@ class OpenidxEngine {
     });
   }
 
+  /// Configure the target/enrollment server URL before [enroll] (mobile has no
+  /// seeded config).
+  Future<void> setServer(String url) async {
+    await _channel.invokeMethod<void>('setServer', <String, Object?>{'url': url});
+  }
+
   Future<String> status() => _invokeString('status');
 
   Future<String> login() => _invokeString('login');

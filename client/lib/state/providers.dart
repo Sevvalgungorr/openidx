@@ -103,8 +103,8 @@ class EngineActions {
     await _refreshAll();
   }
 
-  Future<EnrollResult> enroll(String code) async {
-    final result = await _engine.enroll(code);
+  Future<EnrollResult> enroll(String code, {String? serverUrl}) async {
+    final result = await _engine.enroll(code, serverUrl: serverUrl);
     await _refreshAll();
     return result;
   }

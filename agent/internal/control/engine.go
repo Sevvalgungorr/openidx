@@ -187,6 +187,21 @@ type enrollPayload struct {
 	ZitiIdentity string `json:"ziti_identity,omitempty"`
 }
 
+// SetServer configures the target/enrollment server URL. Mobile installs have no
+// pre-seeded agent config, so the app supplies the server (from the enroll code's
+// server field, an enroll deep-link, or manual entry) before calling Enroll. A
+// successful Enroll then persists it to the config dir for subsequent launches.
+func (e *Engine) SetServer(url string) error {
+	url = strings.TrimRight(strings.TrimSpace(url), "/")
+	if url == "" {
+		return fmt.Errorf("server URL is required")
+	}
+	e.mu.Lock()
+	e.serverURL = url
+	e.mu.Unlock()
+	return nil
+}
+
 // Enroll enrolls this device with the (already-resolved) server using the
 // supplied one-time enrollment code/token, and returns the result as JSON. The
 // server URL is picked up from config on the next NewEngine; here we reuse the
@@ -198,7 +213,7 @@ func (e *Engine) Enroll(code string) (string, error) {
 		return "", fmt.Errorf("enrollment code is required")
 	}
 	if e.serverURL == "" {
-		return "", fmt.Errorf("no server configured for enrollment")
+		return "", fmt.Errorf("no server configured for enrollment — call SetServer first (or use the enroll deep-link)")
 	}
 	agentID, deviceID, zitiIdentity, err := e.be.Enroll(e.logger, e.serverURL, code, e.configDir)
 	if err != nil {

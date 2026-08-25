@@ -14,19 +14,29 @@ class EnrollScreen extends ConsumerStatefulWidget {
 
 class _EnrollScreenState extends ConsumerState<EnrollScreen> {
   final _controller = TextEditingController();
+  // The engine has no seeded server on a fresh install, so the user provides it.
+  // Defaulted to the public server; editable for other deployments.
+  final _serverController =
+      TextEditingController(text: 'https://openidx.tdv.org');
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _controller.dispose();
+    _serverController.dispose();
     super.dispose();
   }
 
   Future<void> _enroll() async {
     final code = _controller.text.trim();
+    final server = _serverController.text.trim();
     if (code.isEmpty) {
       setState(() => _error = 'Enter an enrollment code.');
+      return;
+    }
+    if (server.isEmpty) {
+      setState(() => _error = 'Enter the server URL.');
       return;
     }
     setState(() {
@@ -34,7 +44,7 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
       _error = null;
     });
     try {
-      await ref.read(engineActionsProvider).enroll(code);
+      await ref.read(engineActionsProvider).enroll(code, serverUrl: server);
       // Status refresh drives the router to the login screen.
     } on Object catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -46,11 +56,12 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Scrollable so the on-screen keyboard doesn't overflow the layout.
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,6 +88,19 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                     labelText: 'Enrollment code',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.vpn_key_outlined),
+                  ),
+                  onSubmitted: (_) => _enroll(),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _serverController,
+                  enabled: !_busy,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Server URL',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.dns_outlined),
                   ),
                   onSubmitted: (_) => _enroll(),
                 ),

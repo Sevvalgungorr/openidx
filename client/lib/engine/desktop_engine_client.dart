@@ -231,8 +231,14 @@ class DesktopEngineClient implements EngineClient {
   }
 
   @override
-  Future<EnrollResult> enroll(String code) async => EnrollResult.fromJson(
-      _asMap(await _send('POST', '/enroll', {'code': code}), '/enroll'));
+  Future<EnrollResult> enroll(String code, {String? serverUrl}) async =>
+      EnrollResult.fromJson(_asMap(
+          await _send('POST', '/enroll', {
+            'code': code,
+            if (serverUrl != null && serverUrl.trim().isNotEmpty)
+              'server': serverUrl.trim(),
+          }),
+          '/enroll'));
 
   @override
   Future<Posture> posture() async =>

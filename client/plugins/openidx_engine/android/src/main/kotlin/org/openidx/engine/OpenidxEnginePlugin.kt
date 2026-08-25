@@ -52,6 +52,7 @@ class OpenidxEnginePlugin : FlutterPlugin, MethodCallHandler {
   private fun dispatch(call: MethodCall): Any? {
     return when (call.method) {
       "start" -> { Mobile.start(arg(call, "configDir")); null }
+      "setServer" -> { Mobile.setServer(arg(call, "url")); null }
       "status" -> Mobile.status()
       "login" -> Mobile.login()
       "logout" -> { Mobile.logout(); null }

@@ -143,7 +143,19 @@ func Logout() error {
 	return e.Logout()
 }
 
-// Enroll onboards this device with a one-time enrollment code.
+// SetServer configures the target/enrollment server URL before Enroll. Mobile
+// has no seeded config, so the app supplies it (from the enroll code's server,
+// a deep-link, or manual entry).
+func SetServer(url string) error {
+	e, err := get()
+	if err != nil {
+		return err
+	}
+	return e.SetServer(url)
+}
+
+// Enroll onboards this device with a one-time enrollment code. Call SetServer
+// first (mobile has no seeded server config).
 func Enroll(code string) (string, error) {
 	e, err := get()
 	if err != nil {

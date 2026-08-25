@@ -48,7 +48,7 @@ func TestStartAndStatus(t *testing.T) {
 // boundary. A non-conforming signature fails here instead of at `gomobile bind`.
 func TestSignaturesAreGomobileSafe(t *testing.T) {
 	fns := map[string]interface{}{
-		"Start": Start, "Status": Status, "Login": Login, "Logout": Logout,
+		"Start": Start, "SetServer": SetServer, "Status": Status, "Login": Login, "Logout": Logout,
 		"Enroll": Enroll, "Posture": Posture, "PamList": PamList,
 		"PamConnect": PamConnect, "PamRequest": PamRequest,
 		"ZitiDial": ZitiDial, "ZitiClose": ZitiClose,
