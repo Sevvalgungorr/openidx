@@ -230,7 +230,7 @@ class DesktopEngineClient implements EngineClient {
       throw UnsupportedError('desktop uses login()');
 
   @override
-  Future<User> loginWait() =>
+  Future<User> loginFinish(String callbackUrl) =>
       throw UnsupportedError('desktop uses login()');
 
   @override

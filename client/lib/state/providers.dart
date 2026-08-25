@@ -98,12 +98,14 @@ class EngineActions {
     return user;
   }
 
-  /// Mobile split login: returns the OAuth authorize URL to open in a browser.
+  /// Mobile deep-link login: returns the OAuth authorize URL to open in a
+  /// browser.
   Future<String> loginStart() => _engine.loginStart();
 
-  /// Mobile split login: blocks for the loopback redirect, then refreshes state.
-  Future<User> loginWait() async {
-    final u = await _engine.loginWait();
+  /// Mobile deep-link login: exchanges the received `openidx://oauth-callback`
+  /// URL for a session, then refreshes state.
+  Future<User> loginFinish(String callbackUrl) async {
+    final u = await _engine.loginFinish(callbackUrl);
     await _refreshAll();
     return u;
   }

@@ -57,13 +57,16 @@ class OpenidxEngine {
 
   Future<String> login() => _invokeString('login');
 
-  /// Begin the split loopback login (mobile): returns the OAuth authorize URL
-  /// the app opens in the system browser. Follow with [loginWait].
+  /// Begin the custom-scheme deep-link login (mobile): returns the OAuth
+  /// authorize URL the app opens in the system browser. The server redirects to
+  /// `openidx://oauth-callback?code=…&state=…`, which the OS routes back to the
+  /// app; pass that full callback URL to [loginFinish].
   Future<String> loginStart() => _invokeString('loginStart');
 
-  /// Block for the browser redirect started by [loginStart]; returns the user
-  /// JSON.
-  Future<String> loginWait() => _invokeString('loginWait');
+  /// Complete the deep-link login from the received callback URL; returns the
+  /// user JSON.
+  Future<String> loginFinish(String callbackUrl) =>
+      _invokeString('loginFinish', {'callbackUrl': callbackUrl});
 
   Future<void> logout() async {
     await _channel.invokeMethod<void>('logout');

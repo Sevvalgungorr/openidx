@@ -134,9 +134,10 @@ func Login() (string, error) {
 	return e.Login()
 }
 
-// LoginStart begins the split loopback login (mobile): it returns the OAuth
-// authorize URL for the Dart layer to open in the system browser. The engine's
-// loopback keeps listening; call LoginWait afterward to finish.
+// LoginStart begins the custom-scheme deep-link login (mobile): it returns the
+// openidx-mobile OAuth authorize URL for the Dart layer to open in the system
+// browser. The server redirects to openidx://oauth-callback?code=…&state=…,
+// which the OS routes back to the app; call LoginFinish with that callback URL.
 func LoginStart() (string, error) {
 	e, err := get()
 	if err != nil {
@@ -145,14 +146,15 @@ func LoginStart() (string, error) {
 	return e.LoginStart()
 }
 
-// LoginWait blocks for the browser redirect started by LoginStart, caches the
-// session, and returns the {sub,email,exp} user JSON.
-func LoginWait() (string, error) {
+// LoginFinish completes the deep-link login from the callback URL the app
+// received (openidx://oauth-callback?code=…&state=…), caches the session, and
+// returns the {sub,email,exp} user JSON.
+func LoginFinish(callbackURL string) (string, error) {
 	e, err := get()
 	if err != nil {
 		return "", err
 	}
-	return e.LoginWait()
+	return e.LoginFinish(callbackURL)
 }
 
 // Logout clears the stored session.

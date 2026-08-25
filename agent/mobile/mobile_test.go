@@ -49,7 +49,7 @@ func TestStartAndStatus(t *testing.T) {
 func TestSignaturesAreGomobileSafe(t *testing.T) {
 	fns := map[string]interface{}{
 		"Start": Start, "SetServer": SetServer, "Status": Status, "Login": Login,
-		"LoginStart": LoginStart, "LoginWait": LoginWait, "Logout": Logout,
+		"LoginStart": LoginStart, "LoginFinish": LoginFinish, "Logout": Logout,
 		"Enroll": Enroll, "Posture": Posture, "PamList": PamList,
 		"PamConnect": PamConnect, "PamRequest": PamRequest,
 		"ZitiDial": ZitiDial, "ZitiClose": ZitiClose,

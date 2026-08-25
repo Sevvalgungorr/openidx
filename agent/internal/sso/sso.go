@@ -21,6 +21,14 @@ const (
 	// LoopbackAddr / RedirectURI must match a registered redirect on the client.
 	LoopbackAddr = "127.0.0.1:47600"
 	RedirectURI  = "http://127.0.0.1:47600/callback"
+
+	// MobileClientID is the public/PKCE native client seeded by migration v84.
+	// Unlike the desktop client it registers a custom-scheme redirect, so the
+	// browser can 302 straight back into the app — no loopback server needed.
+	MobileClientID = "openidx-mobile"
+	// MobileRedirectURI is the custom-scheme deep link the server redirects to
+	// after authentication; Android/iOS route it back to the app.
+	MobileRedirectURI = "openidx://oauth-callback"
 )
 
 // DefaultScopes requested at login.
@@ -182,6 +190,71 @@ func Login(ctx context.Context, serverURL string) (*Tokens, error) {
 		fmt.Printf("Open this URL to sign in:\n  %s\n", p.AuthURL())
 	}
 	return p.Wait(ctx)
+}
+
+// MobileLogin is an in-flight custom-scheme (deep-link) PKCE flow. Unlike
+// PendingLogin there is no loopback server: StartMobileLogin only generates the
+// PKCE material + authorize URL, the app opens that URL in the system browser,
+// the server redirects to openidx://oauth-callback?code=…&state=…, the OS routes
+// that back to the app, and the app hands the callback URL to Exchange.
+type MobileLogin struct {
+	verifier  string
+	state     string
+	serverURL string
+}
+
+// State returns the CSRF state value bound to this flow (for callers that want
+// to validate it out-of-band; Exchange also enforces it).
+func (m *MobileLogin) State() string { return m.state }
+
+// StartMobileLogin generates PKCE + state and builds the openidx-mobile
+// authorize URL for the custom-scheme redirect flow. It does NOT bind any
+// listener or open a browser. Returns (flow, authURL, error).
+func StartMobileLogin(serverURL string) (*MobileLogin, string, error) {
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	pk, err := newPKCE()
+	if err != nil {
+		return nil, "", err
+	}
+	state, err := randomState()
+	if err != nil {
+		return nil, "", err
+	}
+
+	authURL := serverURL + "/oauth/authorize?" + url.Values{
+		"response_type":         {"code"},
+		"client_id":             {MobileClientID},
+		"redirect_uri":          {MobileRedirectURI},
+		"scope":                 {strings.Join(DefaultScopes, " ")},
+		"code_challenge":        {pk.challenge},
+		"code_challenge_method": {"S256"},
+		"state":                 {state},
+	}.Encode()
+
+	return &MobileLogin{
+		verifier:  pk.verifier,
+		state:     state,
+		serverURL: serverURL,
+	}, authURL, nil
+}
+
+// Exchange validates the returned state against the one bound at StartMobileLogin
+// and swaps the authorization code for tokens using the PKCE verifier.
+func (m *MobileLogin) Exchange(ctx context.Context, code, state string) (*Tokens, error) {
+	if state != m.state {
+		return nil, fmt.Errorf("state mismatch")
+	}
+	if code == "" {
+		return nil, fmt.Errorf("no authorization code")
+	}
+	return exchange(ctx, m.serverURL, url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
+		"client_id":     {MobileClientID},
+		"redirect_uri":  {MobileRedirectURI},
+		"code_verifier": {m.verifier},
+	})
 }
 
 // Refresh exchanges a refresh token for a fresh access token.

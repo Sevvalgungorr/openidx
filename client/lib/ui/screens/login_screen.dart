@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../mobile/deep_links.dart';
 import '../../state/providers.dart';
 
 /// Shown when the device is enrolled but no user is signed in.
@@ -27,12 +28,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final actions = ref.read(engineActionsProvider);
       if (Platform.isAndroid || Platform.isIOS) {
-        // Mobile: the engine can't open a browser itself. Get the authorize URL,
-        // open it in the system browser (OAuth + MFA happen there), then block
-        // for the loopback redirect the engine still listens for.
+        // Mobile: the engine can't open a browser itself. Subscribe to the
+        // oauth-callback deep-link stream BEFORE launching so we can't miss the
+        // redirect, get the authorize URL, open it in the system browser (OAuth
+        // + MFA happen there); the server redirects to openidx://oauth-callback
+        // which the OS routes back to us, then hand that URL to loginFinish.
+        final callbacks = ref.read(oauthCallbackUriProvider);
         final url = await actions.loginStart();
+        final next = callbacks.first.timeout(const Duration(minutes: 5));
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        await actions.loginWait();
+        final uri = await next;
+        await actions.loginFinish(uri.toString());
       } else {
         await actions.login();
       }

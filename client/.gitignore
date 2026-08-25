@@ -43,6 +43,21 @@ unlinked_spec.ds
 /linux/
 /macos/
 
+# EXCEPTION: the Android manifest IS committed. `flutter create` generates a
+# vanilla manifest lacking the package-visibility <queries> (Android 11 browser
+# open) and the openidx:// intent-filter (OAuth deep-link redirect); since
+# `flutter create` won't overwrite an existing file, our committed one wins.
+# Un-ignore each parent dir so git can track the file within the ignored tree.
+!/android/
+/android/*
+!/android/app/
+/android/app/*
+!/android/app/src/
+/android/app/src/*
+!/android/app/src/main/
+/android/app/src/main/*
+!/android/app/src/main/AndroidManifest.xml
+
 # Bundled sidecar binary staged next to the app during packaging.
 /assets/bin/
 openidx-agent

@@ -21,13 +21,14 @@ abstract class EngineClient {
 
   Future<User> login();
 
-  /// Split login for mobile: [loginStart] returns the OAuth authorize URL the
-  /// app opens in the system browser; [loginWait] blocks for the loopback
-  /// redirect and returns the signed-in user. Desktop uses [login] and these
-  /// throw [UnsupportedError].
+  /// Deep-link login for mobile: [loginStart] returns the OAuth authorize URL
+  /// the app opens in the system browser; the server redirects to
+  /// `openidx://oauth-callback?code=…&state=…`, which the OS routes back to the
+  /// app; [loginFinish] takes that full callback URL and returns the signed-in
+  /// user. Desktop uses [login] and these throw [UnsupportedError].
   Future<String> loginStart();
 
-  Future<User> loginWait();
+  Future<User> loginFinish(String callbackUrl);
 
   Future<void> logout();
 

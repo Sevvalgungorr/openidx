@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -59,9 +60,9 @@ type Engine struct {
 	newDialer  func(identityFile string) (zitiDialer, error)
 	loginTimeout time.Duration
 
-	mu           sync.Mutex
-	bridges      map[string]*bridge  // active Ziti bridges keyed by service name
-	pendingLogin *sso.PendingLogin   // in-flight split login (LoginStart→LoginWait)
+	mu                 sync.Mutex
+	bridges            map[string]*bridge // active Ziti bridges keyed by service name
+	pendingMobileLogin *sso.MobileLogin   // in-flight deep-link login (LoginStart→LoginFinish)
 }
 
 type bridge struct {
@@ -176,41 +177,59 @@ func (e *Engine) Login() (string, error) {
 	return toJSON(userPayload{Sub: sub, Email: email, Exp: exp})
 }
 
-// LoginStart begins the split loopback login used on mobile, where the engine
-// cannot open a browser itself. It binds the loopback + builds the authorize
-// URL (via sso.StartLogin) and returns that URL for the caller (the Dart layer)
-// to open with url_launcher; the loopback keeps listening. Call LoginWait to
-// block for the redirect and finish. Desktop keeps using Login().
+// LoginStart begins the custom-scheme deep-link login used on mobile, where the
+// engine cannot open a browser itself. It generates PKCE + state and builds the
+// openidx-mobile authorize URL (via sso.StartMobileLogin) and returns that URL
+// for the caller (the Dart layer) to open with url_launcher. The server then
+// redirects to openidx://oauth-callback?code=…&state=…, which the OS routes back
+// to the app; the app hands the full callback URL to LoginFinish. Desktop keeps
+// using Login().
 func (e *Engine) LoginStart() (string, error) {
 	if e.serverURL == "" {
 		return "", fmt.Errorf("no server configured: enroll first")
 	}
-	p, err := sso.StartLogin(e.serverURL)
+	m, authURL, err := sso.StartMobileLogin(e.serverURL)
 	if err != nil {
 		return "", fmt.Errorf("login failed: %w", err)
 	}
 	e.mu.Lock()
-	e.pendingLogin = p
+	e.pendingMobileLogin = m
 	e.mu.Unlock()
-	return p.AuthURL(), nil
+	return authURL, nil
 }
 
-// LoginWait blocks for the loopback callback of an in-flight LoginStart, caches
-// the tokens, and returns {sub,email,exp} as a JSON string — the same shape as
-// Login(). Errors if no login is in progress.
-func (e *Engine) LoginWait() (string, error) {
+// LoginFinish completes an in-flight LoginStart from the deep-link callback URL
+// (openidx://oauth-callback?code=…&state=…) the app received. It extracts the
+// code + state, exchanges the code for tokens, caches them, and returns
+// {sub,email,exp} as a JSON string — the same shape as Login(). Errors if no
+// login is in progress, if the callback carries an error, or if code is empty.
+func (e *Engine) LoginFinish(callbackURL string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(callbackURL))
+	if err != nil {
+		return "", fmt.Errorf("invalid callback URL: %w", err)
+	}
+	q := u.Query()
+	if authErr := q.Get("error"); authErr != "" {
+		return "", fmt.Errorf("authorization error: %s", authErr)
+	}
+	code := q.Get("code")
+	if code == "" {
+		return "", fmt.Errorf("no authorization code in callback")
+	}
+	state := q.Get("state")
+
 	e.mu.Lock()
-	p := e.pendingLogin
-	e.pendingLogin = nil
+	m := e.pendingMobileLogin
+	e.pendingMobileLogin = nil
 	e.mu.Unlock()
-	if p == nil {
+	if m == nil {
 		return "", fmt.Errorf("no login in progress")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), e.loginTimeout)
 	defer cancel()
 
-	tok, err := p.Wait(ctx)
+	tok, err := m.Exchange(ctx, code, state)
 	if err != nil {
 		return "", fmt.Errorf("login failed: %w", err)
 	}
