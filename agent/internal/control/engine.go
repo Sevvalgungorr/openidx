@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -195,7 +196,22 @@ func (e *Engine) LoginStart() (string, error) {
 	e.mu.Lock()
 	e.pendingMobileLogin = m
 	e.mu.Unlock()
+	// Also persist the flow to disk so it survives a process restart. On Android
+	// the OS often kills the app while the browser is foreground and cold-starts
+	// it to deliver the openidx://oauth-callback redirect; the relaunched process
+	// has lost e.pendingMobileLogin and must reload the PKCE material from here to
+	// complete the exchange. A save failure is non-fatal — the in-memory flow
+	// still covers the warm path where the app stays alive.
+	if err := m.Save(e.pendingLoginPath()); err != nil {
+		e.logger.Warn("persisting pending mobile login failed; cold-start login will not survive a restart", zap.Error(err))
+	}
 	return authURL, nil
+}
+
+// pendingLoginPath is where LoginStart persists the in-flight mobile login so a
+// cold-started process (see LoginStart/LoginFinish) can reload it.
+func (e *Engine) pendingLoginPath() string {
+	return filepath.Join(e.configDir, "login_pending.json")
 }
 
 // LoginFinish completes an in-flight LoginStart from the deep-link callback URL
@@ -220,8 +236,15 @@ func (e *Engine) LoginFinish(callbackURL string) (string, error) {
 
 	e.mu.Lock()
 	m := e.pendingMobileLogin
-	e.pendingMobileLogin = nil
 	e.mu.Unlock()
+	if m == nil {
+		// Warm-path flow is gone — most likely the app was killed during the
+		// browser step and cold-started to deliver this callback. Reload the
+		// persisted PKCE material from disk to complete the exchange.
+		if loaded, lerr := sso.LoadMobileLogin(e.pendingLoginPath()); lerr == nil {
+			m = loaded
+		}
+	}
 	if m == nil {
 		return "", fmt.Errorf("no login in progress")
 	}
@@ -236,6 +259,12 @@ func (e *Engine) LoginFinish(callbackURL string) (string, error) {
 	if err := authstore.Save(e.configDir, tok); err != nil {
 		return "", fmt.Errorf("saving session: %w", err)
 	}
+	// Login is complete: drop the in-memory flow and the on-disk copy so a stale
+	// authorization code can't be re-submitted and the file doesn't linger.
+	e.mu.Lock()
+	e.pendingMobileLogin = nil
+	e.mu.Unlock()
+	_ = os.Remove(e.pendingLoginPath())
 	sub, email, exp, _ := decodeJWTClaims(tok.AccessToken)
 	if exp == 0 {
 		exp = tok.ExpiresAt

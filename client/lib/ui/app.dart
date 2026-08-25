@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../mobile/oauth_login_handler.dart';
 import '../state/providers.dart';
 import 'mobile_shell.dart';
 import 'screens/enroll_screen.dart';
@@ -18,13 +19,22 @@ class OpenIdxApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // On mobile, an app-level handler owns OAuth-callback login completion so it
+    // works even when Android cold-starts the app to deliver the redirect (the
+    // login screen that was awaiting the callback is gone by then). Mounting it
+    // above the router means it lives for the whole app session, independent of
+    // which screen is shown. Desktop uses the loopback flow and is unaffected.
+    const router = _RootRouter();
+    final home = (Platform.isAndroid || Platform.isIOS)
+        ? const MobileOAuthLoginHandler(child: router)
+        : router;
     return MaterialApp(
       title: 'OpenIDX',
       debugShowCheckedModeBanner: false,
       theme: _lightTheme,
       darkTheme: _darkTheme,
       themeMode: ThemeMode.system,
-      home: const _RootRouter(),
+      home: home,
     );
   }
 }

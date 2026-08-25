@@ -74,11 +74,33 @@ class DeepLinkService {
   StreamSubscription<Uri>? _sub;
   bool _initialized = false;
 
+  /// The most recent `openidx://oauth-callback` URI seen, retained so a late
+  /// subscriber (e.g. the app-level login handler that starts up *after* the OS
+  /// delivered the cold-start deep link) can still complete login. Cleared once
+  /// login succeeds is the caller's responsibility; re-subscribers replay it via
+  /// [oauthCallbackUris].
+  Uri? _lastOAuthCallback;
+
   Stream<OpenidxDeepLink> get links => _controller.stream;
 
-  /// Full callback URIs for the browser deep-link OAuth flow (see
-  /// [_oauthController]).
-  Stream<Uri> get oauthCallbackUris => _oauthController.stream;
+  /// Full callback URIs for the browser deep-link OAuth flow. This stream
+  /// **replays** the last-seen oauth-callback to every new subscriber before the
+  /// live events, so a handler that subscribes late (cold start) still receives
+  /// the redirect that arrived while the app was launching.
+  Stream<Uri> get oauthCallbackUris async* {
+    final replay = _lastOAuthCallback;
+    if (replay != null) yield replay;
+    yield* _oauthController.stream;
+  }
+
+  /// The initial (cold-start) `openidx://oauth-callback` URI, if the app was
+  /// launched by the OAuth redirect and no callback has yet been consumed. The
+  /// app-level handler checks this on startup so a cold start completes login
+  /// even if it subscribed to [oauthCallbackUris] after the event fired.
+  Future<Uri?> initialOAuthCallback() async {
+    await init();
+    return _lastOAuthCallback;
+  }
 
   /// Begin listening. Emits the initial (cold-start) link, if any, then all
   /// subsequent ones.
@@ -107,8 +129,18 @@ class DeepLinkService {
     if (link == null) return;
     _controller.add(link);
     // Also push the FULL callback Uri onto the oauth stream so the login flow
-    // can complete the code+state exchange with the engine.
-    if (link is OAuthCallbackLink) _oauthController.add(link.raw);
+    // can complete the code+state exchange with the engine, and retain it so a
+    // late subscriber (cold start) can still replay it.
+    if (link is OAuthCallbackLink) {
+      _lastOAuthCallback = link.raw;
+      _oauthController.add(link.raw);
+    }
+  }
+
+  /// Called by the login handler once a callback has been consumed so it is not
+  /// replayed to future subscribers (avoids re-submitting a spent code).
+  void clearOAuthCallback() {
+    _lastOAuthCallback = null;
   }
 
   Future<void> dispose() async {
@@ -131,8 +163,8 @@ final deepLinkServiceProvider = Provider<DeepLinkService>((ref) {
 final oauthCallbackUriProvider = Provider<Stream<Uri>>((ref) {
   final service = ref.watch(deepLinkServiceProvider);
   // Fire-and-forget: init is idempotent and returns immediately if already
-  // listening; the stream is broadcast so a late subscriber still receives
-  // links that arrive after subscription.
+  // listening; the stream replays the last oauth-callback so a late subscriber
+  // (cold start) still receives the redirect that arrived while launching.
   unawaited(service.init());
   return service.oauthCallbackUris;
 });

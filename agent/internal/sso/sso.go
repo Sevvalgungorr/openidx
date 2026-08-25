@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -237,6 +238,52 @@ func StartMobileLogin(serverURL string) (*MobileLogin, string, error) {
 		state:     state,
 		serverURL: serverURL,
 	}, authURL, nil
+}
+
+// mobileLoginJSON is the on-disk form of a MobileLogin. MobileLogin's fields are
+// unexported, so persistence marshals through this internal struct rather than
+// exporting the flow's PKCE material on the public type.
+type mobileLoginJSON struct {
+	Verifier  string `json:"verifier"`
+	State     string `json:"state"`
+	ServerURL string `json:"server_url"`
+}
+
+// Save persists the flow's PKCE verifier, state, and server URL to path (0600)
+// so an in-flight mobile login survives a process restart. On Android the OS
+// frequently kills the app while the system browser is foreground and then
+// cold-starts it to deliver the openidx://oauth-callback redirect; the relaunched
+// process has lost the in-memory flow, so it reloads it from here (see
+// LoadMobileLogin) to complete the code exchange.
+func (m *MobileLogin) Save(path string) error {
+	data, err := json.Marshal(mobileLoginJSON{
+		Verifier:  m.verifier,
+		State:     m.state,
+		ServerURL: m.serverURL,
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+// LoadMobileLogin reloads a persisted MobileLogin (see Save). It is the cold-start
+// counterpart used when the app process was killed during the browser step and
+// relaunched to deliver the deep-link callback.
+func LoadMobileLogin(path string) (*MobileLogin, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // path is app-owned <configDir>/login_pending.json
+	if err != nil {
+		return nil, err
+	}
+	var mj mobileLoginJSON
+	if err := json.Unmarshal(data, &mj); err != nil {
+		return nil, fmt.Errorf("parsing persisted login: %w", err)
+	}
+	return &MobileLogin{
+		verifier:  mj.Verifier,
+		state:     mj.State,
+		serverURL: mj.ServerURL,
+	}, nil
 }
 
 // Exchange validates the returned state against the one bound at StartMobileLogin
