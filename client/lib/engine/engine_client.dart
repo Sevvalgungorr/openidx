@@ -30,6 +30,12 @@ abstract class EngineClient {
 
   Future<User> loginFinish(String callbackUrl);
 
+  /// A valid OAuth access token for the signed-in user, refreshed transparently
+  /// if needed. The backend REST journeys (governance/mfa/notifications) use
+  /// this so they authenticate against the SAME session the engine owns. Throws
+  /// [EngineException] when not signed in.
+  Future<String> accessToken();
+
   Future<void> logout();
 
   /// Enrolls this device with a one-time [code]. On mobile (no seeded config)

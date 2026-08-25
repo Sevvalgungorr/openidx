@@ -31,9 +31,16 @@ final backendBaseUrlProvider = Provider<String>((ref) {
 });
 
 final apiClientProvider = Provider<ApiClient>((ref) {
+  // The user signs in through the engine (deep-link OAuth), so the session lives
+  // in the engine's store — this client's own TokenStore is empty. Source the
+  // Bearer token from the engine so the backend REST journeys authenticate
+  // against the SAME session (previously every call 401'd with "missing
+  // authorization header"). The engine refreshes the token transparently.
+  final engine = ref.watch(engineClientProvider);
   final client = ApiClient(
     baseUrl: ref.watch(backendBaseUrlProvider),
     tokens: ref.watch(tokenStoreProvider),
+    engineTokenGetter: engine.accessToken,
   );
   ref.onDispose(() {});
   return client;

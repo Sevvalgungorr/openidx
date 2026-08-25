@@ -25,12 +25,24 @@ class ApiException implements Exception {
 /// The engine journeys (status/enroll/PAM/Ziti) go through [EngineClient];
 /// this client is for the *non-engine* journeys (MFA, governance,
 /// notifications) that talk HTTP directly.
+///
+/// ## Token source
+/// On **mobile** the user signs in through the in-process Go engine (deep-link
+/// OAuth), so the session tokens live in the engine's store — NOT in this
+/// client's [TokenStore], which stays empty. Passing [engineTokenGetter] makes
+/// the engine the single source of truth: the request interceptor fetches the
+/// Bearer token from the engine (which also refreshes it transparently) on every
+/// call. When no getter is supplied (e.g. desktop / tests) it falls back to the
+/// [TokenStore] path, preserving the original behavior.
+typedef EngineTokenGetter = Future<String> Function();
+
 class ApiClient {
   ApiClient({
     required String baseUrl,
     required TokenStore tokens,
     Dio? dio,
     this.onAuthLost,
+    this.engineTokenGetter,
   })  : _tokens = tokens,
         _dio = dio ?? Dio() {
     _dio.options
@@ -53,13 +65,35 @@ class ApiClient {
   /// the auth layer routes back to sign-in.
   final void Function()? onAuthLost;
 
+  /// When set, the primary Bearer token source: fetched from the engine (which
+  /// owns the session and refreshes it) on every request. Falls back to the
+  /// [TokenStore] when null.
+  final EngineTokenGetter? engineTokenGetter;
+
   Dio get raw => _dio;
 
   void setBaseUrl(String baseUrl) => _dio.options.baseUrl = baseUrl;
 
+  /// Resolves the access token, preferring the engine (mobile) over the local
+  /// token store. Returns null when not signed in / unavailable.
+  Future<String?> _accessToken() async {
+    final getter = engineTokenGetter;
+    if (getter != null) {
+      try {
+        final t = await getter();
+        if (t.isNotEmpty) return t;
+      } catch (_) {
+        // "not signed in" (or a channel hiccup): fall through so no header is
+        // sent and the screen shows its empty/401 state rather than crashing.
+      }
+      return null;
+    }
+    return _tokens.accessToken();
+  }
+
   Future<void> _onRequest(
       RequestOptions options, RequestInterceptorHandler handler) async {
-    final token = await _tokens.accessToken();
+    final token = await _accessToken();
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
     }
@@ -109,7 +143,24 @@ class ApiClient {
     final alreadyRetried = original.extra['_retried'] == true;
 
     if (response?.statusCode == 401 && !alreadyRetried) {
-      if (await _tryRefresh()) {
+      if (engineTokenGetter != null) {
+        // The engine owns (and refreshes) the session: re-fetch — this triggers
+        // a transparent refresh on the Go side — and retry once. A still-401
+        // means the session is genuinely gone.
+        final token = await _accessToken();
+        if (token != null && token.isNotEmpty) {
+          original.extra['_retried'] = true;
+          original.headers['Authorization'] = 'Bearer $token';
+          try {
+            final retry = await _dio.fetch<dynamic>(original);
+            return handler.resolve(retry);
+          } on DioException catch (e) {
+            onAuthLost?.call();
+            return handler.next(e);
+          }
+        }
+        onAuthLost?.call();
+      } else if (await _tryRefresh()) {
         original.extra['_retried'] = true;
         final token = await _tokens.accessToken();
         if (token != null) {
@@ -121,9 +172,10 @@ class ApiClient {
         } on DioException catch (e) {
           return handler.next(e);
         }
+      } else {
+        await _tokens.clear();
+        onAuthLost?.call();
       }
-      await _tokens.clear();
-      onAuthLost?.call();
     }
     handler.next(err);
   }

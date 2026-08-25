@@ -304,11 +304,21 @@ func (m *MobileLogin) Exchange(ctx context.Context, code, state string) (*Tokens
 	})
 }
 
-// Refresh exchanges a refresh token for a fresh access token.
+// Refresh exchanges a refresh token for a fresh access token using the desktop
+// client. Desktop sessions were issued to DesktopClientID, so the refresh must
+// present the same client_id.
 func Refresh(ctx context.Context, serverURL, refreshToken string) (*Tokens, error) {
+	return RefreshWithClient(ctx, serverURL, refreshToken, DesktopClientID)
+}
+
+// RefreshWithClient exchanges a refresh token for a fresh access token using the
+// given public/PKCE client_id. A refresh must present the same client_id the
+// session was issued to, so mobile sessions (MobileClientID) refresh via this
+// variant rather than Refresh (which defaults to the desktop client).
+func RefreshWithClient(ctx context.Context, serverURL, refreshToken, clientID string) (*Tokens, error) {
 	return exchange(ctx, strings.TrimRight(serverURL, "/"), url.Values{
 		"grant_type":    {"refresh_token"},
-		"client_id":     {DesktopClientID},
+		"client_id":     {clientID},
 		"refresh_token": {refreshToken},
 	})
 }

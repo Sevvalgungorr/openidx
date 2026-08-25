@@ -97,6 +97,12 @@ class MobileEngineClient implements EngineClient {
   }
 
   @override
+  Future<String> accessToken() async {
+    await _ensureStarted();
+    return _guard(_engine.accessToken, 'accessToken');
+  }
+
+  @override
   Future<void> logout() async {
     await _ensureStarted();
     await _guard(_engine.logout, 'logout');

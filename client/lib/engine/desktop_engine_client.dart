@@ -234,6 +234,10 @@ class DesktopEngineClient implements EngineClient {
       throw UnsupportedError('desktop uses login()');
 
   @override
+  Future<String> accessToken() =>
+      throw UnsupportedError('desktop engine does not expose the access token');
+
+  @override
   Future<void> logout() async {
     await _send('POST', '/logout');
   }

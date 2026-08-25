@@ -521,6 +521,64 @@ func (e *Engine) closeAll() {
 	}
 }
 
+// AccessToken returns a currently-valid OAuth access token for the signed-in
+// user, so the Dart ApiClient (which makes the backend REST calls for the
+// journey screens) can authenticate against the SAME session the engine owns.
+// Without this, the ApiClient's own (empty) token store would send no
+// Authorization header and every governance/mfa/notifications call would 401.
+//
+// If a token is cached and unexpired it is returned as-is. If it is expired (or
+// about to be) and a refresh token exists, AccessToken transparently refreshes
+// via /oauth/token, persists the new tokens, and returns the fresh access
+// token. If the refresh fails, the stale access token is returned with no error
+// so the caller still sends a Bearer header — the server will 401 and the UI's
+// auth-lost handling takes over. Errors only when not signed in at all.
+func (e *Engine) AccessToken() (string, error) {
+	if e.serverURL == "" {
+		return "", fmt.Errorf("no server configured: enroll first")
+	}
+	tok, err := authstore.Load(e.configDir)
+	if err != nil {
+		return "", fmt.Errorf("loading session: %w", err)
+	}
+	if tok == nil || tok.AccessToken == "" {
+		return "", errNotAuthenticated
+	}
+
+	// Consider the token expired if its stored expiry (or JWT exp) is within a
+	// small skew of now; refresh proactively so requests don't race the clock.
+	const skew = 30 * time.Second
+	exp := tok.ExpiresAt
+	if exp == 0 {
+		if _, _, jwtExp, ok := decodeJWTClaims(tok.AccessToken); ok {
+			exp = jwtExp
+		}
+	}
+	expired := exp > 0 && time.Now().Add(skew).Unix() >= exp
+
+	if expired && tok.RefreshToken != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		// Mobile sessions were issued to the mobile PKCE client, so refresh must
+		// present the same client_id.
+		fresh, rerr := sso.RefreshWithClient(ctx, e.serverURL, tok.RefreshToken, sso.MobileClientID)
+		if rerr == nil && fresh != nil && fresh.AccessToken != "" {
+			if fresh.RefreshToken == "" {
+				fresh.RefreshToken = tok.RefreshToken // server may omit an unchanged RT
+			}
+			if serr := authstore.Save(e.configDir, fresh); serr != nil {
+				e.logger.Warn("failed to persist refreshed session", zap.Error(serr))
+			}
+			return fresh.AccessToken, nil
+		}
+		// Refresh failed — fall through and return the (stale) access token; let
+		// the server 401 and the UI handle re-auth.
+		e.logger.Warn("token refresh failed; returning stored token", zap.Error(rerr))
+	}
+
+	return tok.AccessToken, nil
+}
+
 // ---- internal helpers (never cross the gomobile boundary) --------------
 
 // userToken loads the cached OAuth access token, erroring if not signed in.

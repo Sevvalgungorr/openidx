@@ -157,6 +157,18 @@ func LoginFinish(callbackURL string) (string, error) {
 	return e.LoginFinish(callbackURL)
 }
 
+// AccessToken returns a valid OAuth access token for the signed-in user
+// (refreshing transparently if needed) so the Dart ApiClient can authenticate
+// the backend REST journeys against the same session the engine owns. Errors
+// with "not authenticated" when no session is present.
+func AccessToken() (string, error) {
+	e, err := get()
+	if err != nil {
+		return "", err
+	}
+	return e.AccessToken()
+}
+
 // Logout clears the stored session.
 func Logout() error {
 	e, err := get()

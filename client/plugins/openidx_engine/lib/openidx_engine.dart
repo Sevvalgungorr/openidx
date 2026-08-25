@@ -68,6 +68,13 @@ class OpenidxEngine {
   Future<String> loginFinish(String callbackUrl) =>
       _invokeString('loginFinish', {'callbackUrl': callbackUrl});
 
+  /// A valid OAuth access token for the signed-in user, refreshing transparently
+  /// on the Go side if the cached one is expired. The Dart `ApiClient` uses this
+  /// so the backend REST journeys authenticate against the SAME session the
+  /// engine owns (the engine, not the Dart layer, performed the login). Throws a
+  /// [PlatformException] ("not authenticated") when no session is present.
+  Future<String> accessToken() => _invokeString('accessToken');
+
   Future<void> logout() async {
     await _channel.invokeMethod<void>('logout');
   }
