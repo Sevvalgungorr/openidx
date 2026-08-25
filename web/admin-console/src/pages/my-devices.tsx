@@ -233,10 +233,20 @@ export function MyDevicesPage() {
             Manage your devices and how they connect
           </p>
         </div>
-        <Button onClick={() => setRegisterDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Register This Device
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Always-visible entry point to the enrollment wizard (QR + code for a
+              phone / other device). Previously /add-device was only reachable via
+              a deeply-conditional "Set up network access" button, so users had no
+              way to enroll a mobile device from the console. */}
+          <Button variant="outline" onClick={() => navigate('/add-device')}>
+            <Smartphone className="h-4 w-4 mr-2" />
+            Add a Device
+          </Button>
+          <Button onClick={() => setRegisterDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Register This Device
+          </Button>
+        </div>
       </div>
 
       {/* Network access status — plain language. The underlying overlay identity
