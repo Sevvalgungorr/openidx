@@ -74,6 +74,7 @@
           "faceIDPermission": "OpenIDX uses Face ID to securely authenticate you."
         }
       ],
+      "expo-notifications",
       "./plugins/withCertPinning.js"
     ],
     "experiments": {
