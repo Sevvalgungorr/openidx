@@ -35,7 +35,10 @@
               "pathPrefix": "/oauth-callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -63,6 +66,12 @@
         {
           "cameraPermission": "OpenIDX uses the camera to scan authenticator QR codes.",
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "OpenIDX uses Face ID to securely authenticate you."
         }
       ],
       "./plugins/withCertPinning.js"
