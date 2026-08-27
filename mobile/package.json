@@ -46,6 +46,18 @@
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   },
+  "expo": {
+    "autolinking": {
+      "//": "GEÇİCİ — yerel `modules/ziti` paketi yalnızca Apple tarafında autolinking dışı bırakıldı.",
+      "//why": "modules/ziti/ios/OidxZiti.podspec `CZiti (~> 1.4)` istiyor; CZiti CocoaPods'ta yayınlanmamış (trunk ve CDN'de kaydı yok, ziti-sdk-swift deposunda .podspec yok), bu yüzden pod install çözümleyemiyor ve EAS 'Install pods' aşamasında düşüyor.",
+      "//scope": "Yalnızca `apple`. Android girdisi bilerek yok: Ziti Android tarafı aynen autolink olmaya devam ediyor.",
+      "//revert": "Bu `expo` bloğunu silmek yeterli. modules/ziti içindeki hiçbir dosyaya dokunulmadı; CZiti gerçek bir kaynağa bağlandığında (SPM ya da git podspec) burası kaldırılır.",
+      "//app": "Uygulama buna hazır: src/features/ziti/native.ts `requireOptionalNativeModule('OidxZiti')` kullanıyor, modül yokken null dönüyor ve overlay özellikleri kapalı çalışıyor (modules/ziti/README.md).",
+      "apple": {
+        "exclude": ["ziti"]
+      }
+    }
+  },
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
