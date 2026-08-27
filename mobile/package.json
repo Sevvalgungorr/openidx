@@ -53,7 +53,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "selftest": "node ./scripts/certpin-selftest.mjs"
+    "selftest": "node ./scripts/certpin-selftest.mjs && node ./scripts/certpin-ios-selftest.mjs",
+    "selftest:certpin:ios": "node ./scripts/certpin-ios-selftest.mjs"
   },
   "private": true
 }
