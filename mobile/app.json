@@ -43,8 +43,7 @@
       ],
       "permissions": [
         "android.permission.CAMERA"
-      ],
-      "package": "com.anonymous.openidxmobile"
+      ]
     },
     "web": {
       "output": "static",
@@ -76,8 +75,12 @@
       ],
       "expo-notifications",
       "./plugins/withCertPinning.js",
-      "./plugins/withCertPinningIOS.js"
-      ],
+      "./plugins/withCertPinningIOS.js",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser",
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
