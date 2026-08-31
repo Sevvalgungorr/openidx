@@ -184,7 +184,7 @@ function ToggleRow({
 function NavRow({ href, label, last }: { href: string; label: string; last?: boolean }) {
   return (
     <Link href={href as never} asChild>
-      <Pressable style={[styles.row, last && styles.rowLast]}>
+  <Pressable style={StyleSheet.flatten([styles.row, last && styles.rowLast])}>
         <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
